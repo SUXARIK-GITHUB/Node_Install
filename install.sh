@@ -1,8 +1,632 @@
 #!/usr/bin/env bash
+vk_write_tls_check() {
+    install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
+    cat > '/usr/local/sbin/vkarmani-node-tls-check' <<'VK_PAYLOAD_VK_WRITE_TLS_CHECK'
+#!/usr/bin/env python3
+"""Local TLS verification of the installed RemnaNode, not panel authentication.
+Uses only CA and public certificate from SECRET_KEY; never writes private keys.
+A fragmented probe exercises a real >1500-byte ClientHello over several writes.
+"""
+import argparse
+import base64
+import hashlib
+import ipaddress
+import json
+import re
+import socket
+import ssl
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ETC = Path('/etc/vkarmani-node')
+
+
+def normal_pem(value):
+    value = value.replace('\\n', '\n').replace('\r\n', '\n')
+    value = re.sub(r'(-----BEGIN [A-Z ]+-----)', r'\1\n', value)
+    value = re.sub(r'(-----END [A-Z ]+-----)', r'\n\1', value)
+    return re.sub(r'\n+', '\n', value).strip() + '\n'
+
+
+def load_material(etc=ETC):
+    cfg = json.loads((etc / 'config.json').read_text())
+    port = cfg['node_port']
+    if type(port) is not int or not 1024 <= port <= 65535:
+        raise ValueError('invalid node port')
+    name = cfg['domain']
+    if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9.-]{1,253}', name):
+        raise ValueError('invalid domain')
+    path = etc / 'remnanode.env'
+    if path.stat().st_mode & 0o077:
+        raise ValueError('remnanode.env permissions must be 0600')
+    values = [line.split('=', 1)[1] for line in path.read_text().splitlines()
+              if line.startswith('SECRET_KEY=')]
+    if len(values) != 1:
+        raise ValueError('one SECRET_KEY required')
+    value = values[0].strip().strip('"\'')
+    payload = json.loads(base64.b64decode(value + '=' * (-len(value) % 4),
+                                        altchars=b'-_', validate=True))
+    ca = normal_pem(payload['caCertPem'])
+    cert = ssl.PEM_cert_to_DER_cert(normal_pem(payload['nodeCertPem']))
+    # Leave nodeKeyPem and jwtPublicKey untouched. This is not a client credential.
+    return cfg, ca, hashlib.sha256(cert).digest()
+
+
+def context(ca, fragmented):
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    # RemnaNode certificates use their own identity, not the public cover domain.
+    # CA validation stays enabled, and the exact leaf certificate is pinned below.
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx.load_verify_locations(cadata=ca)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+    ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+    protocols = ['http/1.1']
+    if fragmented:
+        # Legal additional ALPN identifiers enlarge ClientHello without modifying
+        # its TLS transcript. No application request or secret is sent.
+        protocols += ['vk-local-probe-%02d-' % i + 'x' * 120 for i in range(12)]
+    ctx.set_alpn_protocols(protocols)
+    return ctx
+
+
+def probe(host, port, servername, ca, fingerprint, fragmented=False, timeout=7.0):
+    stage = 'TCP'
+    deadline = time.monotonic() + timeout
+    first_size = 0
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as raw:
+            stage = 'TLS'
+            incoming, outgoing = ssl.MemoryBIO(), ssl.MemoryBIO()
+            tls = context(ca, fragmented).wrap_bio(
+                incoming, outgoing, server_side=False, server_hostname=servername)
+            first = True
+            received = 0
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError()
+                raw.settimeout(remaining)
+                done, need_read = False, False
+                try:
+                    tls.do_handshake()
+                    done = True
+                except ssl.SSLWantReadError:
+                    need_read = True
+                except ssl.SSLWantWriteError:
+                    pass
+                data = outgoing.read()
+                if data:
+                    if first:
+                        first_size = len(data)
+                    if first and fragmented:
+                        # Include splits inside the TLS record header and body.
+                        cuts = (1, 4, 73, 988, 1288)
+                        start = 0
+                        for stop in cuts:
+                            if stop >= len(data):
+                                break
+                            raw.sendall(data[start:stop])
+                            start = stop
+                            time.sleep(0.01)
+                        raw.sendall(data[start:])
+                    else:
+                        raw.sendall(data)
+                    first = False
+                if done:
+                    leaf = tls.getpeercert(binary_form=True)
+                    if not leaf or hashlib.sha256(leaf).digest() != fingerprint:
+                        return False, 'TLS_LEAF_MISMATCH', first_size
+                    if tls.version() != 'TLSv1.3':
+                        return False, 'TLS_VERSION_MISMATCH', first_size
+                    if fragmented and first_size <= 1500:
+                        return False, 'TLS_PROBE_TOO_SMALL', first_size
+                    # No client certificate exists in this probe. A subsequent
+                    # certificate_required alert is expected; never label mTLS OK.
+                    return True, 'TLS13_CA_AND_LEAF_OK', first_size
+                if need_read:
+                    data = raw.recv(65536)
+                    if not data:
+                        return False, 'TLS_CLOSED_BEFORE_SERVER_FINISHED', first_size
+                    received += len(data)
+                    if received > 1024 * 1024:
+                        return False, 'TLS_RESPONSE_TOO_LARGE', first_size
+                    incoming.write(data)
+    except (TimeoutError, socket.timeout):
+        return False, stage + '_TIMEOUT', first_size
+    except ssl.SSLCertVerificationError:
+        return False, 'TLS_CERTIFICATE_VERIFY_FAILED', first_size
+    except ssl.SSLError as exc:
+        return False, 'TLS_ERROR_' + re.sub(r'[^A-Z0-9_]', '_', str(exc.reason)), first_size
+    except OSError as exc:
+        return False, stage + '_OS_ERROR_' + str(exc.errno), first_size
+
+
+def local_ips():
+    rows = json.loads(subprocess.check_output(
+        ['ip', '-j', '-4', 'address', 'show'], text=True, timeout=5))
+    return {a['local'] for row in rows for a in row.get('addr_info', [])
+            if a.get('family') == 'inet'}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--all-local', action='store_true')
+    args = parser.parse_args()
+    try:
+        c, ca, fp = load_material()
+        ips = local_ips()
+        expected = str(ipaddress.IPv4Address(c['public_ipv4']))
+        if expected not in ips:
+            print('NODE_TLS_LOCAL=FAIL NODE_IPV4_NOT_ASSIGNED')
+            return 1
+        targets = ['127.0.0.1', expected]
+        if args.all_local:
+            targets += sorted(x for x in ips if ipaddress.IPv4Address(x).is_global)
+        failures = 0
+        for host in dict.fromkeys(targets):
+            for fragmented in (False, True):
+                ok, detail, length = probe(host, c['node_port'], c['domain'], ca, fp, fragmented)
+                print('LOCAL_TLS address=%s:%d mode=%s status=%s detail=%s hello_bytes=%d' % (
+                    host, c['node_port'], 'fragmented' if fragmented else 'normal',
+                    'PASS' if ok else 'FAIL', detail, length), flush=True)
+                failures += not ok
+        print('NODE_TLS_LOCAL=' + ('FAIL' if failures else 'PASS'))
+        print('PANEL_MTLS=NOT_VERIFIED; local probes do not traverse the external interface or authenticate the panel')
+        return int(bool(failures))
+    except Exception:
+        print('NODE_TLS_LOCAL=FAIL CONFIG_OR_CERTIFICATE_ERROR (secret not displayed)', file=sys.stderr)
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())
+VK_PAYLOAD_VK_WRITE_TLS_CHECK
+    chmod 0755 '/usr/local/sbin/vkarmani-node-tls-check'
+}
+
+vk_write_selfsteal_check() {
+    install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-selfsteal-check')"
+    cat > '/usr/local/sbin/vkarmani-selfsteal-check' <<'VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK'
+#!/usr/bin/env python3
+"""Check PROXY v1, verified TLS 1.3, HTTP/1.1 and actual HTTP/2 data on Selfsteal."""
+import hashlib
+import json
+import socket
+import ssl
+import sys
+from pathlib import Path
+
+SOCKET = '/dev/shm/nginx.sock'
+SITE = Path('/var/www/vkarmani-node/site/index.html')
+
+
+def connect(domain, alpn, path=SOCKET, cafile=None):
+    raw = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    raw.settimeout(5)
+    try:
+        raw.connect(path)
+        raw.sendall(b'PROXY TCP4 127.0.0.1 127.0.0.1 54321 443\r\n')
+        ctx = ssl.create_default_context(cafile=cafile)
+        ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+        ctx.set_alpn_protocols([alpn])
+        s = ctx.wrap_socket(raw, server_hostname=domain)
+        if s.selected_alpn_protocol() != alpn:
+            s.close()
+            raise ValueError('requested ALPN was not negotiated')
+        return s
+    except Exception:
+        raw.close()
+        raise
+
+
+def read_exact(s, length):
+    out = bytearray()
+    while len(out) < length:
+        part = s.recv(length - len(out))
+        if not part:
+            raise ValueError('unexpected TLS EOF')
+        out.extend(part)
+    return bytes(out)
+
+
+def h2frame(kind, flags, stream, payload=b''):
+    return len(payload).to_bytes(3, 'big') + bytes([kind, flags]) + stream.to_bytes(4, 'big') + payload
+
+
+def hpack_string(value):
+    b = value.encode('ascii')
+    n = len(b)
+    if n < 127:
+        return bytes([n]) + b
+    out = bytearray([127])
+    n -= 127
+    while n >= 128:
+        out.append((n & 127) | 128)
+        n >>= 7
+    out.append(n)
+    return bytes(out) + b
+
+
+def check(domain, path=SOCKET, site=SITE, cafile=None):
+    expected = hashlib.sha256(Path(site).read_bytes()).digest()
+    with connect(domain, 'http/1.1', path, cafile) as s:
+        s.sendall(('GET / HTTP/1.1\r\nHost: ' + domain + '\r\nConnection: close\r\n\r\n').encode('ascii'))
+        data = bytearray()
+        while len(data) <= 131072:
+            part = s.recv(8192)
+            if not part:
+                break
+            data.extend(part)
+        header, sep, body = bytes(data).partition(b'\r\n\r\n')
+        if not sep or not header.startswith(b'HTTP/1.1 200 ') or hashlib.sha256(body).digest() != expected:
+            raise ValueError('HTTP/1.1 did not return the expected cover page')
+    with connect(domain, 'h2', path, cafile) as s:
+        # HPACK static indexes: GET=2, https=7, path /=4, :authority=1.
+        headers = b'\x82\x87\x84\x01' + hpack_string(domain)
+        s.sendall(b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n' + h2frame(4, 0, 0) + h2frame(1, 5, 1, headers))
+        body = bytearray()
+        got_settings = got_headers = finished = False
+        for _ in range(100):
+            head = read_exact(s, 9)
+            size, kind, flags = int.from_bytes(head[:3], 'big'), head[3], head[4]
+            stream = int.from_bytes(head[5:], 'big') & 0x7fffffff
+            if size > 131072:
+                raise ValueError('oversized HTTP/2 frame')
+            payload = read_exact(s, size)
+            if kind == 4:
+                if stream != 0 or (flags & 1 and size) or (not flags & 1 and size % 6):
+                    raise ValueError('invalid HTTP/2 SETTINGS')
+                if not flags & 1:
+                    got_settings = True
+                    s.sendall(h2frame(4, 1, 0))
+            elif kind == 1 and stream == 1:
+                got_headers = True
+                if flags & 1:
+                    finished = True
+                    break
+            elif kind == 0 and stream == 1:
+                if flags & 8:
+                    if not payload or payload[0] >= len(payload):
+                        raise ValueError('invalid HTTP/2 padding')
+                    padding = payload[0]
+                    payload = payload[1:len(payload)-padding] if padding else payload[1:]
+                body.extend(payload)
+                if len(body) > 131072:
+                    raise ValueError('HTTP/2 response too large')
+                if flags & 1:
+                    finished = True
+                    break
+            elif kind in (3, 7):
+                raise ValueError('HTTP/2 stream rejected')
+        if not (got_settings and got_headers and finished) or hashlib.sha256(body).digest() != expected:
+            raise ValueError('HTTP/2 did not return the expected cover page')
+
+
+def main():
+    try:
+        domain = json.loads(Path('/etc/vkarmani-node/config.json').read_text())['domain']
+        check(domain)
+        print('SELFSTEAL_TLS13_HTTP1_HTTP2=PASS')
+        return 0
+    except Exception as e:
+        # Do not print config, request headers, certificate material or bodies.
+        print('SELFSTEAL_CHECK=FAIL ' + type(e).__name__, file=sys.stderr)
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())
+VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK
+    chmod 0755 '/usr/local/sbin/vkarmani-selfsteal-check'
+}
+
+vk_write_network_script() {
+    install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-network')"
+    cat > '/usr/local/sbin/vkarmani-node-network' <<'VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT'
+#!/usr/bin/env bash
+# Only reapply our declared sysctls. Do not replace root qdiscs, routes or MTU.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+modprobe tcp_bbr
+modprobe sch_fq
+sysctl -p /etc/sysctl.d/99-vkarmani-node.conf >/dev/null
+[[ "$(sysctl -n net.ipv4.tcp_congestion_control)" == bbr ]]
+[[ "$(sysctl -n net.core.default_qdisc)" == fq ]]
+echo 'BBR_AND_DEFAULT_FQ=PASS; interface queue topology left unchanged'
+VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT
+    chmod 0755 '/usr/local/sbin/vkarmani-node-network'
+}
+
+vk_write_network_unit() {
+    install -d -m 0755 "$(dirname '/etc/systemd/system/vkarmani-node-network.service')"
+    cat > '/etc/systemd/system/vkarmani-node-network.service' <<'VK_PAYLOAD_VK_WRITE_NETWORK_UNIT'
+[Unit]
+Description=VKarmani declared sysctls without replacing interface queues
+After=network.target docker.service ufw.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vkarmani-node-network
+TimeoutStartSec=30
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+VK_PAYLOAD_VK_WRITE_NETWORK_UNIT
+    chmod 0644 '/etc/systemd/system/vkarmani-node-network.service'
+}
+
+vk_write_node_unit() {
+    install -d -m 0755 "$(dirname '/etc/systemd/system/vkarmani-node.service')"
+    cat > '/etc/systemd/system/vkarmani-node.service' <<'VK_PAYLOAD_VK_WRITE_NODE_UNIT'
+[Unit]
+Description=VKarmani RemnaNode manual Compose controls (Docker owns autostart)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/vkarmani-node
+ExecStart=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml stop
+TimeoutStartSec=120
+TimeoutStopSec=90
+# Intentionally no [Install] / WantedBy. restart: always is the sole boot owner.
+# Nginx, ACME, BBR and external DNS must not gate the management API.
+VK_PAYLOAD_VK_WRITE_NODE_UNIT
+    chmod 0644 '/etc/systemd/system/vkarmani-node.service'
+}
+
+vk_write_nginx_dropin() {
+    install -d -m 0755 "$(dirname '/etc/systemd/system/nginx.service.d/90-vkarmani-resilience.conf')"
+    cat > '/etc/systemd/system/nginx.service.d/90-vkarmani-resilience.conf' <<'VK_PAYLOAD_VK_WRITE_NGINX_DROPIN'
+[Unit]
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Restart=on-failure
+RestartSec=5s
+VK_PAYLOAD_VK_WRITE_NGINX_DROPIN
+    chmod 0644 '/etc/systemd/system/nginx.service.d/90-vkarmani-resilience.conf'
+}
+
+vk_write_acceptance() {
+    install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-check')"
+    cat > '/usr/local/sbin/vkarmani-node-check' <<'VK_PAYLOAD_VK_WRITE_ACCEPTANCE'
+#!/usr/bin/env bash
+_contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
+# Local-only checks. Does not establish connectivity from the panel.
+set -uo pipefail
+set +x
+umask 077
+export LC_ALL=C PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[[ $EUID -eq 0 ]] || { echo 'Run as root: sudo vkarmani-node-check'; exit 1; }
+MODE=${1:---normal}
+case "$MODE" in --normal|--preboot|--postboot|--local|--require-xray) ;; *) echo 'Usage: vkarmani-node-check [--local|--preboot|--postboot|--require-xray]'; exit 2 ;; esac
+ETC=/etc/vkarmani-node
+STATE=/var/lib/vkarmani-node
+HELPER=/usr/local/lib/vkarmani-node/node_helper.py
+F=0
+XRAY_PRESENT=0
+XRAY_COVER_OK=0
+pass(){ printf '%-33s PASS\n' "$1"; }
+fail(){ printf '%-33s FAIL %s\n' "$1" "${2:-}"; F=1; }
+warn(){ printf '%-33s NOTE %s\n' "$1" "${2:-}"; }
+helper(){ python3 "$HELPER" "$@"; }
+if [[ "$MODE" == --postboot ]]; then
+    touch /var/log/vkarmani-node-postboot.log
+    chmod 0600 /var/log/vkarmani-node-postboot.log
+    exec > >(tee -a /var/log/vkarmani-node-postboot.log) 2>&1
+    rm -f "$STATE/POSTBOOT_SETUP_PASS" "$STATE/POSTBOOT_FAIL"
+fi
+printf '\n=== VKarmani node acceptance %s mode=%s ===\n' "$(date -Is)" "$MODE"
+DOMAIN=$(helper get domain) || exit 1
+NODE_PORT=$(helper get node_port) || exit 1
+PUBLIC_IP=$(helper get public_ipv4) || exit 1
+if [[ "$MODE" == --postboot ]]; then
+    for _ in $(seq 1 30); do
+        if ss -H -4 -lnt | awk '{print $4}' | _contains -E ":${NODE_PORT}$"; then break; fi
+        sleep 2
+    done
+fi
+helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
+[[ "$(timedatectl show -p Timezone --value)" == Europe/Moscow ]] && pass TIMEZONE_MOSCOW || fail TIMEZONE_MOSCOW
+if [[ "$MODE" == --preboot ]]; then
+    if [[ ! -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ]] || [[ $(cat /proc/sys/net/ipv6/conf/all/disable_ipv6) == 1 ]]; then
+        pass IPV6_RUNTIME_OFF
+    else
+        fail IPV6_RUNTIME_OFF
+    fi
+    if _contains -w 'ipv6.disable=1' /proc/cmdline; then pass IPV6_KERNEL_PARAMETER; else warn IPV6_KERNEL_PARAMETER 'requires reboot'; fi
+else
+    _contains -w 'ipv6.disable=1' /proc/cmdline && pass IPV6_KERNEL_PARAMETER || fail IPV6_KERNEL_PARAMETER 'GRUB change not active'
+    if python3 - <<'PY'
+import socket,sys,errno
+try:
+    s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM)
+except OSError as e:
+    sys.exit(0 if e.errno in (errno.EAFNOSUPPORT, errno.EPROTONOSUPPORT) else 1)
+else:
+    s.close()
+    sys.exit(1)
+PY
+    then pass IPV6_SOCKET_DISABLED; else fail IPV6_SOCKET_DISABLED 'IPv6 sockets can still be created'; fi
+    IPV6_LISTENERS=$(ss -H -6 -lntup 2>/dev/null || true)
+    [[ -z "$IPV6_LISTENERS" ]] && pass NO_IPV6_LISTENERS || fail NO_IPV6_LISTENERS
+fi
+if ip -6 address show 2>/dev/null | _contains 'inet6'; then fail NO_IPV6_ADDRESSES; else pass NO_IPV6_ADDRESSES; fi
+if ip -6 route show 2>/dev/null | _contains .; then fail NO_IPV6_ROUTES; else pass NO_IPV6_ROUTES; fi
+/usr/sbin/sshd -t >/dev/null 2>&1 && pass SSH_CONFIG || fail SSH_CONFIG
+/usr/sbin/sshd -T 2>/dev/null | _contains -Fx 'addressfamily inet' && pass SSH_IPV4_ONLY || fail SSH_IPV4_ONLY
+while IFS= read -r port; do
+    if ss -H -4 -lnt | awk '{print $4}' | _contains -E ":${port}$"; then pass "SSH_TCP_$port"; else fail "SSH_TCP_$port"; fi
+done < "$ETC/ssh-ports"
+for service in docker containerd nginx fail2ban chrony ufw vkarmani-node-network; do
+    if systemctl is-active --quiet "$service"; then pass "SERVICE_$service"; else fail "SERVICE_$service"; fi
+done
+ufw status | _contains -F 'Status: active' && pass UFW_ACTIVE || fail UFW_ACTIVE
+if python3 - <<'PY'
+import json,subprocess,shlex,sys
+from pathlib import Path
+c=json.loads(Path('/etc/vkarmani-node/config.json').read_text())
+r=subprocess.run(['iptables','-S','ufw-user-input'],capture_output=True,text=True)
+if r.returncode: sys.exit(1)
+expected={x+'/32' for x in c['panel_ipv4']}
+found=set()
+ssh=set(Path('/etc/vkarmani-node/ssh-ports').read_text().split())
+for line in r.stdout.splitlines():
+    w=shlex.split(line)
+    if '-j' not in w or w[w.index('-j')+1]!='ACCEPT': continue
+    if '--dport' not in w: sys.exit(1)  # no blanket ACCEPT or unreviewed multiport rule
+    p=w[w.index('--dport')+1]
+    if p==str(c['node_port']):
+        # NODE_PORT is management traffic. On multi-IP VPS the Node Address in
+        # Remnawave may legitimately be a different local IPv4 than the client
+        # domain/ACME address. The source allowlist is the security boundary.
+        if '-s' not in w: sys.exit(1)
+        source=w[w.index('-s')+1]
+        if source not in expected: sys.exit(1)
+        if '-p' not in w or w[w.index('-p')+1] != 'tcp': sys.exit(1)
+        if '-d' not in w or w[w.index('-d')+1] == '0.0.0.0/0':
+            found.add(source)
+    elif p in {'80','443'}:
+        if '-d' not in w or w[w.index('-d')+1] != c['public_ipv4']+'/32': sys.exit(1)
+    elif p not in ssh:
+        sys.exit(1)
+sys.exit(0 if found==expected else 1)
+PY
+then pass UFW_PANEL_ALLOW_RULES; else fail UFW_PANEL_ALLOW_RULES; fi
+[[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) == bbr ]] && pass TCP_BBR || fail TCP_BBR
+[[ $(sysctl -n net.core.default_qdisc 2>/dev/null) == fq ]] && pass DEFAULT_FQ || fail DEFAULT_FQ
+warn INTERFACE_QDISC 'сохранена текущая структура очередей; root qdisc не перезаписывается'
+if [[ "$MODE" == --postboot ]]; then
+    chronyc waitsync 15 0.1 0.0 2 >/dev/null 2>&1 || true
+fi
+chronyc tracking 2>/dev/null | _contains -E 'Leap status[[:space:]]*:[[:space:]]*Normal' && pass NTP_SYNC || fail NTP_SYNC
+if [[ $(docker inspect remnanode --format '{{.State.Running}}' 2>/dev/null) == true ]]; then
+    R1=$(docker inspect remnanode --format '{{.RestartCount}}' 2>/dev/null)
+    sleep 5
+    R2=$(docker inspect remnanode --format '{{.RestartCount}}' 2>/dev/null)
+    if [[ "$R1" == "$R2" && $(docker inspect remnanode --format '{{.State.Running}}' 2>/dev/null) == true ]]; then
+        pass NODE_RUNNING_STABLE
+    else fail NODE_RUNNING_STABLE; fi
+else fail NODE_RUNNING_STABLE; fi
+[[ $(docker inspect remnanode --format '{{.HostConfig.NetworkMode}}' 2>/dev/null) == host ]] && pass NODE_HOST_NETWORK || fail NODE_HOST_NETWORK
+[[ $(docker inspect remnanode --format '{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null) == always ]] && pass NODE_RESTART_POLICY || fail NODE_RESTART_POLICY
+[[ $(docker network inspect bridge --format '{{.EnableIPv6}}' 2>/dev/null) == false ]] && pass DOCKER_IPV6_OFF || fail DOCKER_IPV6_OFF
+if /usr/local/sbin/vkarmani-node-tls-check --all-local; then
+    pass NODE_TLS_LOCAL
+else
+    fail NODE_TLS_LOCAL
+fi
+warn EXTERNAL_API_REACHABILITY 'NOT_VERIFIED: локальные обращения не проходят путь от панели'
+
+if ss -H -4 -lnt | awk '{print $4}' | _contains -E ':443$'; then
+    XRAY_PRESENT=1
+    pass XRAY_TCP443
+else
+    warn XRAY_TCP443 'NOT_LISTENING: причина не установлена; профиль, запуск Xray или канал управления'
+fi
+[[ -S /dev/shm/nginx.sock ]] && pass SELFSTEAL_SOCKET || fail SELFSTEAL_SOCKET
+nginx -t >/dev/null 2>&1 && pass NGINX_CONFIG || fail NGINX_CONFIG
+openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -checkend 604800 >/dev/null 2>&1 && pass TLS_VALID_7DAYS || fail TLS_VALID_7DAYS
+/usr/local/sbin/vkarmani-selfsteal-check >/dev/null 2>&1 && pass SELFSTEAL_TLS13_HTTP1_HTTP2 || fail SELFSTEAL_TLS13_HTTP1_HTTP2
+if docker exec remnanode test -S /dev/shm/nginx.sock >/dev/null 2>&1; then pass NODE_SELFSTEAL_SOCKET; else fail NODE_SELFSTEAL_SOCKET; fi
+if [[ "$XRAY_PRESENT" -eq 1 ]]; then
+    CODE=$(curl --noproxy '*' -4 --fail --silent --show-error --http2 --tlsv1.3 --tls-max 1.3 \
+        --connect-timeout 5 --max-time 20 --resolve "$DOMAIN:443:$PUBLIC_IP" \
+        -o /dev/null -w '%{http_code}' "https://$DOMAIN/" 2>/dev/null || true)
+    if [[ "$CODE" == 200 ]]; then
+        pass REALITY_SELFSTEAL_443
+        XRAY_COVER_OK=1
+    else
+        warn REALITY_SELFSTEAL_443 'Xray :443 открыт, но RAW/REALITY → Nginx socket пока не подтверждён; проверьте профиль из PANEL-SETUP.txt'
+    fi
+fi
+fail2ban-client ping 2>/dev/null | _contains pong && pass FAIL2BAN_PING || fail FAIL2BAN_PING
+fail2ban-client status sshd >/dev/null 2>&1 && pass FAIL2BAN_SSHD_JAIL || fail FAIL2BAN_SSHD_JAIL
+for timer in certbot vkarmani-weekly-reboot vkarmani-node-cleanup; do
+    systemctl is-active --quiet "$timer.timer" && pass "TIMER_$timer" || fail "TIMER_$timer"
+    systemctl is-enabled --quiet "$timer.timer" && pass "BOOT_$timer" || fail "BOOT_$timer"
+done
+_contains -Fx 'OnCalendar=Mon *-*-* 04:00:00 Europe/Moscow' /etc/systemd/system/vkarmani-weekly-reboot.timer \
+    && pass REBOOT_MONDAY_0400_MSK || fail REBOOT_MONDAY_0400_MSK
+[[ -e "$ETC/weekly-reboot-enabled" ]] && pass WEEKLY_REBOOT_GATE || fail WEEKLY_REBOOT_GATE
+warn PANEL_CONNECTION 'NOT_VERIFIED: API не используется; состояние подключения смотрите в панели'
+if [[ "$MODE" != --local ]]; then
+    helper dns && pass DOMAIN_IPV4_ONLY || fail DOMAIN_IPV4_ONLY
+fi
+if [[ "$F" -eq 0 ]]; then
+    echo 'NODE_LOCAL_CHECKS=PASS — подключение панели не подтверждено'
+else
+    echo 'NODE_LOCAL_CHECKS=FAIL — обнаружены локальные ошибки'
+fi
+if [[ "$XRAY_PRESENT" -eq 0 ]]; then
+    VPN_STATUS=XRAY_NOT_LISTENING_REASON_NOT_CONFIRMED
+elif [[ "$XRAY_COVER_OK" -eq 1 ]]; then
+    VPN_STATUS=LOCAL_XRAY_COVER_OK_CLIENT_NOT_TESTED
+else
+    VPN_STATUS=PORT443_PRESENT_PROFILE_NOT_CONFIRMED
+fi
+printf 'VPN_STATUS=%s\nPANEL_CONNECTION=NOT_VERIFIED\n' "$VPN_STATUS"
+echo 'Клиентский VPN-трафик, назначение Host и доступ пользователя этой командой не проверяются.'
+if [[ "$MODE" == --postboot ]]; then
+    if [[ "$F" -eq 0 ]]; then
+        printf 'at=%s\nnode_local_checks=pass\nvpn_status=%s\npanel_connection=not_verified\n' "$(date -Is)" "$VPN_STATUS" > "$STATE/POSTBOOT_SETUP_PASS"
+    else
+        printf 'at=%s\n' "$(date -Is)" > "$STATE/POSTBOOT_FAIL"
+    fi
+fi
+if [[ "$F" -ne 0 ]]; then exit 1; fi
+if [[ "$MODE" == --require-xray && "$XRAY_COVER_OK" -ne 1 ]]; then
+    echo 'STRICT_CHECK=INCOMPLETE: ожидается Xray TCP/443 и RAW/REALITY Selfsteal через /dev/shm/nginx.sock.'
+    exit 2
+fi
+exit 0
+VK_PAYLOAD_VK_WRITE_ACCEPTANCE
+    chmod 0755 '/usr/local/sbin/vkarmani-node-check'
+}
+
+vk_write_fail2ban_config() {
+    local ssh_list
+    ssh_list=$(IFS=,; echo "${SSH_PORTS[*]}")
+    install -d -m 0755 /etc/ufw/applications.d /etc/fail2ban/jail.d
+    cat > /etc/ufw/applications.d/vkarmani-sshd <<EOF
+[VKarmani-SSH]
+title=VKarmani SSH only
+description=SSH ports preserved by the node installer
+ports=$ssh_list/tcp
+EOF
+    chmod 0644 /etc/ufw/applications.d/vkarmani-sshd
+    cat > /etc/fail2ban/fail2ban.local <<'EOF'
+[Definition]
+allowipv6 = no
+EOF
+    cat > /etc/fail2ban/jail.d/99-vkarmani-sshd.local <<EOF
+[sshd]
+enabled = true
+backend = systemd
+port = $ssh_list
+mode = normal
+banaction = ufw[application=VKarmani-SSH]
+ignoreip = 127.0.0.1/8 ${ADMIN_IP:-} ${PANEL_IPS[*]}
+maxretry = 5
+findtime = 10m
+bantime = 1h
+bantime.increment = true
+bantime.maxtime = 24h
+EOF
+}
+
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 1.3.1 — 2026-09-25
+# VKarmani Remnawave Node Installer 1.3.3 — 2026-09-25
 # Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: updates packages, modifies firewall/boot settings and reboots by default.
@@ -13,7 +637,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=1.3.1
+INSTALLER_VERSION=1.3.3
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -26,11 +650,12 @@ REFRESH_IMAGE=0
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 1.3.1
+VKarmani Remnawave Node Installer 1.3.3
 
   sudo bash install.sh
   sudo bash install.sh --no-reboot
   sudo bash install.sh --refresh-image
+  sudo bash install.sh --repair-node
 
 Первый запуск: чистая выделенная VPS, Ubuntu 22.04/24.04 или Debian 12/13,
 GRUB, systemd, amd64/arm64, публичный IPv4, >= 900 MiB RAM и >= 6 GiB свободно.
@@ -54,7 +679,7 @@ while (($#)); do
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
-# Two inputs before any APT/network/boot changes. No Python/curl dependency here.
+# Three inputs before any APT/network/boot changes. No Python/curl dependency here.
 # This file is embedded in install.sh, not downloaded at run time.
 vk_input_error() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
 vk_trim() {
@@ -286,7 +911,7 @@ apt-get update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 1.3.1: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 1.3.3: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -760,7 +1385,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 1.3.1 — действия в панели
+    txt = f'''VKarmani RemnaNode 1.3.3 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -769,8 +1394,12 @@ def write_panel_guide(c):
 1. Config Profiles: создайте профиль {name} и вставьте JSON из
    /etc/vkarmani-node/profile.json
    Этот файл содержит приватный REALITY-ключ: не публикуйте его.
-2. Nodes -> Management: создайте/отредактируйте карточку ЭТОЙ ноды:
-   Address={c['public_ipv4']}, Node Port={c['node_port']}.
+2. Nodes -> Management: создайте/отредактируйте карточку ЭТОЙ ноды.
+   Node Port={c['node_port']}. В Address можно использовать домен ноды или любой
+   публичный IPv4, реально назначенный этой VPS. Для VPS с несколькими IPv4
+   управляющий порт разрешён с IPv4 панели на ВСЕ локальные IPv4 ноды — это
+   специально, чтобы адрес Node в панели не был обязан совпадать с IPv4 домена.
+   Клиентский/ACME IPv4, выбранный DNS для {c['domain']}: {c['public_ipv4']}.
    Используйте ту же панель, из которой взят введённый SECRET_KEY.
    Выберите профиль {name} и inbound {tag}.
 3. Hosts: выберите этот профиль/inbound; Address={c['domain']}, Port=443.
@@ -789,8 +1418,8 @@ ShortID: {keys['short_id']}
 Скрипт НЕ авторизуется в панели, НЕ создаёт и НЕ меняет её объекты.
 Локальный profile.json — шаблон для импорта, НЕ live-конфиг ноды.
 Если у вас уже назначен свой RAW+REALITY профиль, он не перезаписывается.
-До получения профиля от панели отсутствие Xray TCP/443 ожидаемо:
-NODE_SETUP=PASS может сочетаться с VPN_STATUS=WAITING_FOR_PANEL_PROFILE.
+Отсутствие Xray TCP/443 может означать неполученный или ошибочный профиль.
+Локальная готовность VPS не доказывает подключение панели.
 TCP/2222 сам по себе не доказывает связь с панелью и работу VPN.
 
 Проверка: sudo vkarmani-node-check
@@ -801,11 +1430,11 @@ Selfsteal socket: /dev/shm/nginx.sock
     atomic_text(ETC / 'PANEL-SETUP.txt', txt)
 
 def control_ready(c):
-    try:
-        with socket.create_connection(('127.0.0.1', c['node_port']), timeout=3):
-            pass
-    except OSError as e:
-        raise Failure('Управляющий IPv4-порт RemnaNode ещё не слушает. Проверьте контейнер и SECRET_KEY.') from e
+    r = subprocess.run(['/usr/local/sbin/vkarmani-node-tls-check'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=40)
+    if r.returncode:
+        raise Failure('Локальная TLS-проверка Node API не пройдена. См. vkarmani-node-tls-check; доступ панели этим не проверяется.')
 
 
 def main():
@@ -837,7 +1466,7 @@ def main():
         write_panel_guide(c)
     elif args.action == 'control-ready':
         control_ready(c)
-        print('NODE_CONTROL_IPV4=PASS')
+        print('NODE_TLS_LOCAL=PASS (не проверка панели)')
 
 
 if __name__ == '__main__':
@@ -969,50 +1598,8 @@ GRUB_CMDLINE_LINUX="${GRUB_CMDLINE_LINUX} ipv6.disable=1"
 EOF
 update-grub
 _contains -E '^[[:space:]]*linux[^[:space:]]*[[:space:]].*ipv6.disable=1' /boot/grub/grub.cfg || die 'Параметр IPv6 не попал в grub.cfg.'
-cat > /usr/local/sbin/vkarmani-node-network <<'EOF'
-#!/usr/bin/env bash
-_contains() { grep "$@" >/dev/null; }
-set -u
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-sysctl -w net.core.default_qdisc=fq >/dev/null
-sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || {
-    modprobe tcp_bbr >/dev/null 2>&1 || true
-    sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null
-}
-IFACE=''
-for attempt in $(seq 1 90); do
-    IFACE=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
-    if [[ -n "$IFACE" && -d "/sys/class/net/$IFACE" ]]; then
-        if tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1; then
-            break
-        fi
-    fi
-    IFACE=''
-    sleep 2
-done
-[[ -n "$IFACE" ]] || { echo 'VKarmani network: interface/qdisc not ready after 180s' >&2; exit 1; }
-[[ "$(sysctl -n net.ipv4.tcp_congestion_control)" == bbr ]] || exit 1
-tc qdisc show dev "$IFACE" | _contains -E 'qdisc fq ' || exit 1
-exit 0
-EOF
-chmod 0755 /usr/local/sbin/vkarmani-node-network
-cat > /etc/systemd/system/vkarmani-node-network.service <<'EOF'
-[Unit]
-Description=VKarmani persistent BBR and fq
-After=network.target
-Wants=network.target
-Before=vkarmani-node.service
-StartLimitIntervalSec=0
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/vkarmani-node-network
-TimeoutStartSec=210
-RemainAfterExit=yes
-Restart=on-failure
-RestartSec=5s
-[Install]
-WantedBy=multi-user.target
-EOF
+vk_write_network_script
+vk_write_network_unit
 systemctl daemon-reload
 systemctl enable vkarmani-node-network
 systemctl restart vkarmani-node-network
@@ -1094,7 +1681,7 @@ for port in "${SSH_PORTS[@]}"; do ufw allow "$port/tcp" comment 'VKarmani SSH pr
 ufw allow proto tcp to "$PUBLIC_IP" port 80 comment 'VKarmani ACME HTTP-01'
 ufw allow proto tcp to "$PUBLIC_IP" port 443 comment 'VKarmani RAW REALITY'
 for panel in "${PANEL_IPS[@]}"; do
-    ufw allow proto tcp from "$panel" to "$PUBLIC_IP" port "$NODE_PORT" comment 'VKarmani panel only'
+    ufw allow proto tcp from "$panel" to any port "$NODE_PORT" comment 'VKarmani panel only'
 done
 ufw logging low
 ufw --force enable
@@ -1115,25 +1702,7 @@ import ipaddress,sys
 ipaddress.IPv4Address(sys.argv[1])
 PY
 fi
-SSH_PORT_LIST=$(IFS=,; echo "${SSH_PORTS[*]}")
-cat > /etc/fail2ban/fail2ban.local <<'EOF'
-[Definition]
-allowipv6 = no
-EOF
-cat > /etc/fail2ban/jail.d/99-vkarmani-sshd.local <<EOF
-[sshd]
-enabled = true
-backend = systemd
-port = $SSH_PORT_LIST
-mode = normal
-banaction = ufw
-ignoreip = 127.0.0.1/8 $ADMIN_IP
-maxretry = 5
-findtime = 10m
-bantime = 1h
-bantime.increment = true
-bantime.maxtime = 24h
-EOF
+vk_write_fail2ban_config
 fail2ban-client -t
 systemctl enable fail2ban
 systemctl restart fail2ban
@@ -1182,6 +1751,7 @@ dockerd --validate --config-file=/etc/docker/daemon.json
 systemctl enable docker.service containerd.service
 systemctl restart docker
 [[ $(docker network inspect bridge --format '{{.EnableIPv6}}') == false ]] || die 'Docker bridge IPv6 включён.'
+systemctl restart vkarmani-node-network.service
 
 stage "Nginx + Let's Encrypt + Selfsteal socket для VLESS RAW REALITY"
 install -d -m 0755 /var/www/vkarmani-node/acme /var/www/vkarmani-node/site /var/www/vkarmani-node/site/assets
@@ -1214,7 +1784,7 @@ server_tokens off;
 EOF
 cat > /etc/nginx/conf.d/10-vkarmani-http.conf <<EOF
 server {
-    listen $PUBLIC_IP:80;
+    listen 0.0.0.0:80;
     server_name $DOMAIN;
     server_tokens off;
     access_log off;
@@ -1233,15 +1803,25 @@ if [[ ! -s "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" || ! -s "/etc/letsencry
     rm -f /etc/nginx/conf.d/20-vkarmani-selfsteal.conf /etc/nginx/conf.d/20-vkarmani-reality-cover.conf
 fi
 nginx -t
+vk_write_nginx_dropin
+systemctl daemon-reload
 systemctl enable nginx
 systemctl restart nginx
 [[ $(curl --noproxy '*' -4sS --max-time 10 -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:80:$PUBLIC_IP" "http://$DOMAIN/") == 301 ]] || die 'Nginx HTTP redirect check failed.'
 certbot certonly --webroot --webroot-path /var/www/vkarmani-node/acme \
     --domain "$DOMAIN" --cert-name "$DOMAIN" --register-unsafely-without-email \
     --agree-tos --non-interactive --keep-until-expiring --key-type ecdsa --preferred-challenges http
+NGINX_NUM=$(nginx -v 2>&1 | sed -n 's/.*nginx\/\([0-9.]*\).*/\1/p')
+NGINX_HTTP2_LISTEN='http2'
+NGINX_HTTP2_DIRECTIVE=''
+if dpkg --compare-versions "$NGINX_NUM" ge 1.25.1; then
+    NGINX_HTTP2_LISTEN=''
+    NGINX_HTTP2_DIRECTIVE='http2 on;'
+fi
 cat > /etc/nginx/conf.d/20-vkarmani-selfsteal.conf <<EOF
 server {
-    listen unix:/dev/shm/nginx.sock ssl http2 proxy_protocol;
+    listen unix:/dev/shm/nginx.sock ssl $NGINX_HTTP2_LISTEN proxy_protocol;
+    $NGINX_HTTP2_DIRECTIVE
     server_name $DOMAIN;
     server_tokens off;
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
@@ -1263,7 +1843,7 @@ server {
     location = /robots.txt { try_files \$uri =404; }
     location = /favicon.svg { try_files \$uri =404; }
     location /assets/ { try_files \$uri =404; expires 1h; add_header Cache-Control "public, max-age=3600"; }
-    location / { try_files \$uri \$uri/ /index.html; }
+    location / { try_files \$uri \$uri/ =404; }
 }
 EOF
 rm -f /etc/nginx/conf.d/20-vkarmani-reality-cover.conf
@@ -1271,31 +1851,7 @@ nginx -t
 systemctl reload nginx
 for _ in $(seq 1 20); do [[ -S /dev/shm/nginx.sock ]] && break; sleep 1; done
 [[ -S /dev/shm/nginx.sock ]] || die 'Selfsteal socket /dev/shm/nginx.sock не создан Nginx.'
-cat > /usr/local/sbin/vkarmani-selfsteal-check <<'PY'
-#!/usr/bin/env python3
-import json, socket, ssl, sys
-from pathlib import Path
-try:
-    c=json.loads(Path('/etc/vkarmani-node/config.json').read_text()); domain=c['domain']; path='/dev/shm/nginx.sock'
-    def connect(alpn):
-        raw=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); raw.settimeout(7); raw.connect(path)
-        raw.sendall(b'PROXY TCP4 127.0.0.1 127.0.0.1 54321 443\r\n')
-        ctx=ssl.create_default_context(); ctx.minimum_version=ssl.TLSVersion.TLSv1_3; ctx.set_alpn_protocols(alpn)
-        return ctx.wrap_socket(raw, server_hostname=domain)
-    s=connect(['http/1.1']); s.sendall((f'GET / HTTP/1.1\r\nHost: {domain}\r\nConnection: close\r\n\r\n').encode()); data=b''
-    while len(data)<65536:
-        b=s.recv(8192)
-        if not b: break
-        data+=b
-    s.close()
-    if not data.startswith(b'HTTP/1.1 200 '): raise RuntimeError('unexpected HTTP status through socket')
-    s=connect(['h2','http/1.1'])
-    if s.selected_alpn_protocol()!='h2': raise RuntimeError('HTTP/2 ALPN not negotiated')
-    s.close(); print('SELFSTEAL_SOCKET_TLS=PASS')
-except Exception as e:
-    print('SELFSTEAL_SOCKET_TLS=FAIL: '+str(e), file=sys.stderr); sys.exit(1)
-PY
-chmod 0755 /usr/local/sbin/vkarmani-selfsteal-check
+vk_write_selfsteal_check
 /usr/local/sbin/vkarmani-selfsteal-check
 cat > /usr/local/sbin/vkarmani-wait-selfsteal <<'WAITSELF'
 #!/usr/bin/env bash
@@ -1325,7 +1881,9 @@ if [[ $(helper get certbot_dry_run) == true && ! -f "$STATE/certbot-dry-run-pass
 fi
 
 stage 'RemnaNode: проверка введённого SECRET_KEY, образ по digest, автозапуск'
+if [[ $FRESH -eq 0 ]]; then systemctl stop vkarmani-node.service || true; fi
 helper secret
+vk_write_tls_check
 if [[ ! -s "$STATE/image-digest" || $REFRESH_IMAGE -eq 1 ]]; then
     docker pull "$IMAGE"
     DIGEST=$(docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}')
@@ -1368,30 +1926,13 @@ services:
 EOF
 # Compose config can expand secrets; never print its output.
 docker compose -f "$OPT/compose.yaml" config --quiet
-cat > /etc/systemd/system/vkarmani-node.service <<'EOF'
-[Unit]
-Description=VKarmani RemnaNode Compose stack
-Requires=docker.service nginx.service
-Wants=network-online.target vkarmani-node-network.service ufw.service
-After=network-online.target docker.service nginx.service vkarmani-node-network.service ufw.service
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=/opt/vkarmani-node
-ExecStartPre=/usr/local/sbin/vkarmani-wait-selfsteal
-ExecStart=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml up -d --remove-orphans
-ExecStop=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml stop
-TimeoutStartSec=180
-TimeoutStopSec=90
-[Install]
-WantedBy=multi-user.target
-EOF
+vk_write_node_unit
 systemctl daemon-reload
-systemctl enable vkarmani-node
+systemctl disable vkarmani-node.service 2>/dev/null || true
 # Explicit up also reconciles a resumed run when the oneshot unit already says active.
 docker compose -f "$OPT/compose.yaml" up -d --remove-orphans
 systemctl start vkarmani-node
-for attempt in $(seq 1 60); do
+for attempt in $(seq 1 6); do
     if helper control-ready >/dev/null 2>&1; then break; fi
     sleep 2
  done
@@ -1488,199 +2029,12 @@ cat > /etc/logrotate.d/vkarmani-node <<'EOF'
 EOF
 
 stage 'Контроль после перезагрузки и диагностическая команда'
-cat > /usr/local/sbin/vkarmani-node-check <<'CHECK'
-#!/usr/bin/env bash
-_contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# Read-only acceptance except for timestamped result/log files.
-set -uo pipefail
-set +x
-umask 077
-export LC_ALL=C PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-[[ $EUID -eq 0 ]] || { echo 'Run as root: sudo vkarmani-node-check'; exit 1; }
-MODE=${1:---normal}
-case "$MODE" in --normal|--preboot|--postboot|--local|--require-xray) ;; *) echo 'Usage: vkarmani-node-check [--local|--preboot|--postboot|--require-xray]'; exit 2 ;; esac
-ETC=/etc/vkarmani-node
-STATE=/var/lib/vkarmani-node
-HELPER=/usr/local/lib/vkarmani-node/node_helper.py
-F=0
-XRAY_PRESENT=0
-XRAY_COVER_OK=0
-pass(){ printf '%-33s PASS\n' "$1"; }
-fail(){ printf '%-33s FAIL %s\n' "$1" "${2:-}"; F=1; }
-warn(){ printf '%-33s NOTE %s\n' "$1" "${2:-}"; }
-helper(){ python3 "$HELPER" "$@"; }
-if [[ "$MODE" == --postboot ]]; then
-    touch /var/log/vkarmani-node-postboot.log
-    chmod 0600 /var/log/vkarmani-node-postboot.log
-    exec > >(tee -a /var/log/vkarmani-node-postboot.log) 2>&1
-    rm -f "$STATE/POSTBOOT_SETUP_PASS" "$STATE/POSTBOOT_FAIL"
-fi
-printf '\n=== VKarmani node acceptance %s mode=%s ===\n' "$(date -Is)" "$MODE"
-DOMAIN=$(helper get domain) || exit 1
-NODE_PORT=$(helper get node_port) || exit 1
-helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
-[[ "$(timedatectl show -p Timezone --value)" == Europe/Moscow ]] && pass TIMEZONE_MOSCOW || fail TIMEZONE_MOSCOW
-if [[ "$MODE" == --preboot ]]; then
-    if [[ ! -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ]] || [[ $(cat /proc/sys/net/ipv6/conf/all/disable_ipv6) == 1 ]]; then
-        pass IPV6_RUNTIME_OFF
-    else
-        fail IPV6_RUNTIME_OFF
-    fi
-    if _contains -w 'ipv6.disable=1' /proc/cmdline; then pass IPV6_KERNEL_PARAMETER; else warn IPV6_KERNEL_PARAMETER 'requires reboot'; fi
-else
-    _contains -w 'ipv6.disable=1' /proc/cmdline && pass IPV6_KERNEL_PARAMETER || fail IPV6_KERNEL_PARAMETER 'GRUB change not active'
-    if python3 - <<'PY'
-import socket,sys,errno
-try:
-    s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM)
-except OSError as e:
-    sys.exit(0 if e.errno in (errno.EAFNOSUPPORT, errno.EPROTONOSUPPORT) else 1)
-else:
-    s.close()
-    sys.exit(1)
-PY
-    then pass IPV6_SOCKET_DISABLED; else fail IPV6_SOCKET_DISABLED 'IPv6 sockets can still be created'; fi
-    IPV6_LISTENERS=$(ss -H -6 -lntup 2>/dev/null || true)
-    [[ -z "$IPV6_LISTENERS" ]] && pass NO_IPV6_LISTENERS || fail NO_IPV6_LISTENERS
-fi
-if ip -6 address show 2>/dev/null | _contains 'inet6'; then fail NO_IPV6_ADDRESSES; else pass NO_IPV6_ADDRESSES; fi
-if ip -6 route show 2>/dev/null | _contains .; then fail NO_IPV6_ROUTES; else pass NO_IPV6_ROUTES; fi
-install -d -o root -g root -m 0755 /run/sshd
-/usr/sbin/sshd -t >/dev/null 2>&1 && pass SSH_CONFIG || fail SSH_CONFIG
-/usr/sbin/sshd -T 2>/dev/null | _contains -Fx 'addressfamily inet' && pass SSH_IPV4_ONLY || fail SSH_IPV4_ONLY
-while IFS= read -r port; do
-    if ss -H -4 -lnt | awk '{print $4}' | _contains -E ":${port}$"; then pass "SSH_TCP_$port"; else fail "SSH_TCP_$port"; fi
-done < "$ETC/ssh-ports"
-for service in docker containerd nginx fail2ban chrony ufw vkarmani-node-network vkarmani-node; do
-    if systemctl is-active --quiet "$service"; then pass "SERVICE_$service"; else fail "SERVICE_$service"; fi
-done
-ufw status | _contains -F 'Status: active' && pass UFW_ACTIVE || fail UFW_ACTIVE
-if python3 - <<'PY'
-import json,subprocess,shlex,sys
-from pathlib import Path
-c=json.loads(Path('/etc/vkarmani-node/config.json').read_text())
-r=subprocess.run(['iptables','-S','ufw-user-input'],capture_output=True,text=True)
-if r.returncode: sys.exit(1)
-expected={x+'/32' for x in c['panel_ipv4']}
-found=set()
-ssh=set(Path('/etc/vkarmani-node/ssh-ports').read_text().split())
-for line in r.stdout.splitlines():
-    w=shlex.split(line)
-    if '-j' not in w or w[w.index('-j')+1]!='ACCEPT': continue
-    if '--dport' not in w: sys.exit(1)  # no blanket ACCEPT or unreviewed multiport rule
-    p=w[w.index('--dport')+1]
-    if p==str(c['node_port']):
-        if '-s' not in w or '-d' not in w: sys.exit(1)
-        source=w[w.index('-s')+1]; dest=w[w.index('-d')+1]
-        if source not in expected or dest != c['public_ipv4']+'/32': sys.exit(1)
-        found.add(source)
-    elif p in {'80','443'}:
-        if '-d' not in w or w[w.index('-d')+1] != c['public_ipv4']+'/32': sys.exit(1)
-    elif p not in ssh:
-        sys.exit(1)
-sys.exit(0 if found==expected else 1)
-PY
-then pass UFW_PANEL_ALLOWLIST; else fail UFW_PANEL_ALLOWLIST; fi
-[[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) == bbr ]] && pass TCP_BBR || fail TCP_BBR
-[[ $(sysctl -n net.core.default_qdisc 2>/dev/null) == fq ]] && pass DEFAULT_FQ || fail DEFAULT_FQ
-IFACE=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="dev"){print $(i+1);exit}}')
-if [[ -n "$IFACE" ]] && tc qdisc show dev "$IFACE" | _contains -E 'qdisc fq '; then pass INTERFACE_FQ; else fail INTERFACE_FQ; fi
-if [[ "$MODE" == --postboot ]]; then
-    for _ in $(seq 1 60); do
-        if ss -H -4 -lnt | awk '{print $4}' | _contains -E ':443$'; then break; fi
-        sleep 2
-    done
-    chronyc waitsync 60 0.1 0.0 2 >/dev/null 2>&1 || true
-fi
-chronyc tracking 2>/dev/null | _contains -E 'Leap status[[:space:]]*:[[:space:]]*Normal' && pass NTP_SYNC || fail NTP_SYNC
-if [[ $(docker inspect remnanode --format '{{.State.Running}}' 2>/dev/null) == true ]]; then
-    R1=$(docker inspect remnanode --format '{{.RestartCount}}' 2>/dev/null)
-    sleep 5
-    R2=$(docker inspect remnanode --format '{{.RestartCount}}' 2>/dev/null)
-    if [[ "$R1" == "$R2" && $(docker inspect remnanode --format '{{.State.Running}}' 2>/dev/null) == true ]]; then
-        pass NODE_RUNNING_STABLE
-    else fail NODE_RUNNING_STABLE; fi
-else fail NODE_RUNNING_STABLE; fi
-[[ $(docker inspect remnanode --format '{{.HostConfig.NetworkMode}}' 2>/dev/null) == host ]] && pass NODE_HOST_NETWORK || fail NODE_HOST_NETWORK
-[[ $(docker inspect remnanode --format '{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null) == always ]] && pass NODE_RESTART_POLICY || fail NODE_RESTART_POLICY
-[[ $(docker network inspect bridge --format '{{.EnableIPv6}}' 2>/dev/null) == false ]] && pass DOCKER_IPV6_OFF || fail DOCKER_IPV6_OFF
-if python3 - "$NODE_PORT" <<'PY'
-import socket,sys
-try:
-    with socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=5): pass
-except OSError:
-    sys.exit(1)
-PY
-then pass NODE_CONTROL_IPV4; else fail NODE_CONTROL_IPV4; fi
-if ss -H -4 -lnt | awk '{print $4}' | _contains -E ':443$'; then
-    XRAY_PRESENT=1
-    pass XRAY_TCP443
-else
-    warn XRAY_TCP443 'WAITING_FOR_PANEL_PROFILE: назначьте профиль ноде в панели'
-fi
-[[ -S /dev/shm/nginx.sock ]] && pass SELFSTEAL_SOCKET || fail SELFSTEAL_SOCKET
-nginx -t >/dev/null 2>&1 && pass NGINX_CONFIG || fail NGINX_CONFIG
-openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -checkend 604800 >/dev/null 2>&1 && pass TLS_VALID_7DAYS || fail TLS_VALID_7DAYS
-/usr/local/sbin/vkarmani-selfsteal-check >/dev/null 2>&1 && pass SELFSTEAL_TLS13_H2 || fail SELFSTEAL_TLS13_H2
-if docker exec remnanode test -S /dev/shm/nginx.sock >/dev/null 2>&1; then pass NODE_SELFSTEAL_SOCKET; else fail NODE_SELFSTEAL_SOCKET; fi
-if [[ "$XRAY_PRESENT" -eq 1 ]]; then
-    CODE=$(curl --noproxy '*' -4 --fail --silent --show-error --http2 --tlsv1.3 --tls-max 1.3 \
-        --connect-timeout 5 --max-time 20 --resolve "$DOMAIN:443:127.0.0.1" \
-        -o /dev/null -w '%{http_code}' "https://$DOMAIN/" 2>/dev/null || true)
-    if [[ "$CODE" == 200 ]]; then
-        pass REALITY_SELFSTEAL_443
-        XRAY_COVER_OK=1
-    else
-        warn REALITY_SELFSTEAL_443 'Xray :443 открыт, но RAW/REALITY → Nginx socket пока не подтверждён; проверьте профиль из PANEL-SETUP.txt'
-    fi
-fi
-fail2ban-client ping 2>/dev/null | _contains pong && pass FAIL2BAN_PING || fail FAIL2BAN_PING
-fail2ban-client status sshd >/dev/null 2>&1 && pass FAIL2BAN_SSHD_JAIL || fail FAIL2BAN_SSHD_JAIL
-for timer in certbot vkarmani-weekly-reboot vkarmani-node-cleanup; do
-    systemctl is-active --quiet "$timer.timer" && pass "TIMER_$timer" || fail "TIMER_$timer"
-    systemctl is-enabled --quiet "$timer.timer" && pass "BOOT_$timer" || fail "BOOT_$timer"
-done
-_contains -Fx 'OnCalendar=Mon *-*-* 04:00:00 Europe/Moscow' /etc/systemd/system/vkarmani-weekly-reboot.timer \
-    && pass REBOOT_MONDAY_0400_MSK || fail REBOOT_MONDAY_0400_MSK
-[[ -e "$ETC/weekly-reboot-enabled" ]] && pass WEEKLY_REBOOT_GATE || fail WEEKLY_REBOOT_GATE
-warn PANEL_CONNECTION 'NOT_VERIFIED: API не используется; состояние подключения смотрите в панели'
-if [[ "$MODE" != --local ]]; then
-    helper dns && pass DOMAIN_IPV4_ONLY || fail DOMAIN_IPV4_ONLY
-fi
-if [[ "$F" -eq 0 ]]; then
-    echo 'NODE_SETUP=PASS'
-else
-    echo 'NODE_SETUP=FAIL — исправьте ошибки настройки VPS.'
-fi
-if [[ "$XRAY_PRESENT" -eq 0 ]]; then
-    VPN_STATUS=WAITING_FOR_PANEL_PROFILE
-elif [[ "$XRAY_COVER_OK" -eq 1 ]]; then
-    VPN_STATUS=LOCAL_XRAY_COVER_OK_CLIENT_NOT_TESTED
-else
-    VPN_STATUS=PORT443_PRESENT_PROFILE_NOT_CONFIRMED
-fi
-printf 'VPN_STATUS=%s\nPANEL_CONNECTION=NOT_VERIFIED\n' "$VPN_STATUS"
-echo 'Клиентский VPN-трафик, назначение Host и доступ пользователя этой командой не проверяются.'
-if [[ "$MODE" == --postboot ]]; then
-    if [[ "$F" -eq 0 ]]; then
-        printf 'at=%s\nnode_setup=pass\nvpn_status=%s\npanel_connection=not_verified\n' "$(date -Is)" "$VPN_STATUS" > "$STATE/POSTBOOT_SETUP_PASS"
-    else
-        printf 'at=%s\n' "$(date -Is)" > "$STATE/POSTBOOT_FAIL"
-    fi
-fi
-if [[ "$F" -ne 0 ]]; then exit 1; fi
-if [[ "$MODE" == --require-xray && "$XRAY_COVER_OK" -ne 1 ]]; then
-    echo 'STRICT_CHECK=INCOMPLETE: ожидается Xray TCP/443 и RAW/REALITY Selfsteal через /dev/shm/nginx.sock.'
-    exit 2
-fi
-exit 0
-CHECK
-chmod 0755 /usr/local/sbin/vkarmani-node-check
+vk_write_acceptance
 cat > /etc/systemd/system/vkarmani-node-postboot.service <<'EOF'
 [Unit]
 Description=VKarmani node post-boot acceptance
-Wants=network-online.target vkarmani-node.service nginx.service chrony.service fail2ban.service
-After=network-online.target vkarmani-node.service nginx.service chrony.service fail2ban.service
+Wants=network-online.target docker.service nginx.service chrony.service fail2ban.service vkarmani-node-network.service ufw.service
+After=network-online.target docker.service nginx.service chrony.service fail2ban.service vkarmani-node-network.service ufw.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/vkarmani-node-check --postboot
@@ -1708,7 +2062,7 @@ rm -f "$STATE/INSTALL_FAILED" "$STATE/image-update-pending"
 stage 'Установка завершена; проверки ДО перезагрузки пройдены'
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"
 printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
-printf 'Внешний firewall хостера (если есть): разрешить TCP/%s от %s к %s.\n' "$NODE_PORT" "${PANEL_IPS[*]}" "$PUBLIC_IP"
+printf 'Внешний firewall хостера (если есть): разрешить TCP/%s от %s к Node Address, указанному в панели.\n' "$NODE_PORT" "${PANEL_IPS[*]}"
 printf 'Транспорт: VLESS + RAW + REALITY; Selfsteal: /dev/shm/nginx.sock (xver=1)\n'
 printf 'Профиль и действия в панели: /etc/vkarmani-node/PANEL-SETUP.txt\n'
 printf 'SSH-порты сохранены: %s\n' "${SSH_PORTS[*]}"
@@ -1725,5 +2079,185 @@ else
 fi
 
 }
-# VKARMANI_COMPLETE_PAYLOAD_1_3_0
-vkarmani_main "$@"
+vkarmani_repair_main() {
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C LANG=C PYTHONUTF8=1
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    [[ $# -eq 0 ]] || { echo 'Использование: bash install.sh --repair-node'; exit 2; }
+    [[ $EUID -eq 0 ]] || { echo 'Запустите на НОДЕ от root.'; exit 1; }
+    ETC=/etc/vkarmani-node
+    STATE=/var/lib/vkarmani-node
+    HELPER=/usr/local/lib/vkarmani-node/node_helper.py
+    [[ -f "$STATE/owned-installation" && -s "$STATE/INSTALL_COMPLETE" && -s "$HELPER" && -s /opt/vkarmani-node/compose.yaml ]] || {
+        echo 'STOP: завершённая установка нашего скрипта не найдена. Изменений нет. Незавершённую установку продолжайте обычным запуском.'; exit 1;
+    }
+    grep -Eq '^version=1\.3\.[0-9]+$' "$STATE/INSTALL_COMPLETE" || {
+        echo 'STOP: --repair-node поддерживает только завершённые установки 1.3.x.'; exit 1;
+    }
+    exec 9>/run/lock/vkarmani-node-installer.lock
+    flock -n 9 || { echo 'Другой процесс установки или исправления уже работает.'; exit 1; }
+    for cmd in python3 docker ufw nginx fail2ban-client systemctl; do command -v "$cmd" >/dev/null; done
+    systemctl is-active --quiet docker
+    ufw status | grep -F 'Status: active' >/dev/null || { echo 'STOP: ожидался уже активный UFW. Чужую конфигурацию не меняю.'; exit 1; }
+    python3 "$HELPER" secret >/dev/null
+    DOMAIN=$(python3 "$HELPER" get domain)
+    PUBLIC_IP=$(python3 "$HELPER" get public_ipv4)
+    NODE_PORT=$(python3 "$HELPER" get node_port)
+    mapfile -t PANEL_IPS < <(python3 "$HELPER" get panel_ipv4)
+    mapfile -t SSH_PORTS < "$ETC/ssh-ports"
+    [[ ${#PANEL_IPS[@]} -gt 0 && ${#SSH_PORTS[@]} -gt 0 ]]
+    ADMIN_IP=$(awk '{print $1}' <<< "${SSH_CONNECTION:-}")
+    python3 - "$PUBLIC_IP" "$NODE_PORT" "$ADMIN_IP" "${PANEL_IPS[@]}" <<'PY'
+import ipaddress, sys
+ipaddress.IPv4Address(sys.argv[1])
+assert 1024 <= int(sys.argv[2]) <= 65535
+for value in sys.argv[3:]:
+    if value: ipaddress.IPv4Address(value)
+PY
+    for port in "${SSH_PORTS[@]}"; do [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]]; done
+    ip -4 -o addr show | awk '{print $4}' | cut -d/ -f1 | grep -Fx "$PUBLIC_IP" >/dev/null || {
+        echo 'STOP: сохранённый IP не назначен ноде; сетевую конфигурацию автоматически не подменяю.'; exit 1;
+    }
+    IMAGE_BEFORE=$(docker inspect remnanode --format '{{.Image}}')
+    REF=$(docker inspect remnanode --format '{{.Config.Image}}')
+    [[ "$REF" =~ ^(remnawave/node|ghcr.io/remnawave/node)(:|@) ]] || { echo 'STOP: неожиданный образ контейнера.'; exit 1; }
+    [[ $(docker inspect remnanode --format '{{.HostConfig.NetworkMode}}') == host ]]
+    [[ $(docker inspect remnanode --format '{{.HostConfig.RestartPolicy.Name}}') == always ]]
+    docker compose -f /opt/vkarmani-node/compose.yaml config --quiet
+    # Resolve the declared image without printing the expanded environment.
+    COMPOSE_IMAGE=$(docker compose -f /opt/vkarmani-node/compose.yaml config --format json |
+        python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["remnanode"]["image"])')
+    [[ $(docker image inspect "$COMPOSE_IMAGE" --format '{{.Id}}') == "$IMAGE_BEFORE" ]] || {
+        echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
+    }
+    nginx -t
+    BK="$STATE/backups/repair-1.3.3-$(date +%Y%m%d-%H%M%S)-$$"
+    install -d -m 0700 "$BK"
+    local -a paths=(
+        /usr/local/sbin/vkarmani-node-check
+        /usr/local/sbin/vkarmani-node-tls-check
+        /usr/local/sbin/vkarmani-selfsteal-check
+        /usr/local/sbin/vkarmani-node-network
+        /etc/systemd/system/vkarmani-node.service
+        /etc/systemd/system/vkarmani-node-network.service
+        /etc/systemd/system/vkarmani-node-postboot.service
+        /etc/systemd/system/nginx.service.d/90-vkarmani-resilience.conf
+        /etc/nginx/conf.d/20-vkarmani-selfsteal.conf
+        /etc/fail2ban/fail2ban.local
+        /etc/fail2ban/jail.d/99-vkarmani-sshd.local
+        /etc/ufw/applications.d/vkarmani-sshd
+    )
+    : > "$BK/present"; : > "$BK/absent"
+    for f in "${paths[@]}"; do
+        if [[ -e "$f" ]]; then cp -a --parents "$f" "$BK/"; printf '%s\n' "$f" >> "$BK/present";
+        else printf '%s\n' "$f" >> "$BK/absent"; fi
+    done
+    WRAPPER_WAS_ENABLED=$(systemctl is-enabled vkarmani-node.service 2>/dev/null || true)
+    REPAIR_TRAPPED=0
+    repair_error() {
+        local rc=${1:-1} line=${2:-unknown}
+        [[ $REPAIR_TRAPPED -eq 0 ]] || exit "$rc"
+        REPAIR_TRAPPED=1
+        trap - ERR INT TERM HUP
+        set +e
+        echo "REPAIR_FAILED rc=$rc line=$line; возвращаю управляемые файлы из $BK"
+        while IFS= read -r f; do cp -a "$BK$f" "$f"; done < "$BK/present"
+        while IFS= read -r f; do rm -f -- "$f"; done < "$BK/absent"
+        systemctl daemon-reload
+        if [[ "$WRAPPER_WAS_ENABLED" == enabled ]]; then systemctl enable vkarmani-node.service; fi
+        systemctl restart fail2ban
+        if nginx -t; then systemctl reload-or-restart nginx; fi
+        docker compose -f /opt/vkarmani-node/compose.yaml up -d --pull never --remove-orphans
+        echo 'Выполнена попытка отката файлов. Добавленное разрешение UFW только для IP панели сохранено. Общего открытия firewall не было.'
+        echo 'Перезагрузка и обновление образа не запрашивались. Проверьте журнал исправления.'
+        exit "$rc"
+    }
+    trap 'repair_error "$?" "$LINENO"' ERR
+    trap 'repair_error 130 "$LINENO"' INT
+    trap 'repair_error 143 "$LINENO"' TERM
+    trap 'repair_error 129 "$LINENO"' HUP
+    LOG=/var/log/vkarmani-node-repair.log
+    touch "$LOG"; chmod 0600 "$LOG"
+    exec > >(exec 9>&-; tee -a "$LOG") 2>&1
+    echo 'VKarmani 1.3.3 — исправление только на НОДЕ'
+    echo "Резервная копия: $BK"
+    echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
+    echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
+    systemctl stop vkarmani-node.service
+    vk_write_tls_check
+    vk_write_selfsteal_check
+    vk_write_acceptance
+    vk_write_network_script
+    vk_write_network_unit
+    vk_write_node_unit
+    vk_write_nginx_dropin
+    # Remove only the old dependency from our own postboot unit, never host networking units.
+    python3 - <<'PY'
+from pathlib import Path
+p=Path('/etc/systemd/system/vkarmani-node-postboot.service')
+if p.exists():
+    s=p.read_text().replace('vkarmani-node.service', 'docker.service')
+    lines=[]
+    for line in s.splitlines():
+        if line.startswith(('Wants=', 'After=')):
+            for unit in ('vkarmani-node-network.service', 'ufw.service'):
+                if unit not in line.split('=', 1)[1].split():
+                    line += ' ' + unit
+        lines.append(line)
+    p.write_text('\n'.join(lines)+'\n')
+p=Path('/etc/nginx/conf.d/20-vkarmani-selfsteal.conf')
+if p.exists():
+    s=p.read_text()
+    if 'listen unix:/dev/shm/nginx.sock' not in s:
+        raise SystemExit('STOP: неожиданная конфигурация нашего Selfsteal')
+    s=s.replace('location / { try_files $uri $uri/ /index.html; }',
+                'location / { try_files $uri $uri/ =404; }')
+    p.write_text(s)
+PY
+    # Keep the panel API source restriction, remove the accidental DNS-IP coupling.
+    # No flush, reset, broad allow, arbitrary rule deletion or nftables table removal.
+    for panel in "${PANEL_IPS[@]}"; do
+        ufw allow proto tcp from "$panel" to any port "$NODE_PORT" comment 'VKarmani panel management'
+        if fail2ban-client status sshd >/dev/null 2>&1; then
+            fail2ban-client set sshd unbanip "$panel" >/dev/null
+        fi
+    done
+    # Stop before changing the action, so old SSH bans are removed using the OLD action.
+    systemctl stop fail2ban
+    vk_write_fail2ban_config
+    fail2ban-client -t
+    nginx -t
+    systemctl daemon-reload
+    systemctl disable vkarmani-node.service
+    systemctl restart vkarmani-node-network.service
+    systemctl restart fail2ban
+    # Independent Nginx reload cannot stop Node anymore.
+    systemctl reload-or-restart nginx
+    /usr/local/sbin/vkarmani-selfsteal-check
+    docker compose -f /opt/vkarmani-node/compose.yaml up -d --pull never --remove-orphans
+    [[ $(docker inspect remnanode --format '{{.Image}}') == "$IMAGE_BEFORE" ]] || {
+        echo 'STOP: образ неожиданно изменился'; false;
+    }
+    # The manual compatibility wrapper stays disabled. Docker owns boot/restart.
+    for attempt in $(seq 1 5); do
+        if /usr/local/sbin/vkarmani-node-tls-check >/dev/null 2>&1; then break; fi
+        sleep 2
+    done
+    /usr/local/sbin/vkarmani-node-check --local
+    printf 'version=1.3.3\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    trap - ERR INT TERM HUP
+    echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
+    echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
+    echo 'Reboot не запланирован. Для диагностики таймаута не запускайте полную установку заново.'
+}
+
+# VKARMANI_COMPLETE_PAYLOAD_1_3_3
+if [[ "${1:-}" == --repair-node ]]; then
+    shift
+    vkarmani_repair_main "$@"
+else
+    vkarmani_main "$@"
+fi
+
