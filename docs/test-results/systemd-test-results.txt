@@ -1,3 +1,0 @@
-OFFLINE: generated units, stub dependencies and executables; nothing started.
-Units: vkarmani-node-network.service, vkarmani-node.service, vkarmani-weekly-reboot.service, vkarmani-weekly-reboot.timer, vkarmani-node-cleanup.service, vkarmani-node-cleanup.timer, vkarmani-node-postboot.service
-Exit: 0

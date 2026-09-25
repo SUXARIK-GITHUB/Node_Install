@@ -2,7 +2,7 @@
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 1.2.0 — 2026-09-25
+# VKarmani Remnawave Node Installer 1.2.1 — 2026-09-25
 # Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: updates packages, modifies firewall/boot settings and reboots by default.
@@ -13,7 +13,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-VERSION=1.2.0
+INSTALLER_VERSION=1.2.1
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -26,7 +26,7 @@ REFRESH_IMAGE=0
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 1.2.0
+VKarmani Remnawave Node Installer 1.2.1
 
   sudo bash install.sh
   sudo bash install.sh --no-reboot
@@ -231,8 +231,13 @@ touch "$LOG"; chmod 0600 "$LOG"
 exec > >(exec 9>&-; tee -a "$LOG") 2>&1
 stage() { printf '\n[%s] %s\n' "$(date -Is)" "$*"; }
 die() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
+ERROR_HANDLED=0
 on_error() {
     local rc=$? line=${1:-unknown}
+    if [[ "$ERROR_HANDLED" == 1 ]]; then
+        exit "$rc"
+    fi
+    ERROR_HANDLED=1
     trap - ERR
     printf '\nINSTALL_FAILED rc=%s line=%s\nСм. %s. Ребут НЕ запланирован.\n' "$rc" "$line" "$LOG" >&2
     printf 'rc=%s line=%s at=%s\n' "$rc" "$line" "$(date -Is)" > "$STATE/INSTALL_FAILED"
@@ -255,7 +260,7 @@ trap 'on_error "$LINENO"' ERR
 trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
-stage "VKarmani installer $VERSION — проверка и резервная копия"
+stage "VKarmani installer $INSTALLER_VERSION — проверка и резервная копия"
 BK="$STATE/backups/$(date +%Y%m%d-%H%M%S)-$$"
 install -d -m 0700 "$BK"
 for p in etc/ssh etc/ufw etc/default/ufw etc/default/grub etc/default/grub.d etc/sysctl.d \
@@ -277,7 +282,7 @@ apt-get update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 1.2.0: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 1.2.1: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -352,22 +357,64 @@ def public_ipv4(value):
         raise Failure('Нужен глобальный публичный IPv4-адрес, не CIDR.') from e
 
 
+def _dns_query(domain_name, kind, server):
+    cmd = ['dig', '-4', '+time=3', '+tries=1', '+noall', '+comments', '+answer']
+    if server:
+        cmd.append('@' + server)
+    cmd += [domain_name, kind]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+    except subprocess.TimeoutExpired:
+        return None
+    if r.returncode or not re.search(r'status: NOERROR[, ]', r.stdout):
+        return None
+    return {line.split()[-1] for line in r.stdout.splitlines()
+            if len(line.split()) >= 5 and line.split()[-2] == kind}
+
+
 def dns_check(c):
-    for server in (None, '1.1.1.1', '8.8.8.8'):
-        answers = {}
-        for kind in ('A', 'AAAA'):
-            cmd = ['dig', '-4', '+time=4', '+tries=2', '+noall', '+comments', '+answer']
-            if server:
-                cmd.append('@' + server)
-            cmd += [c['domain'], kind]
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            if r.returncode or not re.search(r'status: NOERROR[, ]', r.stdout):
-                raise Failure('DNS-запрос не выполнен: ' + (server or 'system resolver'))
-            answers[kind] = {line.split()[-1] for line in r.stdout.splitlines()
-                             if len(line.split()) >= 5 and line.split()[-2] == kind}
-        if answers['A'] != {c['public_ipv4']} or answers['AAAA']:
-            raise Failure('DNS: требуется ровно один A на IPv4 ноды и отсутствие AAAA. Проверьте DNS-only, без CDN proxy; resolver=' + (server or 'system'))
-    print('DNS: A подтверждён тремя резолверами, AAAA отсутствует.')
+    # apt/needrestart can restart systemd-resolved immediately before this check.
+    # Therefore an unavailable system resolver is a warning, not an instant fatal error.
+    # At least one resolver must confirm the exact A record and no AAAA record.
+    resolvers = ((None, 'system'), ('1.1.1.1', '1.1.1.1'), ('8.8.8.8', '8.8.8.8'))
+    confirmed = []
+    unavailable = []
+    bad = []
+    for server, label in resolvers:
+        last = None
+        for attempt in range(1, 6):
+            a = _dns_query(c['domain'], 'A', server)
+            aaaa = _dns_query(c['domain'], 'AAAA', server)
+            if a is not None and aaaa is not None:
+                last = (a, aaaa)
+                if a == {c['public_ipv4']} and not aaaa:
+                    confirmed.append(label)
+                    break
+            if attempt < 5:
+                import time
+                time.sleep(2)
+        else:
+            if last is None:
+                unavailable.append(label)
+            else:
+                bad.append((label, last[0], last[1]))
+
+    # A reachable public resolver with a conflicting answer usually means DNS propagation
+    # is incomplete. Do not request a certificate until it agrees with the node address.
+    public_bad = [x for x in bad if x[0] != 'system']
+    if public_bad:
+        details = '; '.join(f'{label}: A={sorted(a) or ["NONE"]}, AAAA={sorted(aaaa) or ["NONE"]}'
+                            for label, a, aaaa in public_bad)
+        raise Failure('DNS ещё не готов: нужен ровно один A=' + c['public_ipv4'] +
+                      ' и отсутствие AAAA. ' + details)
+    if not confirmed:
+        raise Failure('Не удалось подтвердить DNS ни через системный resolver, ни через 1.1.1.1/8.8.8.8. Проверьте DNS/маршрутизацию и повторите запуск.')
+    if unavailable:
+        print('WARN: недоступны DNS resolver(s): ' + ', '.join(unavailable) +
+              '. Продолжаю, так как DNS подтверждён через: ' + ', '.join(confirmed), file=sys.stderr)
+    if any(x[0] == 'system' for x in bad):
+        print('WARN: системный DNS ещё видит старую запись; публичный DNS уже подтверждён. Продолжаю.', file=sys.stderr)
+    print('DNS: A=' + c['public_ipv4'] + ', AAAA отсутствует; подтверждено через: ' + ', '.join(confirmed) + '.')
 
 
 def make_keys_profile(c):
@@ -600,7 +647,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 1.2.0 — действия в панели
+    txt = f'''VKarmani RemnaNode 1.2.1 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -1450,7 +1497,7 @@ if apt-get -s -o APT::Get::Always-Include-Phased-Updates=true dist-upgrade | _co
     die 'Остались доступные обновления. Ребут не запланирован; проверьте apt.'
 fi
 /usr/local/sbin/vkarmani-node-check --preboot
-printf 'version=%s\nat=%s\nimage=%s\n' "$VERSION" "$(date -Is)" "$DIGEST" > "$STATE/INSTALL_COMPLETE"
+printf 'version=%s\nat=%s\nimage=%s\n' "$INSTALLER_VERSION" "$(date -Is)" "$DIGEST" > "$STATE/INSTALL_COMPLETE"
 rm -f "$STATE/INSTALL_FAILED" "$STATE/image-update-pending"
 stage 'Установка завершена; проверки ДО перезагрузки пройдены'
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"

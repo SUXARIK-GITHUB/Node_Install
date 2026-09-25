@@ -1,7 +1,0 @@
-Normalized form: Mon *-*-* 04:00:00 Europe/Moscow
-    Next elapse: Mon 2026-09-28 01:00:00 UTC
-       From now: 2 days left
-   Iteration #2: Mon 2026-10-05 01:00:00 UTC
-       From now: 1 week 2 days left
-   Iteration #3: Mon 2026-10-12 01:00:00 UTC
-       From now: 2 weeks 2 days left

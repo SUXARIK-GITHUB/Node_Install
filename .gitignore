@@ -1,40 +1,31 @@
-# Never commit installed-node state, logs, environment or private keys.
+# Secrets / runtime data
 .env
 .env.*
 *.env
-!*.env.example
 *.pem
 *.key
 *.p12
 *.pfx
-*.crt
-*.csr
-id_rsa*
-id_ed25519*
 remnanode.env
 config.json
 profile.json
 reality.json
 PANEL-SETUP.txt
-reality-keys.txt
 VKARMANI_REALITY_*
 VKARMANI_PROFILE_*
 VKARMANI_HOST_*
-*backup*/
-*report-*/
-/etc/
-/var/
-/opt/
-/root/
+
+# Logs / backups / archives
 *.log
 *.tar
 *.tar.gz
 *.tgz
 *.zip
-__pycache__/
-*.py[cod]
-.venv/
-.pytest_cache/
+*backup*/
+*report*/
+
+# OS / editor
 .DS_Store
 Thumbs.db
-build/*-results.txt
+.vscode/
+.idea/

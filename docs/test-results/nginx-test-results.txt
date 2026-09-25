@@ -1,4 +1,0 @@
-OFFLINE nginx -t: temporary paths and self-signed test certificate; no listener started.
-2026/09/25 10:41:47 [warn] 1101#1101: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /tmp/vkarmani-static-5xv68x6t/nginx.conf:22
-nginx: the configuration file /tmp/vkarmani-static-5xv68x6t/nginx.conf syntax is ok
-nginx: configuration file /tmp/vkarmani-static-5xv68x6t/nginx.conf test is successful
