@@ -2,7 +2,7 @@
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 1.3.0 — 2026-09-25
+# VKarmani Remnawave Node Installer 1.3.1 — 2026-09-25
 # Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: updates packages, modifies firewall/boot settings and reboots by default.
@@ -13,7 +13,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=1.3.0
+INSTALLER_VERSION=1.3.1
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -26,7 +26,7 @@ REFRESH_IMAGE=0
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 1.3.0
+VKarmani Remnawave Node Installer 1.3.1
 
   sudo bash install.sh
   sudo bash install.sh --no-reboot
@@ -180,7 +180,7 @@ if _contains -al 'systemd-boot' /sys/firmware/efi/efivars/LoaderInfo-* 2>/dev/nu
 fi
 [[ "${SSH_CONNECTION:-}" != *:* ]] || { echo 'Текущая SSH-сессия использует IPv6. Сначала подключитесь по IPv4.' >&2; exit 1; }
 [[ -x /usr/sbin/sshd ]] || { echo 'Требуется установленный OpenSSH server.' >&2; exit 1; }
-install -d -m 0755 /run/sshd
+install -d -o root -g root -m 0755 /run/sshd
 /usr/sbin/sshd -t
 MEM_MB=$(awk '/MemTotal:/{print int($2/1024)}' /proc/meminfo)
 FREE_MB=$(df -Pm / | awk 'NR==2{print $4}')
@@ -234,6 +234,7 @@ touch "$LOG"; chmod 0600 "$LOG"
 exec > >(exec 9>&-; tee -a "$LOG") 2>&1
 stage() { printf '\n[%s] %s\n' "$(date -Is)" "$*"; }
 die() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
+ensure_sshd_runtime() { install -d -o root -g root -m 0755 /run/sshd; }
 ERROR_HANDLED=0
 on_error() {
     local rc=$? line=${1:-unknown}
@@ -285,7 +286,7 @@ apt-get update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 1.3.0: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 1.3.1: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -759,7 +760,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 1.3.0 — действия в панели
+    txt = f'''VKarmani RemnaNode 1.3.1 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -862,6 +863,7 @@ PUBLIC_IP=$(helper get public_ipv4)
 NODE_PORT=$(helper get node_port)
 IMAGE=$(helper get image)
 mapfile -t PANEL_IPS < <(helper get panel_ipv4)
+ensure_sshd_runtime
 mapfile -t SSH_PORTS < <({ /usr/sbin/sshd -T | awk '$1=="port"{print $2}';
     if [[ -n "${SSH_CONNECTION:-}" ]]; then awk '{print $4}' <<< "$SSH_CONNECTION"; fi
     if systemctl is-active --quiet ssh.socket; then
@@ -885,6 +887,9 @@ stage 'Полное обновление пакетов ОС (без смены 
 "${APT[@]}" -o APT::Get::Always-Include-Phased-Updates=true full-upgrade
 "${APT[@]}" install openssh-server ufw fail2ban nginx certbot chrony logrotate unattended-upgrades \
     ethtool kmod util-linux procps dbus python3-systemd
+# /run is tmpfs and openssh package/service transitions can remove the privilege-separation directory.
+# Recreate it before every direct sshd -T/-t validation instead of assuming ssh.service has done so.
+ensure_sshd_runtime
 # Update already-installed snaps, but do not install snapd merely for this installer.
 if command -v snap >/dev/null && systemctl is-active --quiet snapd; then
     timeout 1800 snap refresh
@@ -1014,6 +1019,7 @@ systemctl restart vkarmani-node-network
 
 # Keep SSH authentication and keys unchanged. Convert socket activation to an IPv4
 # ssh.service, whose KillMode=process preserves established SSH child sessions.
+ensure_sshd_runtime
 [[ "$(systemctl show ssh.service -p KillMode --value)" == process ]] || die 'SSH unit KillMode не process; безопасное переключение не подтверждено.'
 AUTH_BEFORE=$(/usr/sbin/sshd -T | grep -E '^(permitrootlogin|passwordauthentication|pubkeyauthentication|authenticationmethods|kbdinteractiveauthentication) ')
 NETBK="$STATE/network-backup"
@@ -1036,6 +1042,7 @@ cp -a "$B/ufw/." /etc/ufw/
 cp -a "$B/default-ufw" /etc/default/ufw
 if _contains '^ENABLED=yes' /etc/ufw/ufw.conf; then ufw --force enable || true; fi
 systemctl daemon-reload
+install -d -o root -g root -m 0755 /run/sshd
 if _contains -x enabled "$B/socket-enabled"; then systemctl enable ssh.socket || true; fi
 if _contains -x active "$B/socket-active"; then
     systemctl stop ssh.service || true
@@ -1068,6 +1075,7 @@ else:
     extra=''
 p.write_text(line+extra+s)
 PY
+ensure_sshd_runtime
 /usr/sbin/sshd -t
 AUTH_AFTER=$(/usr/sbin/sshd -T | grep -E '^(permitrootlogin|passwordauthentication|pubkeyauthentication|authenticationmethods|kbdinteractiveauthentication) ')
 [[ "$AUTH_BEFORE" == "$AUTH_AFTER" ]] || die 'Параметры SSH-аутентификации неожиданно изменились.'
@@ -1083,8 +1091,8 @@ ufw default deny incoming
 ufw default allow outgoing
 ufw default deny routed
 for port in "${SSH_PORTS[@]}"; do ufw allow "$port/tcp" comment 'VKarmani SSH preserved'; done
-ufw allow 80/tcp comment 'VKarmani ACME HTTP-01'
-ufw allow 443/tcp comment 'VKarmani RAW REALITY'
+ufw allow proto tcp to "$PUBLIC_IP" port 80 comment 'VKarmani ACME HTTP-01'
+ufw allow proto tcp to "$PUBLIC_IP" port 443 comment 'VKarmani RAW REALITY'
 for panel in "${PANEL_IPS[@]}"; do
     ufw allow proto tcp from "$panel" to "$PUBLIC_IP" port "$NODE_PORT" comment 'VKarmani panel only'
 done
@@ -1206,7 +1214,7 @@ server_tokens off;
 EOF
 cat > /etc/nginx/conf.d/10-vkarmani-http.conf <<EOF
 server {
-    listen 0.0.0.0:80;
+    listen $PUBLIC_IP:80;
     server_name $DOMAIN;
     server_tokens off;
     access_log off;
@@ -1227,7 +1235,7 @@ fi
 nginx -t
 systemctl enable nginx
 systemctl restart nginx
-[[ $(curl --noproxy '*' -4sS --max-time 10 -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:80:127.0.0.1" "http://$DOMAIN/") == 301 ]] || die 'Nginx HTTP redirect check failed.'
+[[ $(curl --noproxy '*' -4sS --max-time 10 -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:80:$PUBLIC_IP" "http://$DOMAIN/") == 301 ]] || die 'Nginx HTTP redirect check failed.'
 certbot certonly --webroot --webroot-path /var/www/vkarmani-node/acme \
     --domain "$DOMAIN" --cert-name "$DOMAIN" --register-unsafely-without-email \
     --agree-tos --non-interactive --keep-until-expiring --key-type ecdsa --preferred-challenges http
@@ -1289,6 +1297,19 @@ except Exception as e:
 PY
 chmod 0755 /usr/local/sbin/vkarmani-selfsteal-check
 /usr/local/sbin/vkarmani-selfsteal-check
+cat > /usr/local/sbin/vkarmani-wait-selfsteal <<'WAITSELF'
+#!/usr/bin/env bash
+set -u
+for _ in $(seq 1 60); do
+    if [[ -S /dev/shm/nginx.sock ]] && /usr/local/sbin/vkarmani-selfsteal-check >/dev/null 2>&1; then
+        exit 0
+    fi
+    sleep 1
+done
+echo 'Selfsteal socket/TLS is not ready after 60s.' >&2
+exit 1
+WAITSELF
+chmod 0755 /usr/local/sbin/vkarmani-wait-selfsteal
 install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/30-vkarmani-nginx <<'EOF'
 #!/bin/sh
@@ -1350,13 +1371,14 @@ docker compose -f "$OPT/compose.yaml" config --quiet
 cat > /etc/systemd/system/vkarmani-node.service <<'EOF'
 [Unit]
 Description=VKarmani RemnaNode Compose stack
-Requires=docker.service
-Wants=network-online.target nginx.service vkarmani-node-network.service ufw.service
+Requires=docker.service nginx.service
+Wants=network-online.target vkarmani-node-network.service ufw.service
 After=network-online.target docker.service nginx.service vkarmani-node-network.service ufw.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/vkarmani-node
+ExecStartPre=/usr/local/sbin/vkarmani-wait-selfsteal
 ExecStart=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml up -d --remove-orphans
 ExecStop=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml stop
 TimeoutStartSec=180
@@ -1523,6 +1545,7 @@ PY
 fi
 if ip -6 address show 2>/dev/null | _contains 'inet6'; then fail NO_IPV6_ADDRESSES; else pass NO_IPV6_ADDRESSES; fi
 if ip -6 route show 2>/dev/null | _contains .; then fail NO_IPV6_ROUTES; else pass NO_IPV6_ROUTES; fi
+install -d -o root -g root -m 0755 /run/sshd
 /usr/sbin/sshd -t >/dev/null 2>&1 && pass SSH_CONFIG || fail SSH_CONFIG
 /usr/sbin/sshd -T 2>/dev/null | _contains -Fx 'addressfamily inet' && pass SSH_IPV4_ONLY || fail SSH_IPV4_ONLY
 while IFS= read -r port; do
@@ -1551,7 +1574,9 @@ for line in r.stdout.splitlines():
         source=w[w.index('-s')+1]; dest=w[w.index('-d')+1]
         if source not in expected or dest != c['public_ipv4']+'/32': sys.exit(1)
         found.add(source)
-    elif p not in ssh | {'80','443'}:
+    elif p in {'80','443'}:
+        if '-d' not in w or w[w.index('-d')+1] != c['public_ipv4']+'/32': sys.exit(1)
+    elif p not in ssh:
         sys.exit(1)
 sys.exit(0 if found==expected else 1)
 PY
