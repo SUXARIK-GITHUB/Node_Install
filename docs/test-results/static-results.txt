@@ -1,0 +1,10 @@
+PASS bash -n assembled installer
+PASS bash -n input collector
+PASS bash -n health script
+PASS --help (no system mutation)
+PASS Python helper AST
+PASS systemd unit verification: 7 units (stubs; NOT runtime)
+PASS nginx -t: generated HTTP and TLS cover configs (temp test certificate)
+PASS invariant checks: three-input mode, no panel API, no global control-port allow, no volume pruning
+PASS extracted shell heredocs: 5; Python heredocs: 3
+PASS systemd Monday 04:00 Europe/Moscow calendar

@@ -1,0 +1,37 @@
+name: Check installer
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Test dependencies only (never deploy)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-cryptography python3-pexpect nginx curl
+      - name: Verify assembled installer matches sources
+        run: |
+          /usr/bin/python3 build/rebuild.py
+          git diff --exit-code -- install.sh
+      - name: Unit, terminal and HTTP launcher tests
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Offline Nginx, systemd, Bash and Python checks
+        run: /usr/bin/python3 tests/check_artifacts.py
+      - name: Check for accidentally committed keys
+        run: /usr/bin/python3 tools/check-publication.py
+      - name: Deployment command for this checked commit
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          printf '### Команда для проверенного коммита\n\nЗапускать от root на чистой VPS, только после проверки исходников.\n\n```bash\n' >> "$GITHUB_STEP_SUMMARY"
+          /usr/bin/python3 tools/install-command.py "$REPOSITORY" --ref "$COMMIT" >> "$GITHUB_STEP_SUMMARY"
+          printf '```\n\nЭто проверки кода, не проверка реального VPN-подключения.\n' >> "$GITHUB_STEP_SUMMARY"

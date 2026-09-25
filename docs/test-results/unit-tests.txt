@@ -1,0 +1,66 @@
+test_defaults (test_helper.ConfigTests.test_defaults) ... ok
+test_domain_injections_and_invalid_values (test_helper.ConfigTests.test_domain_injections_and_invalid_values) ... ok
+test_domain_normalization (test_helper.ConfigTests.test_domain_normalization) ... ok
+test_forbid_panel_api_credentials (test_helper.ConfigTests.test_forbid_panel_api_credentials) ... ok
+test_invalid_config_types (test_helper.ConfigTests.test_invalid_config_types) ... ok
+test_ip_discovery (test_helper.ConfigTests.test_ip_discovery) ... ok
+test_ipv4_only (test_helper.ConfigTests.test_ipv4_only) ... ok
+test_refuse_api_installer_state (test_helper.ConfigTests.test_refuse_api_installer_state) ... ok
+test_refuse_nat_discovery (test_helper.ConfigTests.test_refuse_nat_discovery) ... ok
+test_reject_aaaa (test_helper.DNSTests.test_reject_aaaa) ... ok
+test_reject_servfail (test_helper.DNSTests.test_reject_servfail) ... ok
+test_three_resolvers_a_and_aaaa (test_helper.DNSTests.test_three_resolvers_a_and_aaaa) ... ok
+test_existing_unmatched_cover_not_confirmed (test_helper.HealthStateTests.test_existing_unmatched_cover_not_confirmed) ... ok
+test_infrastructure_error_blocks_install (test_helper.HealthStateTests.test_infrastructure_error_blocks_install) ... ok
+test_local_xray_does_not_claim_panel_verified (test_helper.HealthStateTests.test_local_xray_does_not_claim_panel_verified) ... ok
+test_pending_not_vpn_pass (test_helper.HealthStateTests.test_pending_not_vpn_pass) ... ok
+test_strict_pending_nonzero (test_helper.HealthStateTests.test_strict_pending_nonzero) ... ok
+test_assignment_quotes (test_helper.SecretTests.test_assignment_quotes) ... ok
+test_expiry_checked_only_after_ntp (test_helper.SecretTests.test_expiry_checked_only_after_ntp) ... ok
+test_invalid_key_hidden_in_error (test_helper.SecretTests.test_invalid_key_hidden_in_error) ... ok
+test_literal_pem_newlines (test_helper.SecretTests.test_literal_pem_newlines) ... ok
+test_reject_mismatched_private_key (test_helper.SecretTests.test_reject_mismatched_private_key) ... ok
+test_reject_missing_fields (test_helper.SecretTests.test_reject_missing_fields) ... ok
+test_reject_newlines_in_secret (test_helper.SecretTests.test_reject_newlines_in_secret) ... ok
+test_reject_shell_env_injection (test_helper.SecretTests.test_reject_shell_env_injection) ... ok
+test_reject_wrong_ca (test_helper.SecretTests.test_reject_wrong_ca) ... ok
+test_urlsafe_unpadded (test_helper.SecretTests.test_urlsafe_unpadded) ... ok
+test_valid_bundle (test_helper.SecretTests.test_valid_bundle) ... ok
+test_dns_failure_does_not_commit_config (test_helper.StateTests.test_dns_failure_does_not_commit_config) ... ok
+test_invalid_input_count (test_helper.StateTests.test_invalid_input_count) ... ok
+test_no_panel_ip_default (test_helper.StateTests.test_no_panel_ip_default) ... ok
+test_panel_and_node_cannot_be_same (test_helper.StateTests.test_panel_and_node_cannot_be_same) ... ok
+test_panel_guide_does_not_include_private_keys (test_helper.StateTests.test_panel_guide_does_not_include_private_keys) ... ok
+test_profile_xhttp_and_stable_keys (test_helper.StateTests.test_profile_xhttp_and_stable_keys) ... ok
+test_resume_does_not_read_stdin (test_helper.StateTests.test_resume_does_not_read_stdin) ... ok
+test_resume_rejects_ip_change (test_helper.StateTests.test_resume_rejects_ip_change) ... ok
+test_secret_file_permissions (test_helper.StateTests.test_secret_file_permissions) ... ok
+test_secret_permissions_enforced (test_helper.StateTests.test_secret_permissions_enforced) ... ok
+test_stdin_inputs_and_no_secret_in_output (test_helper.StateTests.test_stdin_inputs_and_no_secret_in_output) ... ok
+test_http_process_substitution_help (test_launcher.LauncherTests.test_http_process_substitution_help) ... ok
+test_truncated_stream_never_enters_install (test_launcher.LauncherTests.test_truncated_stream_never_enters_install) ... ok
+test_unknown_option_fails_without_install (test_launcher.LauncherTests.test_unknown_option_fails_without_install) ... ok
+test_collector_accepts_public_ipv4 (test_publication.PublicationTests.test_collector_accepts_public_ipv4) ... ok
+test_collector_rejects_ipv4_injection (test_publication.PublicationTests.test_collector_rejects_ipv4_injection) ... ok
+test_command_generation (test_publication.PublicationTests.test_command_generation) ... ok
+test_command_generation_rejects_injection (test_publication.PublicationTests.test_command_generation_rejects_injection) ... ok
+test_encoded_secret_found (test_publication.PublicationTests.test_encoded_secret_found) ... ok
+test_no_secret_value_in_scan_output (test_publication.PublicationTests.test_no_secret_value_in_scan_output) ... ok
+test_plain_private_key_found (test_publication.PublicationTests.test_plain_private_key_found) ... ok
+test_shell_placeholders_not_credentials (test_publication.PublicationTests.test_shell_placeholders_not_credentials) ... ok
+test_assignment_quoted_secret (test_terminal.TerminalTests.test_assignment_quoted_secret) ... /usr/lib/python3.13/pty.py:95: DeprecationWarning: This process (pid=840) is multi-threaded, use of forkpty() may lead to deadlocks in the child.
+  pid, fd = os.forkpty()
+ok
+test_ctrl_c_restores_echo (test_terminal.TerminalTests.test_ctrl_c_restores_echo) ... /usr/lib/python3.13/pty.py:95: DeprecationWarning: This process (pid=840) is multi-threaded, use of forkpty() may lead to deadlocks in the child.
+  pid, fd = os.forkpty()
+ok
+test_invalid_ip_aborts_before_automation (test_terminal.TerminalTests.test_invalid_ip_aborts_before_automation) ... ok
+test_long_secret_not_truncated (test_terminal.TerminalTests.test_long_secret_not_truncated) ... ok
+test_three_prompts_hidden_secret_and_resume (test_terminal.TerminalTests.test_three_prompts_hidden_secret_and_resume) ... /usr/lib/python3.13/pty.py:95: DeprecationWarning: This process (pid=840) is multi-threaded, use of forkpty() may lead to deadlocks in the child.
+  pid, fd = os.forkpty()
+ok
+
+----------------------------------------------------------------------
+Ran 55 tests in 11.528s
+
+OK
