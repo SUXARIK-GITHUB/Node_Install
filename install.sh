@@ -2,31 +2,31 @@
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 1.2.1 — 2026-09-25
+# VKarmani Remnawave Node Installer 1.2.4 — 2026-09-25
 # Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: updates packages, modifies firewall/boot settings and reboots by default.
 # Node-only mode: does not create or edit panel objects. Keep the VPS console available.
-set -Eeuo pipefail
+set -euo pipefail
 set +x
 umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=1.2.1
+INSTALLER_VERSION=1.2.4
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
 OPT=/opt/vkarmani-node
 LOG=/var/log/vkarmani-node-install.log
-# No built-in panel IP, domain or credential. Values are collected before APT.
+# The panel IPv4 is entered on first run. The node IPv4 is never asked: it is selected from DNS + local interfaces.
 NODE_PORT_DEFAULT=2222
 NO_REBOOT=0
 REFRESH_IMAGE=0
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 1.2.1
+VKarmani Remnawave Node Installer 1.2.4
 
   sudo bash install.sh
   sudo bash install.sh --no-reboot
@@ -36,9 +36,10 @@ VKarmani Remnawave Node Installer 1.2.1
 GRUB, systemd, amd64/arm64, публичный IPv4, >= 900 MiB RAM и >= 6 GiB свободно.
 Существующую панель/ноду или чужую Docker/UFW/nginx-конфигурацию не мигрирует.
 После успешной установки автоматический reboot, если не указан --no-reboot.
-Первый запуск: SECRET_KEY → публичный IPv4 основного сервера → домен ноды.
-Три вопроса заданы ДО APT-обновлений. Повтор использует сохранённые параметры.
-Управляющий порт 2222 разрешён только с введённого IPv4 панели.
+Первый запуск: SECRET_KEY → IPv4 основной панели → домен ноды.
+Все три вопроса заданы ДО APT-обновлений. IPv4 самой ноды НЕ спрашивается:
+он выбирается автоматически по DNS из публичных IPv4, назначенных этой VPS.
+Управляющий порт 2222 разрешается только с введённого IPv4 панели.
 Карточка Node, Config Profile, Host и Internal Squad настраиваются в панели отдельно.
 Сертификат: аккаунт Let's Encrypt без email, с автоматическим принятием условий CA.
 --refresh-image разрешает обновить уже зафиксированный образ RemnaNode.
@@ -52,7 +53,7 @@ while (($#)); do
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
-# Three inputs before any APT/network/boot changes. No Python/curl dependency here.
+# Two inputs before any APT/network/boot changes. No Python/curl dependency here.
 # This file is embedded in install.sh, not downloaded at run time.
 vk_input_error() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
 vk_trim() {
@@ -99,8 +100,8 @@ vk_collect_inputs() {
     # Never inherit exported attributes or tracing for a credential variable.
     set +x
     set +a
-    unset VK_INPUT_SECRET VK_INPUT_PANEL_IPV4 VK_INPUT_DOMAIN
-    VK_INPUT_SECRET='' VK_INPUT_PANEL_IPV4='' VK_INPUT_DOMAIN=''
+    unset VK_INPUT_SECRET VK_INPUT_PANEL_IP VK_INPUT_DOMAIN
+    VK_INPUT_SECRET='' VK_INPUT_PANEL_IP='' VK_INPUT_DOMAIN=''
     if [[ -s "$ETC/config.json" ]]; then
         printf 'Повторный запуск: используются сохранённые параметры; вопросов нет.\n'
         return 0
@@ -112,10 +113,10 @@ vk_collect_inputs() {
     trap 'vk_restore_tty; exit 130' INT
     trap 'vk_restore_tty; exit 143' TERM
     trap 'vk_restore_tty; exit 129' HUP
-    printf '\nVKarmani: SECRET_KEY → IPv4 основного сервера → домен ноды.\n' >&"$VK_TTY_FD"
+    printf '\nVKarmani: SECRET_KEY → IPv4 основной панели → домен ноды.\n' >&"$VK_TTY_FD"
+    printf 'IPv4 самой ноды НЕ спрашивается: он выбирается автоматически по DNS из адресов VPS.\n' >&"$VK_TTY_FD"
     printf 'После трёх значений — автоматическая установка и reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
-    printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
-    printf 'IPv4 основного сервера — исходящий адрес backend панели, НЕ Cloudflare и НЕ IP этой ноды.\n\n' >&"$VK_TTY_FD"
+    printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n\n' >&"$VK_TTY_FD"
     # Noncanonical mode also permits long (>4096 byte) single-line SECRET_KEY bundles.
     # Disable echo BEFORE displaying the prompt, so immediate paste cannot reveal the key.
     stty -echo -icanon min 1 time 0 <&"$VK_TTY_FD"
@@ -134,9 +135,9 @@ vk_collect_inputs() {
         unset VK_INPUT_SECRET; vk_input_error 'Некорректный формат SECRET_KEY. Вставьте значение из панели одной строкой.'; return 1;
     }
     printf '[2/3] Публичный IPv4 основного сервера (панели): ' >&"$VK_TTY_FD"
-    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_PANEL_IPV4 || { vk_input_error 'Ввод IPv4 прерван.'; return 1; }
-    VK_INPUT_PANEL_IPV4=$(vk_trim "$VK_INPUT_PANEL_IPV4")
-    vk_validate_ipv4 "$VK_INPUT_PANEL_IPV4" || { vk_input_error 'Нужен публичный IPv4 панели, без порта, CIDR и https://.'; return 1; }
+    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_PANEL_IP || { vk_input_error 'Ввод IPv4 панели прерван.'; return 1; }
+    VK_INPUT_PANEL_IP=$(vk_trim "$VK_INPUT_PANEL_IP")
+    vk_validate_ipv4 "$VK_INPUT_PANEL_IP" || { vk_input_error 'Некорректный публичный IPv4 панели.'; return 1; }
     printf '[3/3] Домен ноды (например, ee1.example.com): ' >&"$VK_TTY_FD"
     IFS= read -r -u "$VK_TTY_FD" VK_INPUT_DOMAIN || { vk_input_error 'Ввод домена прерван.'; return 1; }
     VK_INPUT_DOMAIN=$(vk_trim "$VK_INPUT_DOMAIN")
@@ -145,7 +146,7 @@ vk_collect_inputs() {
     exec {VK_TTY_FD}>&-
     unset VK_TTY_FD
     trap - EXIT INT TERM HUP
-    printf '\nВсе три значения приняты. Далее вопросов нет; SECRET_KEY не выводится.\n'
+    printf '\nВсе три значения приняты. IPv4 ноды будет выбран автоматически; SECRET_KEY не выводится.\n'
 }
 [[ $EUID -eq 0 ]] || { echo 'Запустите через sudo bash или от root.' >&2; exit 1; }
 [[ ${BASH_VERSINFO[0]} -ge 4 ]] || { echo 'Bash >= 4 required' >&2; exit 1; }
@@ -282,7 +283,7 @@ apt-get update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 1.2.1: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 1.2.4: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -372,50 +373,167 @@ def _dns_query(domain_name, kind, server):
             if len(line.split()) >= 5 and line.split()[-2] == kind}
 
 
-def dns_check(c):
-    # apt/needrestart can restart systemd-resolved immediately before this check.
-    # Therefore an unavailable system resolver is a warning, not an instant fatal error.
-    # At least one resolver must confirm the exact A record and no AAAA record.
+def detect_local_public_ipv4s():
+    """Return every globally routable IPv4 actually assigned to this VPS.
+
+    Do not use the default-route source as the node address: providers commonly
+    attach two public IPv4s and the node domain can intentionally point to the
+    secondary address.
+    """
+    try:
+        r = subprocess.run(['ip', '-j', '-4', 'address', 'show', 'scope', 'global'],
+                           capture_output=True, text=True, timeout=10, check=True)
+        rows = json.loads(r.stdout)
+    except (subprocess.SubprocessError, ValueError, TypeError) as e:
+        raise Failure('Не удалось получить IPv4-адреса интерфейсов VPS.') from e
+    found = {}
+    for row in rows:
+        ifname = row.get('ifname')
+        if not isinstance(ifname, str) or not ifname:
+            continue
+        for info in row.get('addr_info') or []:
+            if info.get('family') != 'inet':
+                continue
+            value = info.get('local')
+            try:
+                ip = public_ipv4(value)
+            except Failure:
+                continue
+            found.setdefault(ip, ifname)
+    if not found:
+        raise Failure('На интерфейсах VPS не найден прямой публичный IPv4. NAT/IPv6-only не поддерживаются.')
+    return dict(sorted(found.items(), key=lambda x: tuple(int(p) for p in x[0].split('.'))))
+
+
+def _dns_snapshot(domain_name):
     resolvers = ((None, 'system'), ('1.1.1.1', '1.1.1.1'), ('8.8.8.8', '8.8.8.8'))
-    confirmed = []
-    unavailable = []
-    bad = []
+    snapshot = {}
     for server, label in resolvers:
         last = None
-        for attempt in range(1, 6):
-            a = _dns_query(c['domain'], 'A', server)
-            aaaa = _dns_query(c['domain'], 'AAAA', server)
+        for attempt in range(1, 4):
+            a = _dns_query(domain_name, 'A', server)
+            aaaa = _dns_query(domain_name, 'AAAA', server)
             if a is not None and aaaa is not None:
                 last = (a, aaaa)
-                if a == {c['public_ipv4']} and not aaaa:
-                    confirmed.append(label)
-                    break
-            if attempt < 5:
+                break
+            if attempt < 3:
                 import time
-                time.sleep(2)
-        else:
-            if last is None:
-                unavailable.append(label)
-            else:
-                bad.append((label, last[0], last[1]))
+                time.sleep(1)
+        snapshot[label] = last
+    return snapshot
 
-    # A reachable public resolver with a conflicting answer usually means DNS propagation
-    # is incomplete. Do not request a certificate until it agrees with the node address.
-    public_bad = [x for x in bad if x[0] != 'system']
-    if public_bad:
-        details = '; '.join(f'{label}: A={sorted(a) or ["NONE"]}, AAAA={sorted(aaaa) or ["NONE"]}'
-                            for label, a, aaaa in public_bad)
-        raise Failure('DNS ещё не готов: нужен ровно один A=' + c['public_ipv4'] +
-                      ' и отсутствие AAAA. ' + details)
-    if not confirmed:
-        raise Failure('Не удалось подтвердить DNS ни через системный resolver, ни через 1.1.1.1/8.8.8.8. Проверьте DNS/маршрутизацию и повторите запуск.')
-    if unavailable:
-        print('WARN: недоступны DNS resolver(s): ' + ', '.join(unavailable) +
-              '. Продолжаю, так как DNS подтверждён через: ' + ', '.join(confirmed), file=sys.stderr)
-    if any(x[0] == 'system' for x in bad):
-        print('WARN: системный DNS ещё видит старую запись; публичный DNS уже подтверждён. Продолжаю.', file=sys.stderr)
-    print('DNS: A=' + c['public_ipv4'] + ', AAAA отсутствует; подтверждено через: ' + ', '.join(confirmed) + '.')
 
+def _fmt_dns_snapshot(snapshot):
+    parts = []
+    for label in ('system', '1.1.1.1', '8.8.8.8'):
+        item = snapshot.get(label)
+        if item is None:
+            parts.append(label + ': нет ответа')
+            continue
+        a, aaaa = item
+        parts.append(f'{label}: A={",".join(sorted(a)) if a else "NONE"}, '
+                     f'AAAA={",".join(sorted(aaaa)) if aaaa else "NONE"}')
+    return '; '.join(parts)
+
+
+def select_public_ipv4_for_domain(domain_name, wait_seconds=0):
+    """Select the node IPv4 by matching public DNS to local VPS addresses.
+
+    If a server has multiple public IPv4s, no default-route guess is made. The
+    selected address must be the single A record returned by available public
+    resolvers and must be locally assigned. AAAA must be absent.
+    """
+    import time
+    local = detect_local_public_ipv4s()
+    local_set = set(local)
+    deadline = time.monotonic() + max(0, int(wait_seconds))
+    last_notice = 0.0
+    while True:
+        snap = _dns_snapshot(domain_name)
+        public = {k: v for k, v in snap.items() if k != 'system' and v is not None}
+        valid = {}
+        conflict = False
+        for label, (a, aaaa) in public.items():
+            if aaaa or len(a) != 1:
+                conflict = True
+                continue
+            ip = next(iter(a))
+            if ip not in local_set:
+                conflict = True
+                continue
+            valid[label] = ip
+        chosen = set(valid.values())
+        ready = bool(valid) and not conflict and len(chosen) == 1 and len(valid) == len(public)
+        if ready:
+            selected = next(iter(chosen))
+            system = snap.get('system')
+            if system is None:
+                print('WARN: системный DNS недоступен; публичный DNS подтверждён.', file=sys.stderr)
+            elif system != ({selected}, set()):
+                print('WARN: системный DNS ещё отличается; публичный DNS уже подтверждён. Продолжаю.', file=sys.stderr)
+            print('IPv4 ноды выбран автоматически: ' + selected + ' (интерфейс ' + local[selected] + ').')
+            if len(local) > 1:
+                print('Публичные IPv4 VPS: ' + ', '.join(local) + '; DNS выбрал: ' + selected + '.')
+            return selected
+
+        now = time.monotonic()
+        if wait_seconds and now < deadline:
+            if last_notice == 0.0 or now - last_notice >= 60:
+                remaining = max(1, int((deadline - now + 59) // 60))
+                print(
+                    'WARN: пока нельзя однозначно выбрать IPv4 ноды.\n'
+                    f'      Домен: {domain_name}\n'
+                    f'      Публичные IPv4 этой VPS: {", ".join(local)}\n'
+                    f'      DNS: {_fmt_dns_snapshot(snap)}\n'
+                    '      A-запись должна содержать ровно один из IPv4 этой VPS; AAAA/Proxy должны отсутствовать.\n'
+                    f'      Ничего вводить повторно не нужно: жду DNS автоматически, осталось до {remaining} мин.',
+                    file=sys.stderr,
+                    flush=True,
+                )
+                last_notice = now
+            time.sleep(15)
+            continue
+        raise Failure(
+            'Не удалось автоматически выбрать IPv4 ноды. Публичные IPv4 VPS: ' +
+            ', '.join(local) + '. DNS: ' + _fmt_dns_snapshot(snap) +
+            '. A-запись домена должна указывать ровно на один из этих адресов, без AAAA/CDN Proxy.'
+        )
+
+
+def dns_check(c, wait_seconds=0):
+    """Confirm that the persisted node domain still points to its selected IPv4."""
+    import time
+    deadline = time.monotonic() + max(0, int(wait_seconds))
+    last_notice = 0.0
+    while True:
+        snap = _dns_snapshot(c['domain'])
+        public = {k: v for k, v in snap.items() if k != 'system' and v is not None}
+        good = {k for k, (a, aaaa) in public.items() if a == {c['public_ipv4']} and not aaaa}
+        bad = {k for k in public if k not in good}
+        if good and not bad:
+            if snap.get('system') is None:
+                print('WARN: системный DNS недоступен; публичный DNS подтверждён.', file=sys.stderr)
+            elif snap.get('system') != ({c['public_ipv4']}, set()):
+                print('WARN: системный DNS ещё отличается; публичный DNS уже подтверждён. Продолжаю.', file=sys.stderr)
+            print('DNS: A=' + c['public_ipv4'] + ', AAAA отсутствует; подтверждено через: ' + ', '.join(sorted(good)) + '.')
+            return
+        now = time.monotonic()
+        if wait_seconds and now < deadline:
+            if last_notice == 0.0 or now - last_notice >= 60:
+                remaining = max(1, int((deadline - now + 59) // 60))
+                print(
+                    'WARN: DNS домена пока не соответствует сохранённому IPv4 ноды.\n'
+                    f'      Домен: {c["domain"]}\n'
+                    f'      Ожидаемый IPv4: {c["public_ipv4"]}\n'
+                    f'      DNS: {_fmt_dns_snapshot(snap)}\n'
+                    f'      Жду DNS автоматически, осталось до {remaining} мин.',
+                    file=sys.stderr,
+                    flush=True,
+                )
+                last_notice = now
+            time.sleep(15)
+            continue
+        raise Failure('DNS не соответствует выбранному IPv4 ноды ' + c['public_ipv4'] + ': ' + _fmt_dns_snapshot(snap))
 
 def make_keys_profile(c):
     from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -515,18 +633,6 @@ def normalize_config(raw):
     return c
 
 
-def detect_public_ipv4():
-    try:
-        r = subprocess.run(['ip', '-j', '-4', 'route', 'get', '1.1.1.1'],
-                           capture_output=True, text=True, timeout=10, check=True)
-        routes = json.loads(r.stdout)
-        # ip route get performs a kernel route lookup, not a request to 1.1.1.1.
-        value = routes[0].get('prefsrc') or routes[0].get('src')
-        return public_ipv4(value)
-    except (subprocess.SubprocessError, ValueError, IndexError, KeyError, TypeError, Failure) as e:
-        raise Failure('Не определён прямой публичный IPv4. NAT/IPv6-only VPS не поддерживаются.') from e
-
-
 def normalize_pem(value):
     value = value.replace('\\n', '\n').replace('\r\n', '\n')
     value = re.sub(r'(-----BEGIN [A-Z ]+-----)', r'\1\n', value)
@@ -606,48 +712,47 @@ def check_secret(c, check_dates=True):
 
 
 def init_config(node_port='2222', inputs=None):
-    """No prompts here. Bash collects all inputs before dependency installation.
+    """No prompts here. Bash collects SECRET_KEY, panel IPv4 and domain before dependencies.
 
-    Fresh install: stdin consists of SECRET_KEY, panel IPv4, domain, each on one line.
-    Resume: the persisted root-only configuration wins, and stdin is not consumed.
+    Node IPv4 is selected automatically by matching the domain's public A record
+    against every public IPv4 actually assigned to the VPS. The panel source IPv4
+    is user-entered and is used only for the Node Port firewall allowlist.
     """
     if (ETC / 'config.json').exists():
         c = normalize_config(read_json(ETC / 'config.json'))
-        if detect_public_ipv4() != c['public_ipv4']:
-            raise Failure('IPv4 сервера изменился. Не меняю адрес и ключи существующей установки автоматически.')
+        local = detect_local_public_ipv4s()
+        if c['public_ipv4'] not in local:
+            raise Failure('Сохранённый IPv4 ноды больше не назначен этой VPS. Автоматически адрес рабочей установки не меняю.')
         check_secret(c, check_dates=False)
-        print('Продолжение установки: домен, IPv4 панели и SECRET_KEY взяты из файлов root.')
+        print('Продолжение установки: домен, IPv4 ноды/панели и SECRET_KEY взяты из сохранённой конфигурации.')
         return
     if not re.fullmatch(r'[0-9]{4,5}', node_port):
         raise Failure('Некорректный NODE_PORT_DEFAULT.')
     if inputs is None:
-        # Bound untrusted input without echoing it in exceptions.
         text = sys.stdin.read(70001)
         if len(text) > 70000:
             raise Failure('Слишком большой блок входных данных.')
         inputs = text.splitlines()
     if not isinstance(inputs, (tuple, list)) or len(inputs) != 3:
-        raise Failure('Нужны три заранее введённых значения: SECRET_KEY, IPv4 панели, домен.')
+        raise Failure('Нужны три заранее введённых значения: SECRET_KEY, IPv4 панели и домен.')
     secret = normalize_secret(inputs[0])
     panel_ip = public_ipv4(inputs[1])
     name = domain(inputs[2])
-    detected = detect_public_ipv4()
-    if panel_ip == detected:
-        raise Failure('IPv4 панели совпадает с IPv4 этой ноды. Нужен отдельный сервер ноды и исходящий IPv4 панели.')
-    c = normalize_config({'installation_mode': MODE, 'domain': name, 'public_ipv4': detected,
+    selected = select_public_ipv4_for_domain(name, wait_seconds=1200)
+    if panel_ip == selected:
+        raise Failure('IPv4 панели совпадает с выбранным IPv4 ноды. Нужен отдельный сервер ноды или введите другой IPv4 панели.')
+    c = normalize_config({'installation_mode': MODE, 'domain': name, 'public_ipv4': selected,
                           'panel_ipv4': [panel_ip], 'node_port': int(node_port)})
-    # Validate DNS before committing inputs. A typo can be corrected simply by rerunning.
+    # DNS already selected this exact local address; recheck once against config shape.
     dns_check(c)
-    # Secret first, config last: a crash cannot commit usable config without its key.
     atomic_text(ETC / 'remnanode.env', f'NODE_PORT={c["node_port"]}\nSECRET_KEY={secret}\nTZ=Europe/Moscow\n')
     atomic_json(ETC / 'config.json', c)
-    print('Параметры проверены. SECRET_KEY сохранён с правами 0600, без вывода в журнал.')
-
+    print('Параметры проверены. IPv4 ноды=' + selected + '; SECRET_KEY сохранён с правами 0600.')
 
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 1.2.1 — действия в панели
+    txt = f'''VKarmani RemnaNode 1.2.4 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -744,8 +849,8 @@ PY_HELPER
 chmod 0700 "$LIB/node_helper.py"
 helper() { python3 "$LIB/node_helper.py" "$@"; }
 # printf is a Bash builtin: SECRET_KEY is not passed as argv/env to an external process.
-printf '%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IPV4" "$VK_INPUT_DOMAIN" | helper init "$NODE_PORT_DEFAULT"
-unset VK_INPUT_SECRET VK_INPUT_PANEL_IPV4 VK_INPUT_DOMAIN
+printf '%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" | helper init "$NODE_PORT_DEFAULT"
+unset VK_INPUT_SECRET VK_INPUT_PANEL_IP VK_INPUT_DOMAIN
 DOMAIN=$(helper get domain)
 PUBLIC_IP=$(helper get public_ipv4)
 NODE_PORT=$(helper get node_port)
@@ -766,7 +871,7 @@ if [[ ! -f "$STATE/image-digest" ]] && ss -H -lnt | awk '{print $4}' | _contains
     die "Управляющий порт $NODE_PORT занят. Измените NODE_PORT_DEFAULT в начале установщика ДО первой установки."
 fi
 helper dns
-# Direct public IPv4 only. NAT instances need separate forwarding support and are deliberately refused.
+# Selected IPv4 must still be directly assigned to this VPS; NAT-only addresses are refused.
 if ! ip -4 -o address show scope global | awk '{print $4}' | cut -d/ -f1 | _contains -Fx "$PUBLIC_IP"; then
     die 'Публичный IPv4 должен быть назначен интерфейсу этой VPS. NAT/проброс портов не поддержан.'
 fi
@@ -1517,5 +1622,5 @@ else
 fi
 
 }
-# VKARMANI_COMPLETE_PAYLOAD_1_2_0
+# VKARMANI_COMPLETE_PAYLOAD_1_2_4
 vkarmani_main "$@"
