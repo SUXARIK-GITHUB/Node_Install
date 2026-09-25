@@ -30,3 +30,9 @@ Thumbs.db
 .vscode/
 .idea/
 selfsteal-site.json
+
+# Local test / Python environment
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/

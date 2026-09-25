@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 vk_write_tls_check() {
-    install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
-    cat > '/usr/local/sbin/vkarmani-node-tls-check' <<'VK_PAYLOAD_VK_WRITE_TLS_CHECK'
+    local out=${1:-/usr/local/sbin/vkarmani-node-tls-check}
+    install -d -m 0755 "$(dirname "$out")"
+    cat > "$out" <<'VK_PAYLOAD_VK_WRITE_TLS_CHECK'
 #!/usr/bin/env python3
 """Local TLS verification of the installed RemnaNode, not panel authentication.
 Uses only CA and public certificate from SECRET_KEY; never writes private keys.
@@ -10,6 +11,7 @@ A fragmented probe exercises a real >1500-byte ClientHello over several writes.
 import argparse
 import base64
 import hashlib
+import hmac
 import ipaddress
 import json
 import re
@@ -28,6 +30,19 @@ def normal_pem(value):
     value = re.sub(r'(-----BEGIN [A-Z ]+-----)', r'\1\n', value)
     value = re.sub(r'(-----END [A-Z ]+-----)', r'\n\1', value)
     return re.sub(r'\n+', '\n', value).strip() + '\n'
+
+
+def derive_api_sni(ca_pem, jwt_pem):
+    """Remnawave wire-format derivation; no private key or panel API token needed."""
+    def canon(pem):
+        pem = normal_pem(pem)
+        pem = re.sub(r'-----[^-]+-----', '', pem)
+        return re.sub(r'[^A-Za-z0-9+/=]', '', pem).encode('ascii')
+    ikm = canon(jwt_pem) + canon(ca_pem)
+    prk = hmac.new(bytes(32), ikm, hashlib.sha256).digest()
+    block = hmac.new(prk, b'rw-v1\x01', hashlib.sha256).digest()[:22]
+    suffix = ('com', 'net', 'org', 'io', 'dev', 'app')[block[21] % 6]
+    return block[:16].hex() + '.' + block[16:21].hex() + '.' + suffix
 
 
 def load_material(etc=ETC):
@@ -50,7 +65,9 @@ def load_material(etc=ETC):
                                         altchars=b'-_', validate=True))
     ca = normal_pem(payload['caCertPem'])
     cert = ssl.PEM_cert_to_DER_cert(normal_pem(payload['nodeCertPem']))
-    # Leave nodeKeyPem and jwtPublicKey untouched. This is not a client credential.
+    # The private node key is never used as a panel client credential.
+    cfg = dict(cfg)
+    cfg['api_servername'] = derive_api_sni(payload['caCertPem'], payload['jwtPublicKey'])
     return cfg, ca, hashlib.sha256(cert).digest()
 
 
@@ -168,12 +185,13 @@ def main():
         failures = 0
         for host in dict.fromkeys(targets):
             for fragmented in (False, True):
-                ok, detail, length = probe(host, c['node_port'], c['domain'], ca, fp, fragmented)
+                ok, detail, length = probe(host, c['node_port'], c['api_servername'], ca, fp, fragmented)
                 print('LOCAL_TLS address=%s:%d mode=%s status=%s detail=%s hello_bytes=%d' % (
                     host, c['node_port'], 'fragmented' if fragmented else 'normal',
                     'PASS' if ok else 'FAIL', detail, length), flush=True)
                 failures += not ok
         print('NODE_TLS_LOCAL=' + ('FAIL' if failures else 'PASS'))
+        print('API_SNI=DERIVED_FROM_PUBLIC_KEY_MATERIAL')
         print('PANEL_MTLS=NOT_VERIFIED; local probes do not traverse the external interface or authenticate the panel')
         return int(bool(failures))
     except Exception:
@@ -183,7 +201,7 @@ def main():
 if __name__ == '__main__':
     sys.exit(main())
 VK_PAYLOAD_VK_WRITE_TLS_CHECK
-    chmod 0755 '/usr/local/sbin/vkarmani-node-tls-check'
+    chmod 0755 "$out"
 }
 
 vk_write_selfsteal_check() {
@@ -780,296 +798,12 @@ EOF
 }
 
 # Stream-safe entry point: the complete function must parse before any setup runs.
-vkarmani_main() {
-_contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 1.3.4 — 2026-09-25
-# Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
-# One self-contained file; no remote shell scripts are downloaded/executed.
-# WARNING: updates packages, modifies firewall/boot settings and reboots by default.
-# Node-only mode: does not create or edit panel objects. RAW+REALITY Selfsteal uses an Nginx Unix socket.
-set -euo pipefail
-set +x
-umask 077
-export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=1.3.4
-ETC=/etc/vkarmani-node
-STATE=/var/lib/vkarmani-node
-LIB=/usr/local/lib/vkarmani-node
-OPT=/opt/vkarmani-node
-LOG=/var/log/vkarmani-node-install.log
-# The panel IPv4 is entered on first run. The node IPv4 is never asked: it is selected from DNS + local interfaces.
-NODE_PORT_DEFAULT=2222
-NO_REBOOT=0
-REFRESH_IMAGE=0
-
-usage() {
-    cat <<'HELP'
-VKarmani Remnawave Node Installer 1.3.4
-
-  sudo bash install.sh
-  sudo bash install.sh --no-reboot
-  sudo bash install.sh --refresh-image
-  sudo bash install.sh --repair-network
-  sudo bash install.sh --repair-node
-
-Первый запуск: чистая выделенная VPS, Ubuntu 22.04/24.04 или Debian 12/13,
-GRUB, systemd, amd64/arm64, публичный IPv4, >= 900 MiB RAM и >= 6 GiB свободно.
-Существующую панель/ноду или чужую Docker/UFW/nginx-конфигурацию не мигрирует.
-После успешной установки автоматический reboot, если не указан --no-reboot.
-Первый запуск: SECRET_KEY → IPv4 основной панели → домен ноды.
-Все три вопроса заданы ДО APT-обновлений. IPv4 самой ноды НЕ спрашивается:
-он выбирается автоматически по DNS из публичных IPv4, назначенных этой VPS.
-Управляющий порт 2222 разрешается только с введённого IPv4 панели.
-Карточка Node, Config Profile, Host и Internal Squad настраиваются в панели отдельно.
-Шаблон профиля: VLESS + RAW + REALITY; Selfsteal: Nginx через /dev/shm/nginx.sock, xver=1.
-Сертификат: аккаунт Let's Encrypt без email, с автоматическим принятием условий CA.
---refresh-image разрешает обновить уже зафиксированный образ RemnaNode.
---repair-network исправляет только наш network-helper на завершённой 1.3.x, без reboot/рестарта контейнера.
-HELP
-}
-while (($#)); do
-    case "$1" in
-        --help|-h) usage; exit 0 ;;
-        --no-reboot) NO_REBOOT=1; shift ;;
-        --refresh-image) REFRESH_IMAGE=1; shift ;;
-        *) echo "Unknown option: $1" >&2; exit 2 ;;
-    esac
-done
-# Three inputs before any APT/network/boot changes. No Python/curl dependency here.
-# This file is embedded in install.sh, not downloaded at run time.
-vk_input_error() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
-vk_trim() {
-    local value=$1
-    value="${value#"${value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    printf '%s' "$value"
-}
-vk_validate_ipv4() {
-    local value=$1 octet
-    local -a parts=()
-    [[ "$value" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
-    IFS=. read -r -a parts <<< "$value"
-    for octet in "${parts[@]}"; do
-        [[ "$octet" == 0 || "$octet" != 0* ]] || return 1
-        ((10#$octet <= 255)) || return 1
-    done
-    # Early reject of local/reserved addresses. Python revalidates is_global after APT.
-    ((parts[0] > 0 && parts[0] < 224)) || return 1
-    case "$value" in
-        10.*|127.*|169.254.*|192.168.*|192.0.0.*|192.0.2.*|198.51.100.*|203.0.113.*) return 1 ;;
-    esac
-    if ((parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31)); then return 1; fi
-    if ((parts[0] == 100 && parts[1] >= 64 && parts[1] <= 127)); then return 1; fi
-    if ((parts[0] == 198 && (parts[1] == 18 || parts[1] == 19))); then return 1; fi
-}
-vk_validate_domain() {
-    local value=$1 part
-    local -a parts=()
-    [[ ${#value} -le 253 && "$value" == *.* && "$value" != .* && "$value" != *. && "$value" != *..* ]] || return 1
-    [[ ! "$value" =~ ^[0-9.]+$ ]] || return 1
-    IFS=. read -r -a parts <<< "$value"
-    for part in "${parts[@]}"; do
-        [[ ${#part} -ge 1 && ${#part} -le 63 && "$part" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || return 1
-    done
-}
-vk_restore_tty() {
-    if [[ -n "${VK_TTY_STATE:-}" && -n "${VK_TTY_FD:-}" ]]; then
-        stty "$VK_TTY_STATE" <&"$VK_TTY_FD" 2>/dev/null || true
-        VK_TTY_STATE=''
-    fi
-}
-vk_collect_inputs() {
-    # Never inherit exported attributes or tracing for a credential variable.
-    set +x
-    set +a
-    unset VK_INPUT_SECRET VK_INPUT_PANEL_IP VK_INPUT_DOMAIN
-    VK_INPUT_SECRET='' VK_INPUT_PANEL_IP='' VK_INPUT_DOMAIN=''
-    if [[ -s "$ETC/config.json" ]]; then
-        printf 'Повторный запуск: используются сохранённые параметры; вопросов нет.\n'
-        return 0
-    fi
-    command -v stty >/dev/null || { vk_input_error 'Требуется stty (coreutils).'; return 1; }
-    exec {VK_TTY_FD}<>/dev/tty || { vk_input_error 'Нужен интерактивный SSH-терминал (при ssh-команде используйте ssh -t).'; return 1; }
-    VK_TTY_STATE=$(stty -g <&"$VK_TTY_FD") || return 1
-    trap 'vk_restore_tty' EXIT
-    trap 'vk_restore_tty; exit 130' INT
-    trap 'vk_restore_tty; exit 143' TERM
-    trap 'vk_restore_tty; exit 129' HUP
-    printf '\nVKarmani: SECRET_KEY → IPv4 основной панели → домен ноды.\n' >&"$VK_TTY_FD"
-    printf 'IPv4 самой ноды НЕ спрашивается: он выбирается автоматически по DNS из адресов VPS.\n' >&"$VK_TTY_FD"
-    printf 'После трёх значений — автоматическая установка и reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
-    printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
-    printf 'Если у хостера есть внешний firewall/security group: TCP/2222 должен быть разрешён с IPv4 панели.\n\n' >&"$VK_TTY_FD"
-    # Noncanonical mode also permits long (>4096 byte) single-line SECRET_KEY bundles.
-    # Disable echo BEFORE displaying the prompt, so immediate paste cannot reveal the key.
-    stty -echo -icanon min 1 time 0 <&"$VK_TTY_FD"
-    printf '[1/3] SECRET_KEY ноды (скрытый ввод): ' >&"$VK_TTY_FD"
-    if ! IFS= read -r -u "$VK_TTY_FD" VK_INPUT_SECRET; then
-        vk_restore_tty; vk_input_error 'Ввод SECRET_KEY прерван.'; return 1
-    fi
-    vk_restore_tty
-    printf '\n' >&"$VK_TTY_FD"
-    VK_INPUT_SECRET=$(vk_trim "$VK_INPUT_SECRET")
-    if [[ "$VK_INPUT_SECRET" == SECRET_KEY=* ]]; then VK_INPUT_SECRET=${VK_INPUT_SECRET#SECRET_KEY=}; fi
-    if [[ "$VK_INPUT_SECRET" == \"*\" || "$VK_INPUT_SECRET" == \'*\' ]]; then
-        VK_INPUT_SECRET=${VK_INPUT_SECRET:1:${#VK_INPUT_SECRET}-2}
-    fi
-    [[ ${#VK_INPUT_SECRET} -ge 64 && ${#VK_INPUT_SECRET} -le 65536 && "$VK_INPUT_SECRET" =~ ^[A-Za-z0-9_+/=-]+$ ]] || {
-        unset VK_INPUT_SECRET; vk_input_error 'Некорректный формат SECRET_KEY. Вставьте значение из панели одной строкой.'; return 1;
-    }
-    printf '[2/3] Публичный IPv4 основного сервера (панели): ' >&"$VK_TTY_FD"
-    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_PANEL_IP || { vk_input_error 'Ввод IPv4 панели прерван.'; return 1; }
-    VK_INPUT_PANEL_IP=$(vk_trim "$VK_INPUT_PANEL_IP")
-    vk_validate_ipv4 "$VK_INPUT_PANEL_IP" || { vk_input_error 'Некорректный публичный IPv4 панели.'; return 1; }
-    printf '[3/3] Домен ноды (например, ee1.example.com): ' >&"$VK_TTY_FD"
-    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_DOMAIN || { vk_input_error 'Ввод домена прерван.'; return 1; }
-    VK_INPUT_DOMAIN=$(vk_trim "$VK_INPUT_DOMAIN")
-    VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN,,}; VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN%.}
-    vk_validate_domain "$VK_INPUT_DOMAIN" || { vk_input_error 'Некорректный домен: без https://, порта и пути; IDN в punycode.'; return 1; }
-    exec {VK_TTY_FD}>&-
-    unset VK_TTY_FD
-    trap - EXIT INT TERM HUP
-    printf '\nВсе три значения приняты. IPv4 ноды будет выбран автоматически; SECRET_KEY не выводится.\n'
-}
-[[ $EUID -eq 0 ]] || { echo 'Запустите через sudo bash или от root.' >&2; exit 1; }
-[[ ${BASH_VERSINFO[0]} -ge 4 ]] || { echo 'Bash >= 4 required' >&2; exit 1; }
-command -v flock >/dev/null || { echo 'util-linux/flock required' >&2; exit 1; }
-mkdir -p /run/lock
-exec 9>/run/lock/vkarmani-node-installer.lock
-flock -n 9 || { echo 'Установщик уже запущен.' >&2; exit 1; }
-[[ -d /run/systemd/system ]] || { echo 'Требуется сервер с systemd.' >&2; exit 1; }
-if systemd-detect-virt --container --quiet; then
-    echo 'LXC/OpenVZ/Docker не поддерживаются: ядро и полное отключение IPv6 контролирует хост.' >&2
-    exit 1
-fi
-[[ -r /etc/os-release ]] || exit 1
-# Only distro-owned os-release is sourced. User input is always JSON, never shell.
-# shellcheck disable=SC1091
-. /etc/os-release
-case "${ID:-}:${VERSION_ID:-}" in
-    ubuntu:22.04|ubuntu:24.04|debian:12|debian:13) ;;
-    *) echo "ОС вне поддерживаемого списка: ${PRETTY_NAME:-unknown}. Никаких изменений не выполнено." >&2; exit 1 ;;
-esac
-OS_ID=$ID
-OS_CODENAME=$VERSION_CODENAME
-case "$(dpkg --print-architecture)" in amd64|arm64) ;; *) echo 'Только amd64/arm64' >&2; exit 1 ;; esac
-[[ -f /boot/grub/grub.cfg && -f /etc/default/grub ]] && command -v update-grub >/dev/null || {
-    echo 'Нужна загрузка через GRUB: update-grub, /boot/grub/grub.cfg, /etc/default/grub.' >&2; exit 1;
-}
-if _contains -al 'systemd-boot' /sys/firmware/efi/efivars/LoaderInfo-* 2>/dev/null; then
-    echo 'Обнаружен systemd-boot, этот установщик изменяет только GRUB. Остановка.' >&2; exit 1
-fi
-[[ "${SSH_CONNECTION:-}" != *:* ]] || { echo 'Текущая SSH-сессия использует IPv6. Сначала подключитесь по IPv4.' >&2; exit 1; }
-[[ -x /usr/sbin/sshd ]] || { echo 'Требуется установленный OpenSSH server.' >&2; exit 1; }
-install -d -o root -g root -m 0755 /run/sshd
-/usr/sbin/sshd -t
-MEM_MB=$(awk '/MemTotal:/{print int($2/1024)}' /proc/meminfo)
-FREE_MB=$(df -Pm / | awk 'NR==2{print $4}')
-[[ "$MEM_MB" -ge 900 && "$FREE_MB" -ge 6144 ]] || {
-    echo "Нужно >=900 MiB RAM и >=6144 MiB свободного места. Сейчас RAM=$MEM_MB, disk=$FREE_MB MiB." >&2; exit 1;
-}
-[[ -z "$(dpkg --audit)" ]] || { echo 'dpkg сообщает незавершённые операции. Исправьте пакетную базу прежде установки.' >&2; exit 1; }
-[[ -z "$(apt-mark showhold)" ]] || { echo 'Есть удерживаемые пакеты (apt-mark showhold). Полное обновление без снятия hold невозможно; остановка.' >&2; exit 1; }
-FRESH=1
-[[ -f "$STATE/owned-installation" ]] && FRESH=0
-if [[ $FRESH -eq 0 && -f "$ETC/config.json" ]] && ! grep -F '"installation_mode": "secret-key-only"' "$ETC/config.json" >/dev/null; then
-    echo 'Найдена установка другой версии/режима. Этот вариант не мигрирует API-установку: используйте чистую VPS.' >&2
-    exit 1
-fi
-if [[ $FRESH -eq 1 ]]; then
-    for p in "$ETC" "$OPT" /etc/vkarmani /opt/remnanode /opt/remnawave; do
-        [[ ! -e "$p" ]] || { echo "Уже существует $p. Автоматическая миграция/удаление не выполняется." >&2; exit 1; }
-    done
-    if command -v docker >/dev/null; then
-        [[ -z "$(docker ps -aq 2>/dev/null)" ]] || { echo 'Найдены чужие Docker containers. Нужна выделенная чистая VPS.' >&2; exit 1; }
-    fi
-    if command -v ufw >/dev/null && ufw status | _contains -F 'Status: active'; then
-        echo 'UFW уже активен. Чужой firewall не перезаписывается: используйте чистую VPS.' >&2; exit 1
-    fi
-    for service in firewalld nftables netfilter-persistent nginx apache2 caddy; do
-        if systemctl is-active --quiet "$service"; then
-            echo "Активен $service. Нужна чистая выделенная VPS, без старого web/firewall стека." >&2; exit 1
-        fi
-    done
-    if ss -H -lnt | awk '{print $4}' | _contains -E ':(80|443)$'; then
-        echo 'Порты 80/443 уже заняты.' >&2; exit 1
-    fi
-    # Refuse a separate unmanaged nftables/iptables ruleset, even when its unit is inactive.
-    if command -v nft >/dev/null && [[ -n "$(nft list tables 2>/dev/null)" ]]; then
-        echo 'Обнаружены существующие nftables tables. Нужен чистый firewall.' >&2; exit 1
-    fi
-    for p in /etc/docker/daemon.json /etc/nginx/conf.d /etc/nginx/sites-enabled; do
-        if [[ -f "$p" ]] || { [[ -d "$p" ]] && find "$p" -mindepth 1 -maxdepth 1 ! -name default -print -quit | _contains .; }; then
-            echo "Найдена пользовательская конфигурация $p. Не перезаписываю." >&2; exit 1
-        fi
-    done
-fi
-# Input is from /dev/tty, never from the downloaded shell script stream.
-vk_collect_inputs
-# Package maintainer scripts must not read answers from the operator's terminal.
-# All installer questions have been answered; unexpected package prompts fail safely.
-exec </dev/null
-install -d -m 0700 "$ETC" "$STATE" "$LIB" "$OPT"
-touch "$LOG"; chmod 0600 "$LOG"
-# No xtrace, no printing of SECRET_KEY, private keys or Docker environment.
-exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-stage() { printf '\n[%s] %s\n' "$(date -Is)" "$*"; }
-die() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
-ensure_sshd_runtime() { install -d -o root -g root -m 0755 /run/sshd; }
-ERROR_HANDLED=0
-on_error() {
-    local rc=$? line=${1:-unknown}
-    if [[ "$ERROR_HANDLED" == 1 ]]; then
-        exit "$rc"
-    fi
-    ERROR_HANDLED=1
-    trap - ERR
-    printf '\nINSTALL_FAILED rc=%s line=%s\nСм. %s. Ребут НЕ запланирован.\n' "$rc" "$line" "$LOG" >&2
-    printf 'rc=%s line=%s at=%s\n' "$rc" "$line" "$(date -Is)" > "$STATE/INSTALL_FAILED"
-    if [[ -f "$STATE/image-update-pending" && -s "$STATE/compose.previous.yaml" ]]; then
-        printf 'Возвращаю предыдущий образ RemnaNode после неудачного обновления.\n' >&2
-        cp -a "$STATE/compose.previous.yaml" "$OPT/compose.yaml"
-        cp -a "$STATE/image-digest.previous" "$STATE/image-digest"
-        if docker compose -f "$OPT/compose.yaml" up -d; then
-            rm -f "$STATE/image-update-pending"
-        else
-            printf 'Автооткат образа не подтверждён. Нужна проверка Docker через консоль VPS.\n' >&2
-        fi
-    fi
-    if [[ -f "$STATE/network-rollback-armed" ]]; then
-        /usr/local/sbin/vkarmani-network-rollback || true
-    fi
-    exit "$rc"
-}
-trap 'on_error "$LINENO"' ERR
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
-stage "VKarmani installer $INSTALLER_VERSION — проверка и резервная копия"
-BK="$STATE/backups/$(date +%Y%m%d-%H%M%S)-$$"
-install -d -m 0700 "$BK"
-for p in etc/ssh etc/ufw etc/default/ufw etc/default/grub etc/default/grub.d etc/sysctl.d \
-         etc/docker etc/nginx etc/fail2ban etc/chrony etc/default/chrony etc/fstab; do
-    if [[ -e "/$p" ]]; then cp -a --parents "/$p" "$BK/"; fi
-done
-printf '%s\n' "$BK" > "$STATE/latest-backup-path"
-# Mark ownership only after all destructive-operation preconditions pass.
-touch "$STATE/owned-installation"
-
-stage 'Базовые инструменты из подписанного репозитория ОС'
-cat > /etc/apt/apt.conf.d/99-vkarmani-ipv4 <<'EOF'
-Acquire::ForceIPv4 "true";
-Acquire::Retries "3";
-DPkg::Lock::Timeout "300";
-EOF
-APT=(apt-get -y -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
-apt-get update
-"${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
+vk_write_helper() {
+    local LIB=${1:-/usr/local/lib/vkarmani-node}
+    install -d -m 0700 "$LIB"
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 1.3.4: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 1.3.5: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -1543,7 +1277,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 1.3.4 — действия в панели
+    txt = f'''VKarmani RemnaNode 1.3.5 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -1641,6 +1375,524 @@ if __name__ == '__main__':
         sys.exit(1)
 PY_HELPER
 chmod 0700 "$LIB/node_helper.py"
+}
+
+vk_write_connection_tools() {
+    local LIB=${1:-/usr/local/lib/vkarmani-node}
+    install -d -m 0700 "$LIB"
+    cat > "$LIB/node_connection.py" <<'VK_PAYLOAD_NODE_CONNECTION'
+#!/usr/bin/env python3
+"""Local-only, secret-safe inspection/reconciliation for owned VKarmani installs.
+
+No firewall flushing, raw log printing, private-key printing, panel API writes,
+network/kernel tuning or remote telemetry. Runtime inspection stays in memory.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import runpy
+import subprocess
+import sys
+import tempfile
+
+ETC = Path('/etc/vkarmani-node')
+OPT = Path('/opt/vkarmani-node')
+LIB = Path(os.environ.get('VKARMANI_DIAG_LIB', '/usr/local/lib/vkarmani-node'))
+TLS = Path(os.environ.get('VKARMANI_DIAG_TLS', '/usr/local/sbin/vkarmani-node-tls-check'))
+OFFICIAL = re.compile(r'(?:remnawave/node|ghcr\.io/remnawave/node)(?::[A-Za-z0-9_.-]+)?(?:@sha256:[a-f0-9]{64})?\Z')
+
+
+class Error(Exception):
+    pass
+
+
+def command(argv, timeout=25):
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise Error('COMMAND_UNAVAILABLE_OR_TIMEOUT: ' + argv[0]) from exc
+    if r.returncode:
+        # Docker/Compose errors may include environment contents; don't echo them.
+        raise Error('COMMAND_FAILED: ' + argv[0])
+    return r.stdout
+
+
+def atomic_text(path, text, mode=0o600):
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(prefix=path.name + '.', dir=path.parent)
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def modules():
+    helper = runpy.run_path(str(LIB / 'node_helper.py'))
+    tls = runpy.run_path(str(TLS))
+    cfg = helper['normalize_config'](helper['read_json'](ETC / 'config.json'))
+    helper['check_secret'](cfg)
+    return cfg, helper, tls
+
+
+def expected_env():
+    return dict(line.split('=', 1) for line in (ETC / 'remnanode.env').read_text().splitlines()
+                if line and not line.startswith('#'))
+
+
+def runtime_matches(inspect, expected):
+    actual = dict(x.split('=', 1) for x in inspect.get('Config', {}).get('Env', []) if '=' in x)
+    return {key: actual.get(key) == expected[key] for key in ('NODE_PORT', 'SECRET_KEY', 'TZ')}
+
+
+def reconcile_compose(doc, cfg, digest):
+    if not OFFICIAL.fullmatch(digest) or '@sha256:' not in digest:
+        raise Error('OFFICIAL_DIGEST_REQUIRED')
+    if set(doc.get('services', {})) != {'remnanode'}:
+        raise Error('STOP_UNEXPECTED_COMPOSE_SERVICES')
+    service = doc['services']['remnanode']
+    if not OFFICIAL.fullmatch(str(service.get('image', ''))):
+        raise Error('STOP_UNOFFICIAL_IMAGE')
+    # Keep custom legitimate settings. Remove only options incompatible with host mode.
+    service['image'] = digest
+    service['container_name'] = 'remnanode'
+    service['network_mode'] = 'host'
+    service.pop('ports', None)
+    service.pop('networks', None)
+    service['restart'] = 'always'
+    service['stop_grace_period'] = '30s'
+    caps = service.setdefault('cap_add', [])
+    if 'NET_ADMIN' not in caps:
+        caps.append('NET_ADMIN')
+    # Compose's normalized JSON contains expanded env. Remove the three managed
+    # entries so env_file is the only source; an old environment override must
+    # not silently shadow a newly saved key or management port.
+    env = service.get('environment') or {}
+    if not isinstance(env, dict):
+        raise Error('UNEXPECTED_ENVIRONMENT_SHAPE')
+    for key in ('SECRET_KEY', 'NODE_PORT', 'TZ'):
+        env.pop(key, None)
+    service['environment'] = {key: value.replace('$', '$$') if isinstance(value, str) else value
+                              for key, value in env.items()}
+    service['env_file'] = [str(ETC / 'remnanode.env')]
+    volumes = service.setdefault('volumes', [])
+    if not isinstance(volumes, list) or any(not isinstance(v, dict) for v in volumes):
+        raise Error('UNEXPECTED_NORMALIZED_VOLUMES')
+    matches = [v for v in volumes if v.get('target') == '/dev/shm']
+    if matches:
+        if len(matches) != 1 or matches[0].get('source') != '/dev/shm' or matches[0].get('type') != 'bind':
+            raise Error('STOP_UNEXPECTED_SELFSTEAL_MOUNT')
+    else:
+        volumes.append({'type': 'bind', 'source': '/dev/shm', 'target': '/dev/shm'})
+    doc['name'] = 'vkarmani-node'
+    return doc
+
+
+def safe_node_version():
+    # Read-only banner parsing; never print raw Docker logs or live Xray config.
+    try:
+        logs = command(['docker', 'logs', '--tail', '150', 'remnanode'], 10)
+        clean = re.sub(r'\x1b\[[0-9;]*m', '', logs)
+        matches = re.findall(r'(?:Remnawave\s*Node|Node\s*Version|Node\s*version)[^\n0-9]{0,30}v?(\d+\.\d+\.\d+)', clean, re.I)
+        return matches[-1] if matches else 'UNKNOWN'
+    except Error:
+        return 'UNKNOWN'
+
+
+def inspect_runtime():
+    rows = json.loads(command(['docker', 'inspect', 'remnanode']))
+    if len(rows) != 1:
+        raise Error('NODE_INSPECT_UNEXPECTED')
+    return rows[0]
+
+
+def audit():
+    cfg, helper, tls = modules()
+    failures = 0
+    print('SECRET_KEY_VALID=PASS')
+    # Public fingerprints identify wrong-panel credentials without revealing them.
+    material, ca, _ = tls['load_material']()
+    import ssl
+    print('CA_SHA256=' + hashlib.sha256(ssl.PEM_cert_to_DER_cert(ca)).hexdigest())
+    print('API_SNI=DERIVED (not the Selfsteal domain)')
+    print('NODE_ADDRESS=' + cfg['public_ipv4'] + ':' + str(cfg['node_port']))
+    print('PANEL_SOURCE_ALLOWLIST=' + ','.join(cfg['panel_ipv4']))
+    try:
+        node = inspect_runtime()
+        checks = runtime_matches(node, expected_env())
+        for name, ok in checks.items():
+            print('RUNTIME_' + name + '_MATCH=' + ('PASS' if ok else 'FAIL'))
+            failures += not ok
+        for name, actual, expected in (
+            ('HOST_NETWORK', node['HostConfig'].get('NetworkMode'), 'host'),
+            ('RESTART_POLICY', node['HostConfig'].get('RestartPolicy', {}).get('Name'), 'always'),
+            ('RUNNING', node.get('State', {}).get('Running'), True),
+        ):
+            print(name + '=' + ('PASS' if actual == expected else 'FAIL'))
+            failures += actual != expected
+        print('OOM_KILLED=' + str(bool(node.get('State', {}).get('OOMKilled'))))
+        print('RESTART_COUNT=' + str(int(node.get('RestartCount', 0))))
+        image = node['Config'].get('Image', '')
+        print('IMAGE=' + (image if OFFICIAL.fullmatch(image) else 'UNEXPECTED_IMAGE'))
+        env = dict(x.split('=', 1) for x in node['Config'].get('Env', []) if '=' in x)
+        sni = env.get('SNI_VERIFICATION', '(image default)')
+        print('SNI_VERIFICATION=' + (sni if sni in ('true', 'false', '(image default)') else 'INVALID'))
+        version = safe_node_version()
+        print('NODE_VERSION=' + version)
+        if version.startswith('3.3.'):
+            print('NODE_COMPATIBILITY=WARNING_3_3_REQUIRES_NEW_PANEL_SNI; use --repair-connection --refresh-image')
+    except (Error, KeyError, ValueError):
+        print('RUNTIME_INSPECTION=FAIL (details withheld to protect environment)')
+        failures += 1
+    # No DNS, Nginx, GRUB, certbot or BBR dependency: this diagnoses management only.
+    result = subprocess.run([str(TLS), '--all-local'], check=False)
+    failures += bool(result.returncode)
+    print('NODE_MANAGEMENT_LOCAL=' + ('FAIL' if failures else 'PASS'))
+    print('PANEL_CONNECTION=NOT_VERIFIED; run --diagnose-panel on the panel server')
+    print('No configuration or service state was changed by this audit.')
+    return 1 if failures else 0
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('action', choices=['audit', 'reconcile', 'verify-runtime'])
+    p.add_argument('digest', nargs='?')
+    args = p.parse_args()
+    if os.geteuid() != 0:
+        raise Error('ROOT_REQUIRED')
+    if args.action == 'audit':
+        return audit()
+    cfg, helper, tls = modules()
+    if args.action == 'verify-runtime':
+        matches = runtime_matches(inspect_runtime(), expected_env())
+        if not all(matches.values()):
+            raise Error('RUNTIME_ENV_MISMATCH')
+        return 0
+    raw = command(['docker', 'compose', '-f', str(OPT / 'compose.yaml'), 'config', '--format', 'json'])
+    doc = reconcile_compose(json.loads(raw), cfg, args.digest or '')
+    atomic_text(OPT / 'compose.yaml', json.dumps(doc, indent=2) + '\n')
+    print('COMPOSE_RECONCILED=PASS (managed credentials remain in env_file)')
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except Error as exc:
+        print('CONNECTION_CHECK=FAIL ' + str(exc), file=sys.stderr)
+        sys.exit(1)
+    except Exception:
+        print('CONNECTION_CHECK=FAIL CONFIG_OR_RUNTIME_ERROR (no credentials printed)', file=sys.stderr)
+        sys.exit(1)
+VK_PAYLOAD_NODE_CONNECTION
+    chmod 0700 "$LIB/node_connection.py"
+}
+
+vkarmani_main() {
+_contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
+# VKarmani Remnawave Node Installer 1.3.5 — 2026-09-26
+# Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
+# One self-contained file; no remote shell scripts are downloaded/executed.
+# WARNING: updates packages, modifies firewall/boot settings and reboots by default.
+# Node-only mode: does not create or edit panel objects. RAW+REALITY Selfsteal uses an Nginx Unix socket.
+set -euo pipefail
+set +x
+umask 077
+export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+unset CDPATH ENV BASH_ENV
+INSTALLER_VERSION=1.3.5
+ETC=/etc/vkarmani-node
+STATE=/var/lib/vkarmani-node
+LIB=/usr/local/lib/vkarmani-node
+OPT=/opt/vkarmani-node
+LOG=/var/log/vkarmani-node-install.log
+# The panel IPv4 is entered on first run. The node IPv4 is never asked: it is selected from DNS + local interfaces.
+NODE_PORT_DEFAULT=2222
+NO_REBOOT=0
+REFRESH_IMAGE=0
+
+usage() {
+    cat <<'HELP'
+VKarmani Remnawave Node Installer 1.3.5
+
+  sudo bash install.sh
+  sudo bash install.sh --no-reboot
+  sudo bash install.sh --refresh-image
+  sudo bash install.sh --repair-network
+  sudo bash install.sh --repair-node
+  sudo bash install.sh --repair-connection [--refresh-image]
+  sudo bash install.sh --diagnose-node
+  sudo bash install.sh --diagnose-panel NODE_ADDRESS [NODE_PORT] [BACKEND_CONTAINER]
+
+Первый запуск: чистая выделенная VPS, Ubuntu 22.04/24.04 или Debian 12/13,
+GRUB, systemd, amd64/arm64, публичный IPv4, >= 900 MiB RAM и >= 6 GiB свободно.
+Существующую панель/ноду или чужую Docker/UFW/nginx-конфигурацию не мигрирует.
+После успешной установки автоматический reboot, если не указан --no-reboot.
+Первый запуск: SECRET_KEY → IPv4 основной панели → домен ноды.
+Все три вопроса заданы ДО APT-обновлений. IPv4 самой ноды НЕ спрашивается:
+он выбирается автоматически по DNS из публичных IPv4, назначенных этой VPS.
+Управляющий порт 2222 разрешается только с введённого IPv4 панели.
+Карточка Node, Config Profile, Host и Internal Squad настраиваются в панели отдельно.
+Шаблон профиля: VLESS + RAW + REALITY; Selfsteal: Nginx через /dev/shm/nginx.sock, xver=1.
+Сертификат: аккаунт Let's Encrypt без email, с автоматическим принятием условий CA.
+--refresh-image разрешает обновить уже зафиксированный образ RemnaNode.
+--repair-connection: только RemnaNode/API; не зависит от Nginx/BBR/GRUB/ACME.
+  С --refresh-image загружает официальный remnawave/node:latest и закрепляет digest.
+  Сохраняет SECRET_KEY, REALITY, SSH, маршруты; без APT и reboot.
+--diagnose-node: локальные проверки без изменения сервисов.
+--diagnose-panel: выполнить НА ПАНЕЛИ; read-only DB + mTLS/JWT healthcheck из backend.
+  Приватные ключи остаются в памяти backend, не выводятся и не записываются.
+--repair-network исправляет только наш network-helper на завершённой 1.3.x, без reboot/рестарта контейнера.
+HELP
+}
+while (($#)); do
+    case "$1" in
+        --help|-h) usage; exit 0 ;;
+        --no-reboot) NO_REBOOT=1; shift ;;
+        --refresh-image) REFRESH_IMAGE=1; shift ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+done
+# Three inputs before any APT/network/boot changes. No Python/curl dependency here.
+# This file is embedded in install.sh, not downloaded at run time.
+vk_input_error() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
+vk_trim() {
+    local value=$1
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+vk_validate_ipv4() {
+    local value=$1 octet
+    local -a parts=()
+    [[ "$value" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+    IFS=. read -r -a parts <<< "$value"
+    for octet in "${parts[@]}"; do
+        [[ "$octet" == 0 || "$octet" != 0* ]] || return 1
+        ((10#$octet <= 255)) || return 1
+    done
+    # Early reject of local/reserved addresses. Python revalidates is_global after APT.
+    ((parts[0] > 0 && parts[0] < 224)) || return 1
+    case "$value" in
+        10.*|127.*|169.254.*|192.168.*|192.0.0.*|192.0.2.*|198.51.100.*|203.0.113.*) return 1 ;;
+    esac
+    if ((parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31)); then return 1; fi
+    if ((parts[0] == 100 && parts[1] >= 64 && parts[1] <= 127)); then return 1; fi
+    if ((parts[0] == 198 && (parts[1] == 18 || parts[1] == 19))); then return 1; fi
+}
+vk_validate_domain() {
+    local value=$1 part
+    local -a parts=()
+    [[ ${#value} -le 253 && "$value" == *.* && "$value" != .* && "$value" != *. && "$value" != *..* ]] || return 1
+    [[ ! "$value" =~ ^[0-9.]+$ ]] || return 1
+    IFS=. read -r -a parts <<< "$value"
+    for part in "${parts[@]}"; do
+        [[ ${#part} -ge 1 && ${#part} -le 63 && "$part" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || return 1
+    done
+}
+vk_restore_tty() {
+    if [[ -n "${VK_TTY_STATE:-}" && -n "${VK_TTY_FD:-}" ]]; then
+        stty "$VK_TTY_STATE" <&"$VK_TTY_FD" 2>/dev/null || true
+        VK_TTY_STATE=''
+    fi
+}
+vk_collect_inputs() {
+    # Never inherit exported attributes or tracing for a credential variable.
+    set +x
+    set +a
+    unset VK_INPUT_SECRET VK_INPUT_PANEL_IP VK_INPUT_DOMAIN
+    VK_INPUT_SECRET='' VK_INPUT_PANEL_IP='' VK_INPUT_DOMAIN=''
+    if [[ -s "$ETC/config.json" ]]; then
+        printf 'Повторный запуск: используются сохранённые параметры; вопросов нет.\n'
+        return 0
+    fi
+    command -v stty >/dev/null || { vk_input_error 'Требуется stty (coreutils).'; return 1; }
+    exec {VK_TTY_FD}<>/dev/tty || { vk_input_error 'Нужен интерактивный SSH-терминал (при ssh-команде используйте ssh -t).'; return 1; }
+    VK_TTY_STATE=$(stty -g <&"$VK_TTY_FD") || return 1
+    trap 'vk_restore_tty' EXIT
+    trap 'vk_restore_tty; exit 130' INT
+    trap 'vk_restore_tty; exit 143' TERM
+    trap 'vk_restore_tty; exit 129' HUP
+    printf '\nVKarmani: SECRET_KEY → IPv4 основной панели → домен ноды.\n' >&"$VK_TTY_FD"
+    printf 'IPv4 самой ноды НЕ спрашивается: он выбирается автоматически по DNS из адресов VPS.\n' >&"$VK_TTY_FD"
+    printf 'После трёх значений — автоматическая установка и reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
+    printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
+    printf 'Если у хостера есть внешний firewall/security group: TCP/2222 должен быть разрешён с IPv4 панели.\n\n' >&"$VK_TTY_FD"
+    # Noncanonical mode also permits long (>4096 byte) single-line SECRET_KEY bundles.
+    # Disable echo BEFORE displaying the prompt, so immediate paste cannot reveal the key.
+    stty -echo -icanon min 1 time 0 <&"$VK_TTY_FD"
+    printf '[1/3] SECRET_KEY ноды (скрытый ввод): ' >&"$VK_TTY_FD"
+    if ! IFS= read -r -u "$VK_TTY_FD" VK_INPUT_SECRET; then
+        vk_restore_tty; vk_input_error 'Ввод SECRET_KEY прерван.'; return 1
+    fi
+    vk_restore_tty
+    printf '\n' >&"$VK_TTY_FD"
+    VK_INPUT_SECRET=$(vk_trim "$VK_INPUT_SECRET")
+    if [[ "$VK_INPUT_SECRET" == SECRET_KEY=* ]]; then VK_INPUT_SECRET=${VK_INPUT_SECRET#SECRET_KEY=}; fi
+    if [[ "$VK_INPUT_SECRET" == \"*\" || "$VK_INPUT_SECRET" == \'*\' ]]; then
+        VK_INPUT_SECRET=${VK_INPUT_SECRET:1:${#VK_INPUT_SECRET}-2}
+    fi
+    [[ ${#VK_INPUT_SECRET} -ge 64 && ${#VK_INPUT_SECRET} -le 65536 && "$VK_INPUT_SECRET" =~ ^[A-Za-z0-9_+/=-]+$ ]] || {
+        unset VK_INPUT_SECRET; vk_input_error 'Некорректный формат SECRET_KEY. Вставьте значение из панели одной строкой.'; return 1;
+    }
+    printf '[2/3] Публичный IPv4 основного сервера (панели): ' >&"$VK_TTY_FD"
+    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_PANEL_IP || { vk_input_error 'Ввод IPv4 панели прерван.'; return 1; }
+    VK_INPUT_PANEL_IP=$(vk_trim "$VK_INPUT_PANEL_IP")
+    vk_validate_ipv4 "$VK_INPUT_PANEL_IP" || { vk_input_error 'Некорректный публичный IPv4 панели.'; return 1; }
+    printf '[3/3] Домен ноды (например, ee1.example.com): ' >&"$VK_TTY_FD"
+    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_DOMAIN || { vk_input_error 'Ввод домена прерван.'; return 1; }
+    VK_INPUT_DOMAIN=$(vk_trim "$VK_INPUT_DOMAIN")
+    VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN,,}; VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN%.}
+    vk_validate_domain "$VK_INPUT_DOMAIN" || { vk_input_error 'Некорректный домен: без https://, порта и пути; IDN в punycode.'; return 1; }
+    exec {VK_TTY_FD}>&-
+    unset VK_TTY_FD
+    trap - EXIT INT TERM HUP
+    printf '\nВсе три значения приняты. IPv4 ноды будет выбран автоматически; SECRET_KEY не выводится.\n'
+}
+[[ $EUID -eq 0 ]] || { echo 'Запустите через sudo bash или от root.' >&2; exit 1; }
+[[ ${BASH_VERSINFO[0]} -ge 4 ]] || { echo 'Bash >= 4 required' >&2; exit 1; }
+command -v flock >/dev/null || { echo 'util-linux/flock required' >&2; exit 1; }
+mkdir -p /run/lock
+exec 9>/run/lock/vkarmani-node-installer.lock
+flock -n 9 || { echo 'Установщик уже запущен.' >&2; exit 1; }
+[[ -d /run/systemd/system ]] || { echo 'Требуется сервер с systemd.' >&2; exit 1; }
+if systemd-detect-virt --container --quiet; then
+    echo 'LXC/OpenVZ/Docker не поддерживаются: ядро и полное отключение IPv6 контролирует хост.' >&2
+    exit 1
+fi
+[[ -r /etc/os-release ]] || exit 1
+# Only distro-owned os-release is sourced. User input is always JSON, never shell.
+# shellcheck disable=SC1091
+. /etc/os-release
+case "${ID:-}:${VERSION_ID:-}" in
+    ubuntu:22.04|ubuntu:24.04|debian:12|debian:13) ;;
+    *) echo "ОС вне поддерживаемого списка: ${PRETTY_NAME:-unknown}. Никаких изменений не выполнено." >&2; exit 1 ;;
+esac
+OS_ID=$ID
+OS_CODENAME=$VERSION_CODENAME
+case "$(dpkg --print-architecture)" in amd64|arm64) ;; *) echo 'Только amd64/arm64' >&2; exit 1 ;; esac
+[[ -f /boot/grub/grub.cfg && -f /etc/default/grub ]] && command -v update-grub >/dev/null || {
+    echo 'Нужна загрузка через GRUB: update-grub, /boot/grub/grub.cfg, /etc/default/grub.' >&2; exit 1;
+}
+if _contains -al 'systemd-boot' /sys/firmware/efi/efivars/LoaderInfo-* 2>/dev/null; then
+    echo 'Обнаружен systemd-boot, этот установщик изменяет только GRUB. Остановка.' >&2; exit 1
+fi
+[[ "${SSH_CONNECTION:-}" != *:* ]] || { echo 'Текущая SSH-сессия использует IPv6. Сначала подключитесь по IPv4.' >&2; exit 1; }
+[[ -x /usr/sbin/sshd ]] || { echo 'Требуется установленный OpenSSH server.' >&2; exit 1; }
+install -d -o root -g root -m 0755 /run/sshd
+/usr/sbin/sshd -t
+MEM_MB=$(awk '/MemTotal:/{print int($2/1024)}' /proc/meminfo)
+FREE_MB=$(df -Pm / | awk 'NR==2{print $4}')
+[[ "$MEM_MB" -ge 900 && "$FREE_MB" -ge 6144 ]] || {
+    echo "Нужно >=900 MiB RAM и >=6144 MiB свободного места. Сейчас RAM=$MEM_MB, disk=$FREE_MB MiB." >&2; exit 1;
+}
+[[ -z "$(dpkg --audit)" ]] || { echo 'dpkg сообщает незавершённые операции. Исправьте пакетную базу прежде установки.' >&2; exit 1; }
+[[ -z "$(apt-mark showhold)" ]] || { echo 'Есть удерживаемые пакеты (apt-mark showhold). Полное обновление без снятия hold невозможно; остановка.' >&2; exit 1; }
+FRESH=1
+[[ -f "$STATE/owned-installation" ]] && FRESH=0
+if [[ $FRESH -eq 0 && -f "$ETC/config.json" ]] && ! grep -F '"installation_mode": "secret-key-only"' "$ETC/config.json" >/dev/null; then
+    echo 'Найдена установка другой версии/режима. Этот вариант не мигрирует API-установку: используйте чистую VPS.' >&2
+    exit 1
+fi
+if [[ $FRESH -eq 1 ]]; then
+    for p in "$ETC" "$OPT" /etc/vkarmani /opt/remnanode /opt/remnawave; do
+        [[ ! -e "$p" ]] || { echo "Уже существует $p. Автоматическая миграция/удаление не выполняется." >&2; exit 1; }
+    done
+    if command -v docker >/dev/null; then
+        [[ -z "$(docker ps -aq 2>/dev/null)" ]] || { echo 'Найдены чужие Docker containers. Нужна выделенная чистая VPS.' >&2; exit 1; }
+    fi
+    if command -v ufw >/dev/null && ufw status | _contains -F 'Status: active'; then
+        echo 'UFW уже активен. Чужой firewall не перезаписывается: используйте чистую VPS.' >&2; exit 1
+    fi
+    for service in firewalld nftables netfilter-persistent nginx apache2 caddy; do
+        if systemctl is-active --quiet "$service"; then
+            echo "Активен $service. Нужна чистая выделенная VPS, без старого web/firewall стека." >&2; exit 1
+        fi
+    done
+    if ss -H -lnt | awk '{print $4}' | _contains -E ':(80|443)$'; then
+        echo 'Порты 80/443 уже заняты.' >&2; exit 1
+    fi
+    # Refuse a separate unmanaged nftables/iptables ruleset, even when its unit is inactive.
+    if command -v nft >/dev/null && [[ -n "$(nft list tables 2>/dev/null)" ]]; then
+        echo 'Обнаружены существующие nftables tables. Нужен чистый firewall.' >&2; exit 1
+    fi
+    for p in /etc/docker/daemon.json /etc/nginx/conf.d /etc/nginx/sites-enabled; do
+        if [[ -f "$p" ]] || { [[ -d "$p" ]] && find "$p" -mindepth 1 -maxdepth 1 ! -name default -print -quit | _contains .; }; then
+            echo "Найдена пользовательская конфигурация $p. Не перезаписываю." >&2; exit 1
+        fi
+    done
+fi
+# Input is from /dev/tty, never from the downloaded shell script stream.
+vk_collect_inputs
+# Package maintainer scripts must not read answers from the operator's terminal.
+# All installer questions have been answered; unexpected package prompts fail safely.
+exec </dev/null
+install -d -m 0700 "$ETC" "$STATE" "$LIB" "$OPT"
+touch "$LOG"; chmod 0600 "$LOG"
+# No xtrace, no printing of SECRET_KEY, private keys or Docker environment.
+exec > >(exec 9>&-; tee -a "$LOG") 2>&1
+stage() { printf '\n[%s] %s\n' "$(date -Is)" "$*"; }
+die() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
+ensure_sshd_runtime() { install -d -o root -g root -m 0755 /run/sshd; }
+ERROR_HANDLED=0
+on_error() {
+    local rc=$? line=${1:-unknown}
+    if [[ "$ERROR_HANDLED" == 1 ]]; then
+        exit "$rc"
+    fi
+    ERROR_HANDLED=1
+    trap - ERR
+    printf '\nINSTALL_FAILED rc=%s line=%s\nСм. %s. Ребут НЕ запланирован.\n' "$rc" "$line" "$LOG" >&2
+    printf 'rc=%s line=%s at=%s\n' "$rc" "$line" "$(date -Is)" > "$STATE/INSTALL_FAILED"
+    if [[ -f "$STATE/image-update-pending" && -s "$STATE/compose.previous.yaml" ]]; then
+        printf 'Возвращаю предыдущий образ RemnaNode после неудачного обновления.\n' >&2
+        cp -a "$STATE/compose.previous.yaml" "$OPT/compose.yaml"
+        cp -a "$STATE/image-digest.previous" "$STATE/image-digest"
+        if docker compose -f "$OPT/compose.yaml" up -d; then
+            rm -f "$STATE/image-update-pending"
+        else
+            printf 'Автооткат образа не подтверждён. Нужна проверка Docker через консоль VPS.\n' >&2
+        fi
+    fi
+    if [[ -f "$STATE/network-rollback-armed" ]]; then
+        /usr/local/sbin/vkarmani-network-rollback || true
+    fi
+    exit "$rc"
+}
+trap 'on_error "$LINENO"' ERR
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+stage "VKarmani installer $INSTALLER_VERSION — проверка и резервная копия"
+BK="$STATE/backups/$(date +%Y%m%d-%H%M%S)-$$"
+install -d -m 0700 "$BK"
+for p in etc/ssh etc/ufw etc/default/ufw etc/default/grub etc/default/grub.d etc/sysctl.d \
+         etc/docker etc/nginx etc/fail2ban etc/chrony etc/default/chrony etc/fstab; do
+    if [[ -e "/$p" ]]; then cp -a --parents "/$p" "$BK/"; fi
+done
+printf '%s\n' "$BK" > "$STATE/latest-backup-path"
+# Mark ownership only after all destructive-operation preconditions pass.
+touch "$STATE/owned-installation"
+
+stage 'Базовые инструменты из подписанного репозитория ОС'
+cat > /etc/apt/apt.conf.d/99-vkarmani-ipv4 <<'EOF'
+Acquire::ForceIPv4 "true";
+Acquire::Retries "3";
+DPkg::Lock::Timeout "300";
+EOF
+APT=(apt-get -y -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+apt-get update
+"${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
+vk_write_helper
 helper() { python3 "$LIB/node_helper.py" "$@"; }
 # printf is a Bash builtin: SECRET_KEY is not passed as argv/env to an external process.
 printf '%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" | helper init "$NODE_PORT_DEFAULT"
@@ -2042,6 +2294,7 @@ stage 'RemnaNode: проверка введённого SECRET_KEY, образ �
 if [[ $FRESH -eq 0 ]]; then systemctl stop vkarmani-node.service || true; fi
 helper secret
 vk_write_tls_check
+vk_write_connection_tools
 if [[ ! -s "$STATE/image-digest" || $REFRESH_IMAGE -eq 1 ]]; then
     docker pull "$IMAGE"
     DIGEST=$(docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}')
@@ -2089,7 +2342,7 @@ systemctl daemon-reload
 systemctl disable vkarmani-node.service 2>/dev/null || true
 # Explicit up also reconciles a resumed run when the oneshot unit already says active.
 docker compose -f "$OPT/compose.yaml" up -d --remove-orphans
-systemctl start vkarmani-node
+# Docker restart: always owns startup; the manual oneshot must stay inactive.
 for attempt in $(seq 1 6); do
     if helper control-ready >/dev/null 2>&1; then break; fi
     sleep 2
@@ -2291,7 +2544,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-1.3.4-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-1.3.5-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/sbin/vkarmani-node-check
@@ -2339,7 +2592,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 1.3.4 — исправление только на НОДЕ'
+    echo 'VKarmani 1.3.5 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -2404,7 +2657,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=1.3.4\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=1.3.5\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -2434,7 +2687,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-1.3.4-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-1.3.5-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -2445,7 +2698,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 1.3.4 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 1.3.5 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -2482,7 +2735,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=1.3.4\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=1.3.5\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true
@@ -2510,8 +2763,346 @@ vkarmani_repair_network_main() {
     return "$check_rc"
 }
 
-# VKARMANI_COMPLETE_PAYLOAD_1_3_4
+vkarmani_diagnose_node_main() (
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C LANG=C PYTHONUTF8=1
+    [[ $# -eq 0 && $EUID -eq 0 ]] || { echo 'Использование на НОДЕ: sudo bash install.sh --diagnose-node'; exit 2; }
+    [[ -f /var/lib/vkarmani-node/owned-installation && -s /etc/vkarmani-node/config.json ]] || {
+        echo 'STOP: собственная установка VKarmani Node не найдена.'; exit 2;
+    }
+    local tmp
+    tmp=$(mktemp -d /tmp/vkarmani-node-audit.XXXXXXXX)
+    trap 'rm -rf -- "$tmp"' EXIT
+    vk_write_helper "$tmp"
+    vk_write_tls_check "$tmp/tls_check.py"
+    vk_write_connection_tools "$tmp"
+    VKARMANI_DIAG_LIB="$tmp" VKARMANI_DIAG_TLS="$tmp/tls_check.py" python3 "$tmp/node_connection.py" audit
+)
+
+vkarmani_diagnose_panel_main() (
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C LANG=C
+    [[ $EUID -eq 0 && $# -ge 1 && $# -le 3 ]] || {
+        echo 'На ПАНЕЛИ: sudo bash install.sh --diagnose-panel NODE_ADDRESS [NODE_PORT] [BACKEND_CONTAINER]'; exit 2;
+    }
+    command -v docker >/dev/null
+    local target=$1 port=${2:-2222} selected=${3:-} name image
+    local -a matches=()
+    [[ "$port" =~ ^[0-9]{1,5}$ ]] && ((10#$port > 0 && 10#$port <= 65535)) || { echo 'STOP: неверный порт.'; exit 2; }
+    [[ "$target" =~ ^[A-Za-z0-9.-]{1,253}$ ]] || { echo 'STOP: нужен адрес ноды без https:// и пути.'; exit 2; }
+    [[ -z "$selected" || "$selected" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]] || { echo 'STOP: неверное имя контейнера.'; exit 2; }
+    while read -r name image; do
+        if [[ "$image" =~ ^(remnawave/backend|ghcr.io/remnawave/backend)(:|@|$) ]]; then
+            if [[ -z "$selected" || "$name" == "$selected" ]]; then matches+=("$name"); fi
+        fi
+    done < <(docker ps --format '{{.Names}} {{.Image}}')
+    [[ ${#matches[@]} -eq 1 ]] || {
+        echo 'PANEL_CHECK=INCOMPLETE: нужен один работающий официальный backend-контейнер.'
+        echo 'При нескольких укажите его имя третьим аргументом после порта. Изменений нет.'; exit 2;
+    }
+    selected=${matches[0]}
+    printf 'PANEL_BACKEND_CONTAINER=%s\n' "$selected"
+    echo 'Тест использует сертификат клиента и JWT-ключ ТОЛЬКО в памяти backend; БД открывается read-only.'
+    # All credentials remain in the container; stdin contains source code, never keys.
+    docker exec -i "$selected" node - "$target" "$port" <<'VK_PAYLOAD_PANEL_CHECK'
+'use strict';
+/* Read-only probe inside an already running official Remnawave backend.
+ * Credentials never leave this process except the intended TLS/JWT handshake.
+ * No private CA key is read; no panel/node state-changing endpoint is called.
+ */
+const crypto = require('node:crypto');
+const https = require('node:https');
+const net = require('node:net');
+const { createRequire } = require('node:module');
+
+function pem(value) {
+  if (typeof value !== 'string' || !value.includes('-----BEGIN ')) throw new Error('KEY_MATERIAL_INVALID');
+  return value.replace(/\\n/g, '\n').replace(/\r\n/g, '\n').trim() + '\n';
+}
+function deriveSni(ca, jwt) {
+  const compact = s => pem(s).replace(/-----[^-]+-----/g, '').replace(/[^A-Za-z0-9+/=]/g, '');
+  const secret = Buffer.from(compact(jwt) + compact(ca), 'ascii');
+  const bytes = Buffer.from(crypto.hkdfSync('sha256', secret, Buffer.alloc(0), Buffer.from('rw-v1'), 22));
+  const labels = [bytes.subarray(0, 16).toString('hex'), bytes.subarray(16, 21).toString('hex')];
+  labels.push(['com', 'net', 'org', 'io', 'dev', 'app'][bytes[21] % 6]);
+  return labels.join('.');
+}
+function makeToken(privateKey) {
+  const now = Math.floor(Date.now() / 1000);
+  const encode = object => Buffer.from(JSON.stringify(object)).toString('base64url');
+  const data = encode({ alg: 'RS256', typ: 'JWT' }) + '.' + encode({ iat: now, exp: now + 60, diagnostic: true });
+  return data + '.' + crypto.sign('RSA-SHA256', Buffer.from(data), pem(privateKey)).toString('base64url');
+}
+function validateTarget(host, port) {
+  const ipv4 = net.isIP(host) === 4;
+  const domain = host.length <= 253 && host.split('.').length >= 2 && host.split('.').every(
+    label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+  if ((!ipv4 && !domain) || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('INVALID_NODE_ADDRESS_OR_PORT');
+}
+function probe(host, port, keys, options = {}) {
+  // Only this GET is used. In RemnaNode some other GET routes mutate state!
+  return new Promise(resolve => {
+    let stage = 'TCP', finished = false, request, timer;
+    const result = (extra) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      if (request) request.destroy();
+      resolve({ ok: false, stage, ...extra });
+    };
+    const safeCode = value => typeof value === 'string' && /^[A-Z0-9_]{1,100}$/.test(value) ? value : 'UNCLASSIFIED';
+    try {
+      const settings = {
+        hostname: host, port, family: 4, method: 'GET', path: '/node/xray/healthcheck',
+        servername: deriveSni(keys.ca_cert, keys.pub_key),
+        ca: pem(keys.ca_cert), cert: pem(keys.client_cert), key: pem(keys.client_key),
+        rejectUnauthorized: true, minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3',
+        // Node leaf names are not the IP/domain. CA/signature/expiry remain verified.
+        checkServerIdentity: () => undefined,
+        agent: false, headers: { Authorization: 'Bearer ' + makeToken(keys.priv_key), Accept: 'application/json' }
+      };
+      if (options.curve) settings.ecdhCurve = options.curve;
+      request = https.request(settings, response => {
+        stage = 'HTTP';
+        let count = 0, chunks = [];
+        response.on('data', data => {
+          count += data.length;
+          if (count > 2 * 1024 * 1024) return result({ code: 'RESPONSE_TOO_LARGE', status: response.statusCode });
+          chunks.push(data);
+        });
+        response.on('error', error => result({ code: safeCode(error.code) }));
+        response.on('end', () => {
+          let body;
+          try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_) { /* report no raw body */ }
+          const valid = response.statusCode === 200 && body && typeof body === 'object' && Object.hasOwn(body, 'response');
+          result({ ok: Boolean(valid), status: response.statusCode, code: valid ? 'AUTHENTICATED_HEALTHCHECK' : 'UNEXPECTED_HTTP_RESPONSE' });
+        });
+      });
+      request.on('socket', socket => {
+        socket.on('connect', () => { stage = 'TLS'; });
+        socket.on('secureConnect', () => { stage = 'TLS_SERVER_VERIFIED'; });
+      });
+      request.on('error', error => result({ code: safeCode(error.code) }));
+      timer = setTimeout(() => result({ code: 'DEADLINE_EXCEEDED' }), options.timeout || 12000);
+      request.end();
+    } catch (_) { result({ code: 'CREDENTIAL_OR_TLS_SETUP_ERROR' }); }
+  });
+}
+function printResult(prefix, result) {
+  console.log(prefix + '=' + (result.ok ? 'PASS' : 'FAIL') + ' stage=' + result.stage + ' code=' + result.code + (result.status ? ' HTTP=' + result.status : ''));
+}
+function getPrisma() {
+  const loaders = [require, createRequire('/opt/app/dist/main.js'), createRequire('/opt/app/package.json')];
+  for (const loader of loaders) {
+    try { return loader('@prisma/client').PrismaClient; } catch (_) { /* try next known official layout */ }
+  }
+  throw new Error('PRISMA_NOT_AVAILABLE_IN_THIS_CONTAINER');
+}
+async function readPanel(PrismaClient, address) {
+  const db = new PrismaClient({ log: [] });
+  try {
+    // Explicitly read-only, with no SELECT * and no CA private-key access.
+    return await db.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+      const rows = await tx.$queryRawUnsafe('SELECT ca_cert, pub_key, client_cert, client_key, priv_key FROM keygen LIMIT 2');
+      if (rows.length !== 1) throw new Error('KEYGEN_ROW_COUNT_UNEXPECTED');
+      const nodes = await tx.$queryRawUnsafe(`SELECT n.port,
+        to_jsonb(n)->>'is_disabled' AS disabled,
+        to_jsonb(n)->>'is_connected' AS connected,
+        to_jsonb(n)->>'active_config_profile_uuid' AS profile,
+        (coalesce(to_jsonb(n)->>'proxy_url', '') <> '') AS has_proxy,
+        (SELECT count(*)::int FROM config_profile_inbounds_to_nodes b WHERE b.node_uuid=n.uuid) AS inbounds
+        FROM nodes n WHERE lower(n.address)=lower($1) LIMIT 2`, address);
+      return { keys: rows[0], nodes };
+    }, { maxWait: 5000, timeout: 10000 });
+  } finally { await db.$disconnect(); }
+}
+async function main(args) {
+  const host = args[0] || '', port = Number(args[1] || '2222');
+  validateTarget(host, port);
+  const { keys, nodes } = await readPanel(getPrisma(), host);
+  for (const value of Object.values(keys)) pem(value);
+  const publicDer = crypto.createPublicKey(pem(keys.pub_key)).export({ type: 'spki', format: 'der' });
+  const fromPrivate = crypto.createPublicKey(pem(keys.priv_key)).export({ type: 'spki', format: 'der' });
+  if (!publicDer.equals(fromPrivate)) throw new Error('PANEL_JWT_KEY_PAIR_MISMATCH');
+  console.log('PANEL_DB=READ_ONLY_OK');
+  console.log('CA_SHA256=' + crypto.createHash('sha256').update(new crypto.X509Certificate(pem(keys.ca_cert)).raw).digest('hex'));
+  console.log('API_SNI=DERIVED_FROM_PANEL_KEYS');
+  console.log('NODE_TARGET=' + host + ':' + port);
+  if (!nodes.length) console.log('NODE_CARD=NO_EXACT_ADDRESS_MATCH (a card using a DNS alias is not excluded)');
+  else for (const node of nodes) {
+    console.log('NODE_CARD=FOUND PORT_MATCH=' + (node.port === port ? 'YES' : 'NO'));
+    console.log('NODE_DISABLED=' + node.disabled + ' PROFILE_ASSIGNED=' + Boolean(node.profile) + ' ASSIGNED_INBOUNDS=' + node.inbounds);
+    console.log('DB_CONNECTED=' + node.connected + ' (stored state, not proof of this probe)');
+    if (node.has_proxy) console.log('NODE_PROXY_CONFIGURED=YES; this probe tests DIRECT transport only, not the configured proxy');
+  }
+  const result = await probe(host, port, keys);
+  printResult('PANEL_NODE_API', result);
+  if (result.ok) {
+    console.log('PANEL_MTLS=PASS PANEL_JWT=PASS');
+    console.log('AUTHENTICATED_DIRECT_API=PASS; panel worker state, applied Xray profile and client traffic are not verified.');
+    return 0;
+  }
+  if (result.status === 401 || result.status === 403) console.log('PANEL_MTLS=PASS PANEL_JWT=REJECTED; compare credentials and clocks');
+  if (result.stage.startsWith('TLS')) {
+    const alternate = await probe(host, port, keys, { curve: 'X25519' });
+    printResult('PANEL_NODE_API_X25519_DIAGNOSTIC', alternate);
+    if (alternate.ok) console.log('TLS_GROUP_OR_PATH_DIFFERENCE=DETECTED; diagnostic only, runtime was not changed; MTU loss is not proven');
+  }
+  console.log('PANEL_CONNECTION=NOT_CONFIRMED; compare node/panel CA_SHA256, TCP/TLS stage and panel source allowlist.');
+  return 1;
+}
+module.exports = { pem, deriveSni, makeToken, validateTarget, probe, readPanel, main };
+if (require.main === module || process.argv[1] === '-') {
+  const watchdog = setTimeout(() => { console.error('PANEL_CHECK=INCOMPLETE TOTAL_DEADLINE_EXCEEDED'); process.exit(2); }, 60000);
+  main(process.argv.slice(2)).then(code => { clearTimeout(watchdog); process.exitCode = code; }).catch(error => {
+    clearTimeout(watchdog);
+    const allowed = ['INVALID_NODE_ADDRESS_OR_PORT', 'PRISMA_NOT_AVAILABLE_IN_THIS_CONTAINER', 'KEYGEN_ROW_COUNT_UNEXPECTED', 'KEY_MATERIAL_INVALID', 'PANEL_JWT_KEY_PAIR_MISMATCH'];
+    console.error('PANEL_CHECK=INCOMPLETE ' + (allowed.includes(error.message) ? error.message : 'DB_SCHEMA_OR_CREDENTIAL_ERROR'));
+    console.error('No raw exception, connection string, JWT, certificate or private key was printed.');
+    process.exitCode = 2;
+  });
+}
+VK_PAYLOAD_PANEL_CHECK
+)
+
+vkarmani_repair_connection_main() (
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C LANG=C PYTHONUTF8=1
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    local refresh=0
+    if [[ $# -eq 1 && "$1" == --refresh-image ]]; then refresh=1
+    elif [[ $# -ne 0 ]]; then echo 'Использование: bash install.sh --repair-connection [--refresh-image]'; exit 2; fi
+    [[ $EUID -eq 0 ]] || { echo 'Запустите на НОДЕ от root.'; exit 1; }
+    local STATE=/var/lib/vkarmani-node LIB=/usr/local/lib/vkarmani-node OPT=/opt/vkarmani-node ETC=/etc/vkarmani-node
+    [[ -f "$STATE/owned-installation" && -s "$STATE/INSTALL_COMPLETE" && -s "$OPT/compose.yaml" && -s "$STATE/image-digest" ]] || {
+        echo 'STOP: завершённая собственная установка 1.3.x не найдена. Изменений нет.'; exit 1;
+    }
+    grep -Eq '^version=1\.3\.[0-9]+$' "$STATE/INSTALL_COMPLETE" || { echo 'STOP: требуется завершённая установка 1.3.x.'; exit 1; }
+    local cmd
+    for cmd in python3 docker ufw systemctl flock; do command -v "$cmd" >/dev/null; done
+    [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
+    exec 9>/run/lock/vkarmani-node-installer.lock
+    flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
+    # Avoid partial repairs when firewall is unmanaged or secrets are invalid.
+    local ufw_status
+    ufw_status=$(ufw status)
+    [[ "$ufw_status" == 'Status: active'* ]] || { echo 'STOP: UFW неактивен; автоматически firewall не включаю.'; exit 1; }
+    python3 "$LIB/node_helper.py" secret
+    local old_digest digest image_before node_port panel
+    old_digest=$(cat "$STATE/image-digest")
+    [[ "$old_digest" =~ ^(remnawave/node|ghcr.io/remnawave/node)@sha256:[a-f0-9]{64}$ ]] || { echo 'STOP: неверный сохранённый digest.'; exit 1; }
+    image_before=$(docker inspect remnanode --format '{{.Image}}')
+    [[ "$image_before" == "$(docker image inspect "$old_digest" --format '{{.Id}}')" ]] || {
+        echo 'STOP: работающий образ отличается от сохранённого. Не заменяю неизвестное состояние.'; exit 1;
+    }
+    node_port=$(python3 "$LIB/node_helper.py" get node_port)
+    local -a panels=()
+    mapfile -t panels < <(python3 "$LIB/node_helper.py" get panel_ipv4)
+    [[ ${#panels[@]} -ge 1 ]] || { echo 'STOP: список IPv4 панели пуст.'; exit 1; }
+    local bk="$STATE/backups/connection-1.3.5-$(date +%Y%m%d-%H%M%S)-$$"
+    install -d -m 0700 "$bk"
+    local -a files=( "$OPT/compose.yaml" "$STATE/image-digest" "$LIB/node_helper.py" "$LIB/node_connection.py"
+        /usr/local/sbin/vkarmani-node-tls-check /etc/systemd/system/vkarmani-node.service )
+    local i
+    for i in "${!files[@]}"; do
+        if [[ -e "${files[$i]}" ]]; then cp -a "${files[$i]}" "$bk/$i.before"; fi
+        printf '%s\n' "${files[$i]}" >> "$bk/files.txt"
+    done
+    # Copies contain secrets, so the entire backup directory is root-only.
+    cp -a "$ETC/config.json" "$bk/config.json.before"
+    cp -a "$ETC/remnanode.env" "$bk/remnanode.env.before"
+    local was_active was_enabled touched=0 trapped=0
+    was_active=$(systemctl is-active vkarmani-node.service 2>/dev/null || true)
+    was_enabled=$(systemctl is-enabled vkarmani-node.service 2>/dev/null || true)
+    connection_repair_error() {
+        local rc=${1:-1} line=${2:-unknown}
+        [[ $trapped -eq 0 ]] || exit "$rc"
+        trapped=1
+        trap - ERR INT TERM HUP
+        set +e
+        echo "CONNECTION_REPAIR=FAIL rc=$rc line=$line"
+        if [[ $touched -eq 1 ]]; then
+            for i in "${!files[@]}"; do
+                if [[ -e "$bk/$i.before" ]]; then cp -a "$bk/$i.before" "${files[$i]}"
+                else rm -f -- "${files[$i]}"; fi
+            done
+            systemctl daemon-reload
+            [[ "$was_enabled" != enabled ]] || systemctl enable vkarmani-node.service >"$bk/rollback-systemd.log" 2>&1
+            [[ "$was_enabled" != disabled ]] || systemctl disable vkarmani-node.service >>"$bk/rollback-systemd.log" 2>&1
+            if docker compose -f "$OPT/compose.yaml" up -d --pull never --force-recreate remnanode >"$bk/rollback-compose.log" 2>&1; then
+                echo 'ROLLBACK_CONTAINER_START=PASS (previous runtime health is not proven)'
+            else echo "ROLLBACK_CONTAINER_START=FAIL; закрытый журнал: $bk/rollback-compose.log"; fi
+            if [[ "$was_active" == active ]]; then systemctl start vkarmani-node.service >>"$bk/rollback-systemd.log" 2>&1; fi
+        fi
+        echo "Резервная копия: $bk"
+        echo 'Узкие разрешения UFW для сохранённых IP панели при откате остаются; ключи и ОС не менялись.'
+        exit "$rc"
+    }
+    trap 'connection_repair_error "$?" "$LINENO"' ERR
+    trap 'connection_repair_error 130 "$LINENO"' INT
+    trap 'connection_repair_error 143 "$LINENO"' TERM
+    trap 'connection_repair_error 129 "$LINENO"' HUP
+    echo 'VKarmani 1.3.5 — ремонт канала управления RemnaNode'
+    echo "Резервная копия: $bk"
+    echo 'Без APT, reboot, смены ключей, профиля RAW/REALITY, Nginx, SSH, маршрутов, MTU и sysctl.'
+    echo 'Контейнер RemnaNode будет пересоздан; активные VPN-соединения прервутся.'
+    digest=$old_digest
+    if [[ $refresh -eq 1 ]]; then
+        echo 'Загружаю официальный remnawave/node:latest ДО остановки старого контейнера.'
+        docker pull remnawave/node:latest
+        digest=$(docker image inspect remnawave/node:latest --format '{{index .RepoDigests 0}}')
+        [[ "$digest" =~ ^(remnawave/node|ghcr.io/remnawave/node)@sha256:[a-f0-9]{64}$ ]] || { echo 'STOP: официальный digest не найден.'; false; }
+    fi
+    docker tag "$image_before" remnawave/node:vkarmani-connection-rollback
+    touched=1
+    vk_write_helper
+    vk_write_tls_check
+    vk_write_connection_tools
+    # Reconcile before downtime. Expanded Compose output is captured in memory.
+    python3 "$LIB/node_connection.py" reconcile "$digest"
+    docker compose -f "$OPT/compose.yaml" config --quiet >"$bk/compose-validation.log" 2>&1
+    printf '%s\n' "$digest" > "$STATE/image-digest"
+    for panel in "${panels[@]}"; do
+        # Precede any stale deny rule; source remains restricted, never open to all.
+        ufw insert 1 allow proto tcp from "$panel" to any port "$node_port" comment 'VKarmani panel management'
+    done
+    # The old active oneshot otherwise issues a Compose stop on shutdown.
+    if [[ "$was_active" == active || "$was_active" == activating ]]; then systemctl stop vkarmani-node.service; fi
+    vk_write_node_unit
+    systemctl daemon-reload
+    systemctl disable vkarmani-node.service >"$bk/systemd-disable.log" 2>&1 || true
+    docker compose -f "$OPT/compose.yaml" up -d --pull never --force-recreate remnanode >"$bk/compose-up.log" 2>&1
+    local ready=0 attempt
+    for attempt in 1 2 3; do
+        if /usr/local/sbin/vkarmani-node-tls-check >"$bk/tls-check.log" 2>&1; then ready=1; break; fi
+        sleep 2
+    done
+    cat "$bk/tls-check.log"
+    [[ $ready -eq 1 ]] || { echo 'STOP: локальная TLS-проверка не прошла; пробую вернуть прежние файлы и контейнер.'; false; }
+    python3 "$LIB/node_connection.py" verify-runtime
+    [[ "$refresh" -eq 1 || "$(docker inspect remnanode --format '{{.Image}}')" == "$image_before" ]]
+    cmp --silent "$ETC/config.json" "$bk/config.json.before"
+    cmp --silent "$ETC/remnanode.env" "$bk/remnanode.env.before"
+    printf 'version=1.3.5\nat=%s\nimage=%s\n' "$(date -Is)" "$digest" > "$STATE/CONNECTION_REPAIR_COMPLETE"
+    trap - ERR INT TERM HUP
+    echo 'CONNECTION_REPAIR=APPLIED NODE_MANAGEMENT_LOCAL=PASS'
+    echo 'PANEL_CONNECTION=NOT_VERIFIED (локальная проверка не является аутентификацией панели)'
+    echo "Следующий шаг на СЕРВЕРЕ ПАНЕЛИ: bash install.sh --diagnose-panel $(python3 "$LIB/node_helper.py" get public_ipv4) $node_port"
+    echo 'Reboot не назначен. Для действующего VPN дополнительно проверьте состояние ноды и профиль в панели.'
+)
+
+# VKARMANI_COMPLETE_PAYLOAD_1_3_5
 case "${1:-}" in
+    --repair-connection) shift; vkarmani_repair_connection_main "$@" ;;
+    --diagnose-node) shift; vkarmani_diagnose_node_main "$@" ;;
+    --diagnose-panel) shift; vkarmani_diagnose_panel_main "$@" ;;
     --repair-network) shift; vkarmani_repair_network_main "$@" ;;
     --repair-node) shift; vkarmani_repair_main "$@" ;;
     *) vkarmani_main "$@" ;;

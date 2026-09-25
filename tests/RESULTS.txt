@@ -1,0 +1,36 @@
+test_atomic_write_permissions (test_connection.ComposeTests.test_atomic_write_permissions) ... ok
+test_reconcile_stale_environment (test_connection.ComposeTests.test_reconcile_stale_environment) ... ok
+test_reject_extra_services (test_connection.ComposeTests.test_reject_extra_services) ... ok
+test_reject_foreign_image (test_connection.ComposeTests.test_reject_foreign_image) ... ok
+test_reject_mismatched_selfsteal_mount (test_connection.ComposeTests.test_reject_mismatched_selfsteal_mount) ... ok
+test_reject_unpinned_image (test_connection.ComposeTests.test_reject_unpinned_image) ... ok
+test_runtime_match (test_connection.ComposeTests.test_runtime_match) ... ok
+test_runtime_mismatch (test_connection.ComposeTests.test_runtime_mismatch) ... ok
+test_authenticated_panel_api (test_connection.ProtocolTests.test_authenticated_panel_api) ... ok
+test_classic_curve_diagnostic (test_connection.ProtocolTests.test_classic_curve_diagnostic) ... ok
+test_correct_sni_local_tls_passes_without_claiming_mtls (test_connection.ProtocolTests.test_correct_sni_local_tls_passes_without_claiming_mtls) ... ok
+test_fragmented_large_clienthello (test_connection.ProtocolTests.test_fragmented_large_clienthello) ... ok
+test_hkdf_python_matches_node_crypto (test_connection.ProtocolTests.test_hkdf_python_matches_node_crypto) ... ok
+test_hkdf_whitespace_normalization (test_connection.ProtocolTests.test_hkdf_whitespace_normalization) ... ok
+test_http200_without_contract_not_success (test_connection.ProtocolTests.test_http200_without_contract_not_success) ... ok
+test_local_leaf_mismatch_detected (test_connection.ProtocolTests.test_local_leaf_mismatch_detected) ... ok
+test_node_stdin_entrypoint_arguments (test_connection.ProtocolTests.test_node_stdin_entrypoint_arguments) ... ok
+test_original_selfsteal_sni_fails (test_connection.ProtocolTests.test_original_selfsteal_sni_fails) ... ok
+test_server_certificate_cannot_authenticate_as_panel (test_connection.ProtocolTests.test_server_certificate_cannot_authenticate_as_panel) ... ok
+test_target_validation (test_connection.ProtocolTests.test_target_validation) ... ok
+test_tcp_refused_is_not_tls_error (test_connection.ProtocolTests.test_tcp_refused_is_not_tls_error) ... ok
+test_wrong_ca_rejected (test_connection.ProtocolTests.test_wrong_ca_rejected) ... ok
+test_wrong_jwt_rejected (test_connection.ProtocolTests.test_wrong_jwt_rejected) ... ok
+test_bash_syntax (test_connection.SyntaxAndBundleTests.test_bash_syntax) ... ok
+test_embedded_matches_development_sources (test_connection.SyntaxAndBundleTests.test_embedded_matches_development_sources) ... ok
+test_embedded_python_compiles (test_connection.SyntaxAndBundleTests.test_embedded_python_compiles) ... ok
+test_full_install_no_oneshot_activation (test_connection.SyntaxAndBundleTests.test_full_install_no_oneshot_activation) ... ok
+test_help_without_side_effects (test_connection.SyntaxAndBundleTests.test_help_without_side_effects) ... ok
+test_javascript_syntax (test_connection.SyntaxAndBundleTests.test_javascript_syntax) ... ok
+test_management_repair_does_not_change_unrelated_services (test_connection.SyntaxAndBundleTests.test_management_repair_does_not_change_unrelated_services) ... ok
+test_only_read_only_endpoint_and_query (test_connection.SyntaxAndBundleTests.test_only_read_only_endpoint_and_query) ... ok
+
+----------------------------------------------------------------------
+Ran 31 tests in 1.880s
+
+OK
