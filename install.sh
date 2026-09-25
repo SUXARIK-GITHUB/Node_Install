@@ -323,38 +323,186 @@ VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK
 
 vk_write_network_script() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-network')"
-    cat > '/usr/local/sbin/vkarmani-node-network' <<'VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT'
-#!/usr/bin/env bash
-# Only reapply our declared sysctls. Do not replace root qdiscs, routes or MTU.
-set -euo pipefail
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-modprobe tcp_bbr
-modprobe sch_fq
-sysctl -p /etc/sysctl.d/99-vkarmani-node.conf >/dev/null
-[[ "$(sysctl -n net.ipv4.tcp_congestion_control)" == bbr ]]
-[[ "$(sysctl -n net.core.default_qdisc)" == fq ]]
-echo 'BBR_AND_DEFAULT_FQ=PASS; interface queue topology left unchanged'
+    local vk_tmp
+    vk_tmp=$(mktemp '/usr/local/sbin/vkarmani-node-network.tmp.XXXXXX')
+    cat > "$vk_tmp" <<'VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT'
+#!/usr/bin/env python3
+"""Apply only this installer's sysctls, including after ipv6.disable=1.
+
+procps 4.0.4 can fail at stat() for a missing key even when the line has '-'.
+Do not use a blanket --ignore/||true: skip only the three absent IPv6 controls,
+and only after confirming that the IPv6 socket API is disabled by the kernel.
+No interfaces, addresses, routes, firewall rules, MTU/MSS or qdiscs are changed.
+"""
+import errno
+import os
+import re
+import socket
+import subprocess
+import sys
+from pathlib import Path
+
+CONFIG = Path('/etc/sysctl.d/99-vkarmani-node.conf')
+PROC_SYS = Path('/proc/sys')
+IPV6_KEYS = {
+    'net.ipv6.conf.all.disable_ipv6',
+    'net.ipv6.conf.default.disable_ipv6',
+    'net.ipv6.conf.lo.disable_ipv6',
+}
+REQUIRED = {
+    'net.core.default_qdisc': 'fq',
+    'net.ipv4.tcp_congestion_control': 'bbr',
+}
+
+
+class ApplyError(Exception):
+    pass
+
+
+def ipv6_socket_disabled():
+    try:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    except OSError as exc:
+        if exc.errno in (errno.EAFNOSUPPORT, errno.EPROTONOSUPPORT):
+            return True
+        raise ApplyError('IPV6_SOCKET_PROBE_FAILED errno=' + str(exc.errno)) from exc
+    else:
+        sock.close()
+        return False
+
+
+def parse_config(text):
+    if len(text) > 65536:
+        raise ApplyError('CONFIG_TOO_LARGE')
+    entries = []
+    seen = set()
+    for lineno, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith(('#', ';')):
+            continue
+        if '=' not in line:
+            raise ApplyError('CONFIG_NOT_ASSIGNMENT line=' + str(lineno))
+        key, value = (x.strip() for x in line.split('=', 1))
+        key = key.removeprefix('-')
+        if (not re.fullmatch(r'[A-Za-z0-9_]+(?:\.[A-Za-z0-9_-]+)+', key)
+                or not value or '\x00' in value):
+            raise ApplyError('CONFIG_INVALID line=' + str(lineno))
+        if key in seen:
+            raise ApplyError('CONFIG_DUPLICATE key=' + key)
+        if key.startswith('net.ipv6.') and (key not in IPV6_KEYS or value != '1'):
+            raise ApplyError('CONFIG_UNEXPECTED_IPV6 key=' + key)
+        entries.append((key, value))
+        seen.add(key)
+    values = dict(entries)
+    for key, expected in REQUIRED.items():
+        if values.get(key) != expected:
+            raise ApplyError('CONFIG_REQUIRED_VALUE key=' + key)
+    # All three controls must remain declared; a missing declaration is not a skip.
+    if not IPV6_KEYS.issubset(values):
+        raise ApplyError('CONFIG_MISSING_IPV6_CONTROLS')
+    return entries
+
+
+def select_entries(entries, proc_root, ipv6_off):
+    kept, skipped = [], []
+    for key, value in entries:
+        path = proc_root.joinpath(*key.split('.'))
+        if not path.exists():
+            if key in IPV6_KEYS and value == '1' and ipv6_off:
+                skipped.append(key)
+                continue
+            raise ApplyError('SYSCTL_KEY_MISSING key=' + key)
+        if not path.is_file():
+            raise ApplyError('SYSCTL_NOT_FILE key=' + key)
+        kept.append((key, value))
+    return kept, skipped
+
+
+def load_modules(run=subprocess.run):
+    for module in ('tcp_bbr', 'sch_fq'):
+        result = run(['modprobe', module], text=True, capture_output=True, timeout=10)
+        if result.returncode:
+            # Report a genuine module failure rather than claiming BBR/fq is ready.
+            raise ApplyError('MODULE_LOAD_FAILED module=' + module + ' ' + ' '.join(result.stderr.split())[:800])
+
+
+def apply_entries(entries, run=subprocess.run):
+    data = ''.join(key + ' = ' + value + '\n' for key, value in entries)
+    result = run(['sysctl', '-p', '-'], input=data,
+                 text=True, capture_output=True, timeout=15)
+    if result.returncode:
+        # This file contains sysctls only, never credentials. Do not suppress errors.
+        detail = ' '.join(result.stderr.split())[:1200]
+        raise ApplyError('SYSCTL_APPLY_FAILED rc=' + str(result.returncode) + ' ' + detail)
+
+
+def verify_entries(entries, proc_root):
+    for key, expected in entries:
+        path = proc_root.joinpath(*key.split('.'))
+        try:
+            actual = path.read_text().strip()
+        except OSError as exc:
+            raise ApplyError('SYSCTL_READBACK_FAILED key=' + key) from exc
+        if actual.split() != expected.split():
+            raise ApplyError('SYSCTL_READBACK_MISMATCH key=' + key)
+
+
+def main():
+    os.environ['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    os.environ['LC_ALL'] = 'C'
+    if len(sys.argv) != 1:
+        print('Usage: vkarmani-node-network', file=sys.stderr)
+        return 2
+    if os.geteuid() != 0:
+        print('NETWORK_SYSCTL=FAIL root required', file=sys.stderr)
+        return 1
+    try:
+        entries = parse_config(CONFIG.read_text(encoding='utf-8'))
+        load_modules()
+        kept, skipped = select_entries(entries, PROC_SYS, ipv6_socket_disabled())
+        for key in skipped:
+            print('IPV6_SYSCTL=SKIP_KERNEL_DISABLED key=' + key, flush=True)
+        apply_entries(kept)
+        verify_entries(kept, PROC_SYS)
+        print('NETWORK_SYSCTL=PASS; BBR_AND_DEFAULT_FQ=PASS; applied=' + str(len(kept))
+              + '; skipped_ipv6=' + str(len(skipped)))
+        return 0
+    except ApplyError as exc:
+        print('NETWORK_SYSCTL=FAIL ' + str(exc), file=sys.stderr)
+    except subprocess.TimeoutExpired as exc:
+        print('NETWORK_SYSCTL=FAIL command timeout: ' + str(exc.cmd[0]), file=sys.stderr)
+    except OSError as exc:
+        print('NETWORK_SYSCTL=FAIL ' + type(exc).__name__ + ' errno=' + str(exc.errno), file=sys.stderr)
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
 VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT
-    chmod 0755 '/usr/local/sbin/vkarmani-node-network'
+    chmod 0755 "$vk_tmp"
+    mv -f -- "$vk_tmp" '/usr/local/sbin/vkarmani-node-network'
 }
 
 vk_write_network_unit() {
     install -d -m 0755 "$(dirname '/etc/systemd/system/vkarmani-node-network.service')"
-    cat > '/etc/systemd/system/vkarmani-node-network.service' <<'VK_PAYLOAD_VK_WRITE_NETWORK_UNIT'
+    local vk_tmp
+    vk_tmp=$(mktemp '/etc/systemd/system/vkarmani-node-network.service.tmp.XXXXXX')
+    cat > "$vk_tmp" <<'VK_PAYLOAD_VK_WRITE_NETWORK_UNIT'
 [Unit]
-Description=VKarmani declared sysctls without replacing interface queues
-After=network.target docker.service ufw.service
+Description=VKarmani IPv6-aware sysctl application (no route or qdisc replacement)
+After=systemd-modules-load.service systemd-sysctl.service network.target docker.service ufw.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/vkarmani-node-network
-TimeoutStartSec=30
+TimeoutStartSec=60
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 VK_PAYLOAD_VK_WRITE_NETWORK_UNIT
-    chmod 0644 '/etc/systemd/system/vkarmani-node-network.service'
+    chmod 0644 "$vk_tmp"
+    mv -f -- "$vk_tmp" '/etc/systemd/system/vkarmani-node-network.service'
 }
 
 vk_write_node_unit() {
@@ -467,7 +615,15 @@ while IFS= read -r port; do
     if ss -H -4 -lnt | awk '{print $4}' | _contains -E ":${port}$"; then pass "SSH_TCP_$port"; else fail "SSH_TCP_$port"; fi
 done < "$ETC/ssh-ports"
 for service in docker containerd nginx fail2ban chrony ufw vkarmani-node-network; do
-    if systemctl is-active --quiet "$service"; then pass "SERVICE_$service"; else fail "SERVICE_$service"; fi
+    if systemctl is-active --quiet "$service"; then
+        pass "SERVICE_$service"
+    else
+        fail "SERVICE_$service"
+        systemctl show "$service.service" -p Result -p ExecMainStatus --no-pager 2>/dev/null || true
+        if [[ "$service" == vkarmani-node-network ]]; then
+            journalctl -b -u "$service.service" -n 12 --no-pager 2>/dev/null || true
+        fi
+    fi
 done
 ufw status | _contains -F 'Status: active' && pass UFW_ACTIVE || fail UFW_ACTIVE
 if python3 - <<'PY'
@@ -626,7 +782,7 @@ EOF
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 1.3.3 — 2026-09-25
+# VKarmani Remnawave Node Installer 1.3.4 — 2026-09-25
 # Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: updates packages, modifies firewall/boot settings and reboots by default.
@@ -637,7 +793,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=1.3.3
+INSTALLER_VERSION=1.3.4
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -650,11 +806,12 @@ REFRESH_IMAGE=0
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 1.3.3
+VKarmani Remnawave Node Installer 1.3.4
 
   sudo bash install.sh
   sudo bash install.sh --no-reboot
   sudo bash install.sh --refresh-image
+  sudo bash install.sh --repair-network
   sudo bash install.sh --repair-node
 
 Первый запуск: чистая выделенная VPS, Ubuntu 22.04/24.04 или Debian 12/13,
@@ -669,6 +826,7 @@ GRUB, systemd, amd64/arm64, публичный IPv4, >= 900 MiB RAM и >= 6 GiB 
 Шаблон профиля: VLESS + RAW + REALITY; Selfsteal: Nginx через /dev/shm/nginx.sock, xver=1.
 Сертификат: аккаунт Let's Encrypt без email, с автоматическим принятием условий CA.
 --refresh-image разрешает обновить уже зафиксированный образ RemnaNode.
+--repair-network исправляет только наш network-helper на завершённой 1.3.x, без reboot/рестарта контейнера.
 HELP
 }
 while (($#)); do
@@ -911,7 +1069,7 @@ apt-get update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 1.3.3: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 1.3.4: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -1385,7 +1543,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 1.3.3 — действия в панели
+    txt = f'''VKarmani RemnaNode 1.3.4 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -1563,7 +1721,8 @@ EOF
 
 stage 'IPv4-only: ядро, GRUB, UFW, SSH; BBR + fq'
 cat > /etc/sysctl.d/99-vkarmani-node.conf <<'EOF'
-# Leading '-' makes these safe even when ipv6.disable=1 removes the IPv6 sysctls.
+# systemd-sysctl accepts optional '-' entries. Our helper explicitly handles
+# absent IPv6 controls; procps 4.0.4 sysctl -p may otherwise exit with ENOENT.
 -net.ipv6.conf.all.disable_ipv6 = 1
 -net.ipv6.conf.default.disable_ipv6 = 1
 -net.ipv6.conf.lo.disable_ipv6 = 1
@@ -1585,9 +1744,8 @@ net.ipv4.icmp_ignore_bogus_error_responses = 1
 vm.swappiness = 10
 EOF
 printf 'tcp_bbr\nsch_fq\n' > /etc/modules-load.d/vkarmani-node.conf
-modprobe tcp_bbr
-modprobe sch_fq
-sysctl -p /etc/sysctl.d/99-vkarmani-node.conf
+vk_write_network_script
+/usr/local/sbin/vkarmani-node-network
 for f in /proc/sys/net/ipv6/conf/*/disable_ipv6; do
     [[ ! -f "$f" ]] || printf '1\n' > "$f"
 done
@@ -2133,7 +2291,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-1.3.3-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-1.3.4-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/sbin/vkarmani-node-check
@@ -2181,7 +2339,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 1.3.3 — исправление только на НОДЕ'
+    echo 'VKarmani 1.3.4 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -2246,18 +2404,115 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=1.3.3\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=1.3.4\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
     echo 'Reboot не запланирован. Для диагностики таймаута не запускайте полную установку заново.'
 }
 
-# VKARMANI_COMPLETE_PAYLOAD_1_3_3
-if [[ "${1:-}" == --repair-node ]]; then
-    shift
-    vkarmani_repair_main "$@"
-else
-    vkarmani_main "$@"
-fi
+vkarmani_repair_network_main() {
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C LANG=C PYTHONUTF8=1
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    [[ $# -eq 0 ]] || { echo 'Использование: bash install.sh --repair-network'; exit 2; }
+    [[ $EUID -eq 0 ]] || { echo 'Запустите на НОДЕ от root.'; exit 1; }
+    local state=/var/lib/vkarmani-node
+    local conf=/etc/sysctl.d/99-vkarmani-node.conf
+    local unit=vkarmani-node-network.service
+    local helper=/usr/local/sbin/vkarmani-node-network
+    local unit_file=/etc/systemd/system/vkarmani-node-network.service
+    [[ -f "$state/owned-installation" && -s "$state/INSTALL_COMPLETE" && -s "$conf" && -f "$helper" && -f "$unit_file" ]] || {
+        echo 'STOP: завершённая установка VKarmani Node не найдена. Изменений нет.'; exit 1;
+    }
+    grep -Eq '^version=1\.3\.[0-9]+$' "$state/INSTALL_COMPLETE" || {
+        echo 'STOP: --repair-network рассчитан на завершённую установку 1.3.x.'; exit 1;
+    }
+    for cmd in python3 sysctl modprobe systemctl journalctl flock; do command -v "$cmd" >/dev/null; done
+    [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
+    exec 9>/run/lock/vkarmani-node-installer.lock
+    flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
+    local bk="$state/backups/network-1.3.4-$(date +%Y%m%d-%H%M%S)-$$"
+    install -d -m 0700 "$bk"
+    cp -a "$helper" "$bk/network-helper.before"
+    cp -a "$unit_file" "$bk/network-unit.before"
+    cp -a "$conf" "$bk/sysctl.before"
+    journalctl -b -u "$unit" -n 60 --no-pager > "$bk/network-journal.before" 2>&1 || true
+    local was_enabled
+    was_enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+    touch /var/log/vkarmani-node-network-repair.log
+    chmod 0600 /var/log/vkarmani-node-network-repair.log
+    exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
+    echo 'VKarmani 1.3.4 — исправление применения sysctl после отключения IPv6'
+    echo "Резервная копия: $bk"
+    echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
+    echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
+    tail -n 20 "$bk/network-journal.before"
+    local trapped=0
+    network_repair_error() {
+        local rc=${1:-1} line=${2:-unknown}
+        [[ $trapped -eq 0 ]] || exit "$rc"
+        trapped=1
+        trap - ERR INT TERM HUP
+        set +e
+        echo "NETWORK_REPAIR=FAIL rc=$rc line=$line; возвращаю два изменённых файла."
+        cp -a "$bk/network-helper.before" "$helper"
+        cp -a "$bk/network-unit.before" "$unit_file"
+        systemctl daemon-reload
+        [[ "$was_enabled" != disabled ]] || systemctl disable "$unit"
+        echo "Старый журнал и резервная копия: $bk"
+        echo 'Частично применённые sysctl автоматически не откатываются; исходный sysctl-конфиг не менялся.'
+        exit "$rc"
+    }
+    trap 'network_repair_error "$?" "$LINENO"' ERR
+    trap 'network_repair_error 130 "$LINENO"' INT
+    trap 'network_repair_error 143 "$LINENO"' TERM
+    trap 'network_repair_error 129 "$LINENO"' HUP
+    vk_write_network_script
+    vk_write_network_unit
+    systemctl daemon-reload
+    systemctl enable "$unit"
+    systemctl reset-failed "$unit" || true
+    if ! systemctl restart "$unit"; then
+        journalctl -b -u "$unit" -n 30 --no-pager || true
+        false
+    fi
+    systemctl is-active --quiet "$unit"
+    [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
+    [[ $(sysctl -n net.core.default_qdisc) == fq ]]
+    printf 'version=1.3.4\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    trap - ERR INT TERM HUP
+    echo 'NETWORK_REPAIR=PASS'
+    journalctl -b -u "$unit" -n 12 --no-pager || true
+    # Re-run the existing diagnostic unit, not the application/container services.
+    if [[ -f /etc/systemd/system/vkarmani-node-postboot.service ]]; then
+        echo '===== ПОВТОРНАЯ POSTBOOT-ПРОВЕРКА ====='
+        systemctl reset-failed vkarmani-node-postboot.service || true
+        if systemctl restart vkarmani-node-postboot.service; then
+            echo 'POSTBOOT_LOCAL=PASS; это не проверка подключения панели.'
+        else
+            echo 'POSTBOOT_LOCAL=FAIL; исправление network сохранено, остались другие локальные ошибки.'
+            tail -n 70 /var/log/vkarmani-node-postboot.log 2>/dev/null || true
+        fi
+    fi
+    echo '===== СТРОГАЯ ПРОВЕРКА БЕЗ ПЕРЕЗАПУСКА НОДЫ ====='
+    local check_rc=0
+    if [[ -x /usr/local/sbin/vkarmani-node-check ]]; then
+        /usr/local/sbin/vkarmani-node-check --require-xray || check_rc=$?
+        echo "CHECK_EXIT_CODE=$check_rc"
+    else
+        echo 'NODE_CHECK=MISSING'; check_rc=1
+    fi
+    echo 'PANEL_CONNECTION=NOT_VERIFIED; автоматический reboot не назначен.'
+    echo 'NETWORK_REPAIR относится только к применению sysctl, не к авторизации панели или VPN.'
+    return "$check_rc"
+}
 
+# VKARMANI_COMPLETE_PAYLOAD_1_3_4
+case "${1:-}" in
+    --repair-network) shift; vkarmani_repair_network_main "$@" ;;
+    --repair-node) shift; vkarmani_repair_main "$@" ;;
+    *) vkarmani_main "$@" ;;
+esac
