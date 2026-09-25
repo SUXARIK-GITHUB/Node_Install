@@ -2,18 +2,18 @@
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 1.2.4 — 2026-09-25
+# VKarmani Remnawave Node Installer 1.3.0 — 2026-09-25
 # Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: updates packages, modifies firewall/boot settings and reboots by default.
-# Node-only mode: does not create or edit panel objects. Keep the VPS console available.
+# Node-only mode: does not create or edit panel objects. RAW+REALITY Selfsteal uses an Nginx Unix socket.
 set -euo pipefail
 set +x
 umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=1.2.4
+INSTALLER_VERSION=1.3.0
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -26,7 +26,7 @@ REFRESH_IMAGE=0
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 1.2.4
+VKarmani Remnawave Node Installer 1.3.0
 
   sudo bash install.sh
   sudo bash install.sh --no-reboot
@@ -41,6 +41,7 @@ GRUB, systemd, amd64/arm64, публичный IPv4, >= 900 MiB RAM и >= 6 GiB 
 он выбирается автоматически по DNS из публичных IPv4, назначенных этой VPS.
 Управляющий порт 2222 разрешается только с введённого IPv4 панели.
 Карточка Node, Config Profile, Host и Internal Squad настраиваются в панели отдельно.
+Шаблон профиля: VLESS + RAW + REALITY; Selfsteal: Nginx через /dev/shm/nginx.sock, xver=1.
 Сертификат: аккаунт Let's Encrypt без email, с автоматическим принятием условий CA.
 --refresh-image разрешает обновить уже зафиксированный образ RemnaNode.
 HELP
@@ -116,7 +117,8 @@ vk_collect_inputs() {
     printf '\nVKarmani: SECRET_KEY → IPv4 основной панели → домен ноды.\n' >&"$VK_TTY_FD"
     printf 'IPv4 самой ноды НЕ спрашивается: он выбирается автоматически по DNS из адресов VPS.\n' >&"$VK_TTY_FD"
     printf 'После трёх значений — автоматическая установка и reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
-    printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n\n' >&"$VK_TTY_FD"
+    printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
+    printf 'Если у хостера есть внешний firewall/security group: TCP/2222 должен быть разрешён с IPv4 панели.\n\n' >&"$VK_TTY_FD"
     # Noncanonical mode also permits long (>4096 byte) single-line SECRET_KEY bundles.
     # Disable echo BEFORE displaying the prompt, so immediate paste cannot reveal the key.
     stty -echo -icanon min 1 time 0 <&"$VK_TTY_FD"
@@ -208,8 +210,8 @@ if [[ $FRESH -eq 1 ]]; then
             echo "Активен $service. Нужна чистая выделенная VPS, без старого web/firewall стека." >&2; exit 1
         fi
     done
-    if ss -H -lnt | awk '{print $4}' | _contains -E ':(80|443|8444)$'; then
-        echo 'Порты 80/443/8444 уже заняты.' >&2; exit 1
+    if ss -H -lnt | awk '{print $4}' | _contains -E ':(80|443)$'; then
+        echo 'Порты 80/443 уже заняты.' >&2; exit 1
     fi
     # Refuse a separate unmanaged nftables/iptables ruleset, even when its unit is inactive.
     if command -v nft >/dev/null && [[ -n "$(nft list tables 2>/dev/null)" ]]; then
@@ -283,7 +285,7 @@ apt-get update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 1.2.4: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 1.3.0: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -541,27 +543,33 @@ def make_keys_profile(c):
     path = ETC / 'reality.json'
     if path.exists():
         keys = read_json(path)
+        required = {'private_key', 'public_key', 'short_id'}
+        if not required.issubset(keys) or not all(isinstance(keys.get(k), str) and keys.get(k) for k in required):
+            raise Failure('reality.json повреждён: отсутствуют ключи RAW/REALITY.')
     else:
         key = X25519PrivateKey.generate()
         enc = lambda b: base64.urlsafe_b64encode(b).rstrip(b'=').decode()
         keys = {'private_key': enc(key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())),
                 'public_key': enc(key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)),
-                'short_id': secrets.token_hex(8), 'xhttp_path': '/' + secrets.token_hex(16) + '/'}
+                'short_id': secrets.token_hex(8)}
         atomic_json(path, keys)
     suffix = hashlib.sha256(c['domain'].encode()).hexdigest()[:12]
-    tag = 'VK_XHTTP_' + suffix.upper()
-    # No Vision flow on XHTTP. Clients are filled by Remnawave, never hard-coded here.
+    tag = 'VK_RAW_REALITY_' + suffix.upper()
+    # Remnawave fills clients dynamically. Do not force Vision here: RAW+REALITY works
+    # without it, and production profiles may choose their own client flow.
     profile = {
         'log': {'loglevel': 'warning'},
         'dns': {'servers': ['1.1.1.1', '8.8.8.8'], 'queryStrategy': 'UseIPv4'},
         'inbounds': [{'tag': tag, 'listen': '0.0.0.0', 'port': 443, 'protocol': 'vless',
                       'settings': {'clients': [], 'decryption': 'none'},
-                      'sniffing': {'enabled': True, 'routeOnly': True, 'destOverride': ['http', 'tls']},
+                      'sniffing': {'enabled': True, 'routeOnly': True,
+                                   'destOverride': ['http', 'tls', 'quic']},
                       'streamSettings': {
-                          'network': 'xhttp', 'security': 'reality',
-                          'xhttpSettings': {'path': keys['xhttp_path'], 'mode': 'auto'},
-                          'realitySettings': {'show': False, 'target': '127.0.0.1:8444', 'xver': 0,
-                                              'serverNames': [c['domain']], 'privateKey': keys['private_key'],
+                          'network': 'raw', 'security': 'reality',
+                          'realitySettings': {'show': False, 'target': '/dev/shm/nginx.sock',
+                                              'xver': 1, 'spiderX': '/',
+                                              'serverNames': [c['domain']],
+                                              'privateKey': keys['private_key'],
                                               'shortIds': [keys['short_id']]}}}],
         'outbounds': [{'tag': 'DIRECT', 'protocol': 'freedom', 'settings': {'domainStrategy': 'UseIPv4'}},
                       {'tag': 'BLOCK', 'protocol': 'blackhole'}],
@@ -571,8 +579,7 @@ def make_keys_profile(c):
                                     '224.0.0.0/4', '240.0.0.0/4', c['public_ipv4'] + '/32', '::/0'],
              'outboundTag': 'BLOCK'}]}}
     atomic_json(ETC / 'profile.json', profile)
-    return 'VK-' + suffix, tag, profile
-
+    return 'VK-RAW-' + suffix, tag, profile
 
 def docker_config():
     p = Path('/etc/docker/daemon.json')
@@ -617,8 +624,8 @@ def normalize_config(raw):
         raise Failure('panel_ipv4: от 1 до 16 публичных IPv4 панели, без CIDR.')
     c['panel_ipv4'] = sorted({public_ipv4(x) for x in ips})
     port = c.get('node_port', 2222)
-    if type(port) is not int or not 1024 <= port <= 65535 or port == 8444:
-        raise Failure('node_port: целое 1024–65535, кроме 8444 и SSH-порта.')
+    if type(port) is not int or not 1024 <= port <= 65535:
+        raise Failure('node_port: целое 1024–65535, не конфликтующее с SSH/80/443.')
     c['node_port'] = port
     image = c.get('image', 'remnawave/node:latest')
     if not isinstance(image, str) or not re.fullmatch(
@@ -752,7 +759,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 1.2.4 — действия в панели
+    txt = f'''VKarmani RemnaNode 1.3.0 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -762,36 +769,35 @@ def write_panel_guide(c):
    /etc/vkarmani-node/profile.json
    Этот файл содержит приватный REALITY-ключ: не публикуйте его.
 2. Nodes -> Management: создайте/отредактируйте карточку ЭТОЙ ноды:
-   адрес {c['public_ipv4']}, Node Port {c['node_port']}.
+   Address={c['public_ipv4']}, Node Port={c['node_port']}.
    Используйте ту же панель, из которой взят введённый SECRET_KEY.
-   Выберите профиль {name} и включите inbound {tag}.
+   Выберите профиль {name} и inbound {tag}.
 3. Hosts: выберите этот профиль/inbound; Address={c['domain']}, Port=443.
-   Security=DEFAULT (из профиля), SNI={c['domain']}, Fingerprint=chrome.
-   Не задавайте Vision flow. XHTTP path берётся из профиля; при ручном
-   переопределении Path должен быть {keys['xhttp_path']}.
-4. Internal Squads: разрешите inbound {tag} группе своих пользователей.
+   Advanced Options лучше оставить DEFAULT. SNI унаследуется из inbound.
+   Если SNI переопределяется вручную — укажите {c['domain']}.
+4. Internal Squads: разрешите inbound {tag} нужной группе пользователей.
    Обновите подписку в клиенте и проверьте соединение извне.
 
-Транспорт шаблона: VLESS + XHTTP + REALITY, xhttp mode=auto.
-REALITY target: 127.0.0.1:8444; xver=0; serverName={c['domain']}.
+Шаблон: VLESS + RAW + REALITY.
+REALITY target: /dev/shm/nginx.sock; xver=1 (PROXY protocol v1).
+Selfsteal: Nginx + OpenSSL на Unix socket, порт 443 полностью остаётся за Xray.
+serverName/SNI: {c['domain']}
 REALITY publicKey: {keys['public_key']}
 ShortID: {keys['short_id']}
 
 Скрипт НЕ авторизуется в панели, НЕ создаёт и НЕ меняет её объекты.
 Локальный profile.json — шаблон для импорта, НЕ live-конфиг ноды.
-Если у вас уже назначен готовый профиль, он не перезаписывается.
-При использовании своего профиля согласуйте SNI/target и порт 443
-с этим Nginx; приватные ключи и параметры берите из своего профиля.
+Если у вас уже назначен свой RAW+REALITY профиль, он не перезаписывается.
 До получения профиля от панели отсутствие Xray TCP/443 ожидаемо:
 NODE_SETUP=PASS может сочетаться с VPN_STATUS=WAITING_FOR_PANEL_PROFILE.
 TCP/2222 сам по себе не доказывает связь с панелью и работу VPN.
 
 Проверка: sudo vkarmani-node-check
-Строгая локальная проверка Xray/cover: sudo vkarmani-node-check --require-xray
+Строгая проверка Xray + Selfsteal через :443: sudo vkarmani-node-check --require-xray
+Selfsteal socket: /dev/shm/nginx.sock
 Лог после reboot: /var/log/vkarmani-node-postboot.log
 '''
     atomic_text(ETC / 'PANEL-SETUP.txt', txt)
-
 
 def control_ready(c):
     try:
@@ -864,7 +870,7 @@ mapfile -t SSH_PORTS < <({ /usr/sbin/sshd -T | awk '$1=="port"{print $2}';
 [[ ${#SSH_PORTS[@]} -gt 0 ]] || die 'Не удалось определить SSH-порт.'
 for port in "${SSH_PORTS[@]}"; do
     [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]] || die 'Некорректный SSH-порт.'
-    [[ "$port" != "$NODE_PORT" && "$port" != 80 && "$port" != 443 && "$port" != 8444 ]] || die 'SSH-порт конфликтует с портами ноды.'
+    [[ "$port" != "$NODE_PORT" && "$port" != 80 && "$port" != 443 ]] || die 'SSH-порт конфликтует с портами ноды.'
 done
 printf '%s\n' "${SSH_PORTS[@]}" > "$ETC/ssh-ports"
 if [[ ! -f "$STATE/image-digest" ]] && ss -H -lnt | awk '{print $4}' | _contains -E ":${NODE_PORT}$"; then
@@ -960,39 +966,50 @@ update-grub
 _contains -E '^[[:space:]]*linux[^[:space:]]*[[:space:]].*ipv6.disable=1' /boot/grub/grub.cfg || die 'Параметр IPv6 не попал в grub.cfg.'
 cat > /usr/local/sbin/vkarmani-node-network <<'EOF'
 #!/usr/bin/env bash
-_contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-set -Eeuo pipefail
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-modprobe tcp_bbr
-modprobe sch_fq
-sysctl -p /etc/sysctl.d/99-vkarmani-node.conf >/dev/null
-for attempt in $(seq 1 60); do
-    if ip -4 route get 1.1.1.1 >/dev/null 2>&1; then break; fi
+_contains() { grep "$@" >/dev/null; }
+set -u
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+sysctl -w net.core.default_qdisc=fq >/dev/null
+sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || {
+    modprobe tcp_bbr >/dev/null 2>&1 || true
+    sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null
+}
+IFACE=''
+for attempt in $(seq 1 90); do
+    IFACE=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+    if [[ -n "$IFACE" && -d "/sys/class/net/$IFACE" ]]; then
+        if tc qdisc replace dev "$IFACE" root fq >/dev/null 2>&1; then
+            break
+        fi
+    fi
+    IFACE=''
     sleep 2
 done
-IFACE=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
-[[ -n "$IFACE" && -d "/sys/class/net/$IFACE" ]]
-tc qdisc replace dev "$IFACE" root fq
-[[ "$(sysctl -n net.ipv4.tcp_congestion_control)" == bbr ]]
-tc qdisc show dev "$IFACE" | _contains -E 'qdisc fq '
+[[ -n "$IFACE" ]] || { echo 'VKarmani network: interface/qdisc not ready after 180s' >&2; exit 1; }
+[[ "$(sysctl -n net.ipv4.tcp_congestion_control)" == bbr ]] || exit 1
+tc qdisc show dev "$IFACE" | _contains -E 'qdisc fq ' || exit 1
+exit 0
 EOF
 chmod 0755 /usr/local/sbin/vkarmani-node-network
 cat > /etc/systemd/system/vkarmani-node-network.service <<'EOF'
 [Unit]
-Description=VKarmani persistent IPv4-only BBR and fq
-Wants=network-online.target
-After=network-online.target
+Description=VKarmani persistent BBR and fq
+After=network.target
+Wants=network.target
 Before=vkarmani-node.service
+StartLimitIntervalSec=0
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/vkarmani-node-network
-TimeoutStartSec=180
+TimeoutStartSec=210
 RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5s
 [Install]
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable --now vkarmani-node-network
+systemctl enable vkarmani-node-network
 systemctl restart vkarmani-node-network
 
 # Keep SSH authentication and keys unchanged. Convert socket activation to an IPv4
@@ -1067,9 +1084,9 @@ ufw default allow outgoing
 ufw default deny routed
 for port in "${SSH_PORTS[@]}"; do ufw allow "$port/tcp" comment 'VKarmani SSH preserved'; done
 ufw allow 80/tcp comment 'VKarmani ACME HTTP-01'
-ufw allow 443/tcp comment 'VKarmani XHTTP REALITY'
+ufw allow 443/tcp comment 'VKarmani RAW REALITY'
 for panel in "${PANEL_IPS[@]}"; do
-    ufw allow proto tcp from "$panel" to any port "$NODE_PORT" comment 'VKarmani panel only'
+    ufw allow proto tcp from "$panel" to "$PUBLIC_IP" port "$NODE_PORT" comment 'VKarmani panel only'
 done
 ufw logging low
 ufw --force enable
@@ -1091,6 +1108,10 @@ ipaddress.IPv4Address(sys.argv[1])
 PY
 fi
 SSH_PORT_LIST=$(IFS=,; echo "${SSH_PORTS[*]}")
+cat > /etc/fail2ban/fail2ban.local <<'EOF'
+[Definition]
+allowipv6 = no
+EOF
 cat > /etc/fail2ban/jail.d/99-vkarmani-sshd.local <<EOF
 [sshd]
 enabled = true
@@ -1154,13 +1175,35 @@ systemctl enable docker.service containerd.service
 systemctl restart docker
 [[ $(docker network inspect bridge --format '{{.EnableIPv6}}') == false ]] || die 'Docker bridge IPv6 включён.'
 
-stage 'Nginx HTTP-01 + локальный TLS-сайт для REALITY'
-install -d -m 0755 /var/www/vkarmani-node/acme /var/www/vkarmani-node/site
-cat > /var/www/vkarmani-node/site/index.html <<'HTML'
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome</title><body><main><h1>Welcome</h1><p>This site is available.</p></main></body></html>
-HTML
-chmod 0644 /var/www/vkarmani-node/site/index.html
+stage "Nginx + Let's Encrypt + Selfsteal socket для VLESS RAW REALITY"
+install -d -m 0755 /var/www/vkarmani-node/acme /var/www/vkarmani-node/site /var/www/vkarmani-node/site/assets
+python3 - <<'PY'
+from pathlib import Path
+import json, secrets, html
+etc=Path('/etc/vkarmani-node'); root=Path('/var/www/vkarmani-node/site'); meta=etc/'selfsteal-site.json'
+try: m=json.loads(meta.read_text()) if meta.exists() else {}
+except Exception: m={}
+if not m:
+    choices=[('Workspace','Secure access to your online workspace.'),('Service Portal','Manage services and account settings in one place.'),('Cloud Desk','Simple tools for files, notes and shared work.'),('Account Center','Access your account and connected services.'),('Project Hub','A lightweight workspace for everyday projects.')]
+    title, subtitle=secrets.choice(choices)
+    m={'title':title,'subtitle':subtitle,'accent':secrets.randbelow(360),'asset':secrets.token_hex(6),'nonce':secrets.token_hex(12)}
+    tmp=meta.with_suffix('.tmp'); tmp.write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n'); tmp.chmod(0o600); tmp.replace(meta)
+asset='app-'+m['asset']+'.css'; hue=m['accent']
+css=f'''*{{box-sizing:border-box}}html{{color-scheme:light dark}}body{{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f1115;color:#e9edf3}}main{{max-width:920px;margin:0 auto;padding:72px 24px}}.mark{{width:48px;height:48px;border-radius:14px;background:hsl({hue} 72% 52%);box-shadow:0 10px 40px hsl({hue} 72% 52% / .24)}}h1{{font-size:clamp(2rem,6vw,4.4rem);line-height:1;margin:28px 0 18px}}p{{max-width:620px;color:#aeb7c5;font-size:1.05rem;line-height:1.7}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:42px}}.card{{padding:20px;border:1px solid #252b35;border-radius:16px;background:#151922}}.card b{{display:block;margin-bottom:8px}}footer{{margin-top:56px;color:#6e7887;font-size:.85rem}}@media(prefers-color-scheme:light){{body{{background:#f7f8fa;color:#171a20}}p{{color:#596270}}.card{{background:white;border-color:#e2e6ec}}footer{{color:#7a8492}}}}'''
+(root/'assets'/asset).write_text(css); (root/'assets'/asset).chmod(0o644)
+title=html.escape(m['title']); subtitle=html.escape(m['subtitle']); nonce=html.escape(m['nonce'])
+index=f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111318"><meta name="description" content="{subtitle}"><meta name="x-instance" content="{nonce}"><title>{title}</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/{asset}"></head><body><main><div class="mark"></div><h1>{title}</h1><p>{subtitle}</p><div class="grid"><section class="card"><b>Available</b><span>Services are online and ready.</span></section><section class="card"><b>Private by design</b><span>Connections use modern encrypted transport.</span></section><section class="card"><b>Simple access</b><span>Use your usual account to continue.</span></section></div><footer>© 2026 {title}</footer></main></body></html>'''
+(root/'index.html').write_text(index); (root/'index.html').chmod(0o644)
+(root/'404.html').write_text(f'<!doctype html><html><meta charset="utf-8"><title>Not found</title><body><h1>404</h1><p>Page not found.</p><!-- {nonce} --></body></html>'); (root/'404.html').chmod(0o644)
+(root/'robots.txt').write_text('User-agent: *\nDisallow:\n'); (root/'robots.txt').chmod(0o644)
+(root/'favicon.svg').write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="hsl({hue},72%,52%)"/><path d="M18 33 28 43 47 22" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>'); (root/'favicon.svg').chmod(0o644)
+PY
+find /var/www/vkarmani-node/site -type d -exec chmod 0755 {} +
+find /var/www/vkarmani-node/site -type f -exec chmod 0644 {} +
 rm -f /etc/nginx/sites-enabled/default
+cat > /etc/nginx/conf.d/00-vkarmani-global.conf <<'EOF'
+server_tokens off;
+EOF
 cat > /etc/nginx/conf.d/10-vkarmani-http.conf <<EOF
 server {
     listen 0.0.0.0:80;
@@ -1175,29 +1218,30 @@ server {
         default_type text/plain;
         try_files \$uri =404;
     }
-    location = /__vkarmani_health { return 204; }
     location / { return 301 https://$DOMAIN\$request_uri; }
 }
 EOF
-# On a resumed installation retain the working TLS cover; never temporarily delete it.
+if [[ ! -s "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" || ! -s "/etc/letsencrypt/live/$DOMAIN/privkey.pem" ]]; then
+    rm -f /etc/nginx/conf.d/20-vkarmani-selfsteal.conf /etc/nginx/conf.d/20-vkarmani-reality-cover.conf
+fi
 nginx -t
 systemctl enable nginx
 systemctl restart nginx
-[[ $(curl --noproxy '*' -4fsS --max-time 10 -o /dev/null -w '%{http_code}' \
-    --resolve "$DOMAIN:80:127.0.0.1" "http://$DOMAIN/__vkarmani_health") == 204 ]] || die 'Nginx HTTP health check failed.'
+[[ $(curl --noproxy '*' -4sS --max-time 10 -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:80:127.0.0.1" "http://$DOMAIN/") == 301 ]] || die 'Nginx HTTP redirect check failed.'
 certbot certonly --webroot --webroot-path /var/www/vkarmani-node/acme \
     --domain "$DOMAIN" --cert-name "$DOMAIN" --register-unsafely-without-email \
     --agree-tos --non-interactive --keep-until-expiring --key-type ecdsa --preferred-challenges http
-cat > /etc/nginx/conf.d/20-vkarmani-reality-cover.conf <<EOF
+cat > /etc/nginx/conf.d/20-vkarmani-selfsteal.conf <<EOF
 server {
-    listen 127.0.0.1:8444 ssl http2;
+    listen unix:/dev/shm/nginx.sock ssl http2 proxy_protocol;
     server_name $DOMAIN;
     server_tokens off;
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_session_cache shared:VKARMANI:2m;
-    ssl_session_timeout 10m;
+    ssl_ecdh_curve X25519:prime256v1:secp384r1;
+    ssl_session_cache shared:VKARMANI_SELFSTEAL:10m;
+    ssl_session_timeout 1d;
     ssl_session_tickets off;
     root /var/www/vkarmani-node/site;
     index index.html;
@@ -1205,17 +1249,49 @@ server {
     client_max_body_size 1m;
     client_header_timeout 15s;
     client_body_timeout 15s;
-    keepalive_timeout 30s;
-    location = /__vkarmani_health { return 204; }
-    location / { try_files \$uri \$uri/ =404; }
+    keepalive_timeout 65s;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    location = /robots.txt { try_files \$uri =404; }
+    location = /favicon.svg { try_files \$uri =404; }
+    location /assets/ { try_files \$uri =404; expires 1h; add_header Cache-Control "public, max-age=3600"; }
+    location / { try_files \$uri \$uri/ /index.html; }
 }
 EOF
+rm -f /etc/nginx/conf.d/20-vkarmani-reality-cover.conf
 nginx -t
 systemctl reload nginx
+for _ in $(seq 1 20); do [[ -S /dev/shm/nginx.sock ]] && break; sleep 1; done
+[[ -S /dev/shm/nginx.sock ]] || die 'Selfsteal socket /dev/shm/nginx.sock не создан Nginx.'
+cat > /usr/local/sbin/vkarmani-selfsteal-check <<'PY'
+#!/usr/bin/env python3
+import json, socket, ssl, sys
+from pathlib import Path
+try:
+    c=json.loads(Path('/etc/vkarmani-node/config.json').read_text()); domain=c['domain']; path='/dev/shm/nginx.sock'
+    def connect(alpn):
+        raw=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); raw.settimeout(7); raw.connect(path)
+        raw.sendall(b'PROXY TCP4 127.0.0.1 127.0.0.1 54321 443\r\n')
+        ctx=ssl.create_default_context(); ctx.minimum_version=ssl.TLSVersion.TLSv1_3; ctx.set_alpn_protocols(alpn)
+        return ctx.wrap_socket(raw, server_hostname=domain)
+    s=connect(['http/1.1']); s.sendall((f'GET / HTTP/1.1\r\nHost: {domain}\r\nConnection: close\r\n\r\n').encode()); data=b''
+    while len(data)<65536:
+        b=s.recv(8192)
+        if not b: break
+        data+=b
+    s.close()
+    if not data.startswith(b'HTTP/1.1 200 '): raise RuntimeError('unexpected HTTP status through socket')
+    s=connect(['h2','http/1.1'])
+    if s.selected_alpn_protocol()!='h2': raise RuntimeError('HTTP/2 ALPN not negotiated')
+    s.close(); print('SELFSTEAL_SOCKET_TLS=PASS')
+except Exception as e:
+    print('SELFSTEAL_SOCKET_TLS=FAIL: '+str(e), file=sys.stderr); sys.exit(1)
+PY
+chmod 0755 /usr/local/sbin/vkarmani-selfsteal-check
+/usr/local/sbin/vkarmani-selfsteal-check
 install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/30-vkarmani-nginx <<'EOF'
 #!/bin/sh
-_contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
 set -eu
 /usr/sbin/nginx -t
 /usr/bin/systemctl reload nginx
@@ -1261,6 +1337,8 @@ services:
         hard: 1048576
     env_file:
       - $ETC/remnanode.env
+    volumes:
+      - /dev/shm:/dev/shm
     logging:
       driver: local
       options:
@@ -1297,6 +1375,8 @@ for attempt in $(seq 1 60); do
  done
 helper control-ready
 [[ $(docker inspect remnanode --format '{{.State.Running}}') == true ]] || die 'RemnaNode не запущен.'
+docker exec remnanode test -S /dev/shm/nginx.sock || die 'RemnaNode container не видит /dev/shm/nginx.sock.'
+/usr/local/sbin/vkarmani-selfsteal-check
 helper keys
 CORE=$(docker exec remnanode sh -c 'command -v rw-core || command -v xray')
 [[ "$CORE" == /* && "$CORE" != *$'\n'* ]] || die 'Xray/rw-core не найден в официальном образе.'
@@ -1308,7 +1388,7 @@ if ! docker exec remnanode "$CORE" run -test -config /tmp/vkarmani-profile-test.
 fi
 docker exec remnanode rm -f /tmp/vkarmani-profile-test.json
 
-stage 'Профиль и параметры для панели (без API-токена, без изменения панели)'
+stage 'RAW + REALITY профиль и параметры для панели (без API-токена)'
 helper panel-guide
 printf 'Профиль: /etc/vkarmani-node/profile.json\nИнструкция: /etc/vkarmani-node/PANEL-SETUP.txt\n'
 printf 'Карточка ноды и назначение профиля выполняются в панели. Секрет не является API-токеном.\n' 
@@ -1467,9 +1547,9 @@ for line in r.stdout.splitlines():
     if '--dport' not in w: sys.exit(1)  # no blanket ACCEPT or unreviewed multiport rule
     p=w[w.index('--dport')+1]
     if p==str(c['node_port']):
-        if '-s' not in w: sys.exit(1)
-        source=w[w.index('-s')+1]
-        if source not in expected: sys.exit(1)
+        if '-s' not in w or '-d' not in w: sys.exit(1)
+        source=w[w.index('-s')+1]; dest=w[w.index('-d')+1]
+        if source not in expected or dest != c['public_ipv4']+'/32': sys.exit(1)
         found.add(source)
     elif p not in ssh | {'80','443'}:
         sys.exit(1)
@@ -1513,26 +1593,22 @@ if ss -H -4 -lnt | awk '{print $4}' | _contains -E ':443$'; then
 else
     warn XRAY_TCP443 'WAITING_FOR_PANEL_PROFILE: назначьте профиль ноде в панели'
 fi
-ss -H -4 -lnt | awk '{print $4}' | _contains -Fx '127.0.0.1:8444' && pass NGINX_LOOPBACK8444 || fail NGINX_LOOPBACK8444
+[[ -S /dev/shm/nginx.sock ]] && pass SELFSTEAL_SOCKET || fail SELFSTEAL_SOCKET
 nginx -t >/dev/null 2>&1 && pass NGINX_CONFIG || fail NGINX_CONFIG
 openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -checkend 604800 >/dev/null 2>&1 && pass TLS_VALID_7DAYS || fail TLS_VALID_7DAYS
-for port in 8444 443; do
-    [[ "$port" != 443 || "$XRAY_PRESENT" -eq 1 ]] || continue
+/usr/local/sbin/vkarmani-selfsteal-check >/dev/null 2>&1 && pass SELFSTEAL_TLS13_H2 || fail SELFSTEAL_TLS13_H2
+if docker exec remnanode test -S /dev/shm/nginx.sock >/dev/null 2>&1; then pass NODE_SELFSTEAL_SOCKET; else fail NODE_SELFSTEAL_SOCKET; fi
+if [[ "$XRAY_PRESENT" -eq 1 ]]; then
     CODE=$(curl --noproxy '*' -4 --fail --silent --show-error --http2 --tlsv1.3 --tls-max 1.3 \
-        --connect-timeout 5 --max-time 20 --resolve "$DOMAIN:$port:127.0.0.1" \
-        -o /dev/null -w '%{http_code}' "https://$DOMAIN:$port/__vkarmani_health" 2>/dev/null || true)
-    if [[ "$CODE" == 204 ]]; then
-        pass "TLS13_COVER_$port"
-        [[ "$port" != 443 ]] || XRAY_COVER_OK=1
-    elif [[ "$port" == 443 ]]; then
-        warn TLS13_COVER_443 'порт открыт, но профиль не подтверждён для локального Nginx/SNI; см. PANEL-SETUP.txt'
+        --connect-timeout 5 --max-time 20 --resolve "$DOMAIN:443:127.0.0.1" \
+        -o /dev/null -w '%{http_code}' "https://$DOMAIN/" 2>/dev/null || true)
+    if [[ "$CODE" == 200 ]]; then
+        pass REALITY_SELFSTEAL_443
+        XRAY_COVER_OK=1
     else
-        fail "TLS13_COVER_$port" 'certificate/local TLS cover/HTTP failure'
+        warn REALITY_SELFSTEAL_443 'Xray :443 открыт, но RAW/REALITY → Nginx socket пока не подтверждён; проверьте профиль из PANEL-SETUP.txt'
     fi
-done
-# HTTP/2 ALPN is required by this local REALITY camouflage profile.
-ALPN=$(timeout 12 openssl s_client -connect 127.0.0.1:8444 -servername "$DOMAIN" -tls1_3 -alpn h2 </dev/null 2>/dev/null || true)
-_contains -F 'ALPN protocol: h2' <<< "$ALPN" && pass COVER_ALPN_H2 || fail COVER_ALPN_H2
+fi
 fail2ban-client ping 2>/dev/null | _contains pong && pass FAIL2BAN_PING || fail FAIL2BAN_PING
 fail2ban-client status sshd >/dev/null 2>&1 && pass FAIL2BAN_SSHD_JAIL || fail FAIL2BAN_SSHD_JAIL
 for timer in certbot vkarmani-weekly-reboot vkarmani-node-cleanup; do
@@ -1569,7 +1645,7 @@ if [[ "$MODE" == --postboot ]]; then
 fi
 if [[ "$F" -ne 0 ]]; then exit 1; fi
 if [[ "$MODE" == --require-xray && "$XRAY_COVER_OK" -ne 1 ]]; then
-    echo 'STRICT_CHECK=INCOMPLETE: ожидается TCP/443 и локальный REALITY cover.'
+    echo 'STRICT_CHECK=INCOMPLETE: ожидается Xray TCP/443 и RAW/REALITY Selfsteal через /dev/shm/nginx.sock.'
     exit 2
 fi
 exit 0
@@ -1607,6 +1683,8 @@ rm -f "$STATE/INSTALL_FAILED" "$STATE/image-update-pending"
 stage 'Установка завершена; проверки ДО перезагрузки пройдены'
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"
 printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
+printf 'Внешний firewall хостера (если есть): разрешить TCP/%s от %s к %s.\n' "$NODE_PORT" "${PANEL_IPS[*]}" "$PUBLIC_IP"
+printf 'Транспорт: VLESS + RAW + REALITY; Selfsteal: /dev/shm/nginx.sock (xver=1)\n'
 printf 'Профиль и действия в панели: /etc/vkarmani-node/PANEL-SETUP.txt\n'
 printf 'SSH-порты сохранены: %s\n' "${SSH_PORTS[*]}"
 printf 'Проверка после входа: sudo vkarmani-node-check\nЖурнал: /var/log/vkarmani-node-postboot.log\n'
@@ -1622,5 +1700,5 @@ else
 fi
 
 }
-# VKARMANI_COMPLETE_PAYLOAD_1_2_4
+# VKARMANI_COMPLETE_PAYLOAD_1_3_0
 vkarmani_main "$@"
