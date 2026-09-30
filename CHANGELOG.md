@@ -1,5 +1,18 @@
 # Изменения
 
+## 2.1.0 — 2026-09-30
+
+- Ubuntu26.04/Resolute добавлена с точным codename, cgroupv2 и проверкой опций базовых утилит. Подготовлен userspace CI; полноценная VPS-приёмка26.04 не выполнена.
+- Docker signing key/repository и общий пакетный план проверяются до SSH/UFW/GRUB. Ошибки apt update не замещаются молчаливо старыми индексами.
+- Chrony сохраняет sources/includes/NTS/bootstrap; проверяемая IPv4/client-only добавка вместо полной перезаписи. Timesyncd сохраняется при наличии.
+- Необязательный apt clean больше не препятствует приёмке; lock busy, timeout и прочие ошибки различаются. Чужие package processes и lock-файлы не трогаются.
+- Новый лёгкий статический сайт; отдельный проверяемый update/rollback только сайта для завершённых2.0.3/2.1.0 без рестартов/изменения VPN.
+- Read-only срез ресурсов: CPU/steal/PSI/RAM/swap/TCP/OOM/disk, без автонастройки и без клиентских данных.
+- 349 тестов вместо304; плюс визуальный Chromium-тест9 размеров. Длительная VPN-нагрузка и полная установка новой версии на VPS не выполнялись.
+- Прежние README/TEST_REPORT/RELEASE_VALIDATION2.0.3 сохранены в docs/history. Полный архив без.git.
+
+Подробности: [IMPROVEMENTS_2.1.0](docs/IMPROVEMENTS_2.1.0.md), [COVER_SITE](docs/COVER_SITE.md), [UBUNTU_26_04](docs/UBUNTU_26_04.md).
+
 ## 2.0.3 — 2026-09-30
 
 Исправление фактического раннего отказа APT в 2.0.2: список требовал Chrony, тогда как `--no-remove` запрещал необходимое для него удаление установленного systemd-timesyncd.

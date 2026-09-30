@@ -29,3 +29,26 @@ jobs:
           export PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
           bash tests/run.sh
           git diff --check
+
+  ubuntu-26-userspace:
+    # Uses a 24.04 host runner; this job does NOT validate a 26.04 kernel or reboot.
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Dependencies only in disposable Ubuntu 26.04 test container
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get -o APT::Update::Error-Mode=any update
+          apt-get install -y --no-install-recommends python3 python3-cryptography python3-yaml nginx nodejs openssl git procps util-linux findutils
+      - name: Embedded helpers, protocols and synthetic failure paths only
+        run: |
+          export PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+          bash tests/run.sh
+          git diff --check

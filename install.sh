@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.0.3. Read README.md before running as root.
+# VKarmani Node 2.1.0. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -821,7 +821,7 @@ if [[ "$MODE" == --postboot ]]; then
     done
 fi
 helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
-if [[ -f "$STATE/install-version" && $(cat "$STATE/install-version") == 2.0.3 ]]; then
+if [[ -f "$STATE/install-version" && $(cat "$STATE/install-version") == 2.1.0 ]]; then
     helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY
     warn LIVE_PROFILE_POLICY 'NOT_VERIFIED: local JSON is not the live node config or Host SNI override'
 fi
@@ -1140,7 +1140,7 @@ vk_write_maintenance() {
     temp=$(mktemp /usr/local/sbin/vkarmani-node-maintain.tmp.XXXXXX)
     cat > "$temp" <<'VK_PAYLOAD_VK_WRITE_MAINTENANCE'
 #!/usr/bin/env python3
-"""Explicit, serialized maintenance for VKarmani 2.0.3; never reconfigure the OS.
+"""Explicit, serialized maintenance for VKarmani 2.1.0; never reconfigure the OS.
 
 Image rollback restores Compose + image only, NOT container writable-layer data,
 OS packages, panel objects or user sessions. A working panel must resend its profile.
@@ -1543,7 +1543,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or 'version=2.0.3' not in (STATE / 'INSTALL_COMPLETE').read_text().splitlines()):
+            or 'version=2.1.0' not in (STATE / 'INSTALL_COMPLETE').read_text().splitlines()):
         raise Failure('ONLY_COMPLETED_2_0_2_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -1737,7 +1737,7 @@ def saved_provider(etc=ETC, state=STATE):
         if value not in PROVIDERS:
             raise Failure('INVALID_TIME_PROVIDER')
         return value
-    # Explicit compatibility for existing legacy repair/check paths. A new 2.0.3
+    # Explicit compatibility for existing legacy repair/check paths. A new 2.1.0
     # installation must have its own marker; absence is NOT interpreted as success.
     version = (state / 'install-version').read_text().strip() if (state / 'install-version').is_file() else ''
     complete = (state / 'INSTALL_COMPLETE').read_text().splitlines() if (state / 'INSTALL_COMPLETE').is_file() else []
@@ -1962,10 +1962,847 @@ if __name__ == '__main__':
 PY_RESUME_NTP_CHECK
 }
 
+# Release mappings are exact. Never use noble packages on resolute as a fallback.
+vk_platform_settings() {
+    local id=$1 version=$2 codename=$3 arch=$4
+    case "$id:$version:$codename" in
+        ubuntu:22.04:jammy|ubuntu:24.04:noble|ubuntu:26.04:resolute|debian:12:bookworm|debian:13:trixie) ;;
+        *) printf 'STOP: unsupported or inconsistent OS release: %s/%s/%s\n' "$id" "$version" "$codename" >&2; return 1 ;;
+    esac
+    case "$arch" in amd64|arm64) ;; *) echo 'STOP: only amd64/arm64 are supported.' >&2; return 1 ;; esac
+    OS_ID=$id
+    OS_CODENAME=$codename
+    MIN_MEMORY_MB=900
+    if [[ "$id:$version" == ubuntu:26.04 ]]; then
+        MIN_MEMORY_MB=1536
+    fi
+}
+
+vk_base_tools_smoke() (
+    # Exercise the exact options used for backups and checks, regardless of the
+    # coreutils provider. No essential package replacement, system config or network.
+    set -Eeuo pipefail
+    local work
+    work=$(mktemp -d /tmp/vkarmani-tools.XXXXXXXX) || exit 1
+    trap 'rm -rf -- "$work"' EXIT
+    cd -- "$work" || exit 1
+    install -d -m 0700 src/sub out || exit 1
+    printf 'probe\n' > 'src/sub/file with spaces' || exit 1
+    ln -s 'sub/file with spaces' src/link || exit 1
+    cp -a --parents -- src/sub 'out/' || exit 1
+    cp -a -- src/link out/link || exit 1
+    [[ -L out/link && $(readlink out/link) == 'sub/file with spaces' ]] || exit 1
+    cmp 'src/sub/file with spaces' 'out/src/sub/file with spaces' || exit 1
+    find src/sub -type f -print0 | sort -z | xargs -0 -r sha256sum > checksums || exit 1
+    sha256sum --check --quiet checksums || exit 1
+    install -m 0600 checksums checked || exit 1
+    [[ $(stat -c '%a' checked) == 600 ]] || exit 1
+    timeout --kill-after=1s 2s bash -c 'exit 0' || exit 1
+    timeout --foreground 2s bash -c 'exit 0' || exit 1
+    date -Is >/dev/null || exit 1
+    mv -- checked moved || exit 1
+    [[ -s moved ]] || exit 1
+    printf 'BASE_TOOLS_SMOKE=PASS\n'
+)
+
+vk_setup_docker_repository() {
+    install -d -m 0755 /etc/apt/keyrings
+    local keyfile
+    keyfile=$(mktemp /etc/apt/keyrings/.docker-vkarmani.XXXXXXXX)
+    if ! curl -4 --fail --show-error --silent --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        --connect-timeout 15 --max-time 120 --retry 3 \
+        "https://download.docker.com/linux/$OS_ID/gpg" -o "$keyfile"; then
+        rm -f -- "$keyfile"; return 1
+    fi
+    if ! gpg --batch --show-keys --with-colons "$keyfile" | \
+        awk -F: '$1=="fpr"{print $10}' | grep -Fx '9DC858229FC7DD38854AE2D88D81803C0EBFCD88' >/dev/null; then
+        rm -f -- "$keyfile"; echo 'STOP: unexpected Docker signing-key fingerprint.' >&2; return 1
+    fi
+    chmod 0644 "$keyfile"
+    mv -f -- "$keyfile" /etc/apt/keyrings/docker-vkarmani.asc
+    cat > /etc/apt/sources.list.d/docker-vkarmani.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/$OS_ID
+Suites: $OS_CODENAME
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker-vkarmani.asc
+EOF
+    apt-get -o APT::Update::Error-Mode=any update
+}
+
+vk_write_apt_clean_helper() {
+    local destination=${1:-"$LIB/apt_clean.py"}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_APT_CLEAN_PY'
+#!/usr/bin/env python3
+"""Best-effort cache cleanup; never remove a lock, stop APT, or skip acceptance."""
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import tempfile
+
+STATE = Path('/var/lib/vkarmani-node')
+
+
+def clean(argv=None, timeout=20.0):
+    """Only apt-get clean is used in production. argv injection is for isolated tests."""
+    argv = ['apt-get', 'clean'] if argv is None else argv
+    if not 0 < timeout <= 30:
+        raise ValueError('invalid cleanup budget')
+    proc = None
+    try:
+        # A private file prevents pipe back-pressure / unbounded captured output.
+        # APT stderr may contain administrator hooks; do not echo it to the terminal.
+        with tempfile.TemporaryFile() as output:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=output,
+                                    stderr=output, start_new_session=True,
+                                    env={**os.environ, 'LC_ALL': 'C'})
+            try:
+                rc = proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                stop_group(proc)
+                return {'status': 'WARNING', 'reason': 'TIMEOUT', 'rc': 124}
+            output.seek(0)
+            text = output.read(16384).decode('utf-8', errors='replace')
+            if rc == 0:
+                return {'status': 'PASS', 'reason': 'CLEANED', 'rc': 0}
+            # Distinguish the known concurrency case from permissions/I/O/hook errors.
+            lock = (rc == 100 and 'Could not get lock ' in text
+                    and ('It is held by process ' in text or 'Resource temporarily unavailable' in text)
+                    and re.search(r'Unable to lock directory .*/archives/?', text))
+            if lock:
+                return {'status': 'DEFERRED', 'reason': 'LOCK_BUSY', 'rc': rc}
+            return {'status': 'WARNING', 'reason': 'COMMAND_FAILED', 'rc': rc}
+    except OSError:
+        return {'status': 'WARNING', 'reason': 'COMMAND_UNAVAILABLE_OR_IO', 'rc': 127}
+    finally:
+        if proc is not None and proc.poll() is None:
+            stop_group(proc)
+
+
+def stop_group(proc):
+    """Only our clean command's process group; never another APT/dpkg process."""
+    for sig, seconds in ((signal.SIGTERM, 1), (signal.SIGKILL, 1)):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            pass
+    # SIGKILL above also targets descendants that outlive the direct process.
+
+
+def record(result, state=STATE):
+    path = state / 'apt-clean-status.json'
+    fd, name = tempfile.mkstemp(prefix='.apt-clean-', dir=state)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            json.dump({**result, 'at': dt.datetime.now(dt.timezone.utc).isoformat()}, stream)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, path)
+        directory = os.open(state, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def interrupted(signum, _frame):
+    raise SystemExit(128 + signum)
+
+
+def main():
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, interrupted)
+    result = clean()
+    print('APT_CACHE_CLEAN={status} reason={reason} rc={rc}'.format(**result))
+    try:
+        record(result)
+    except OSError:
+        print('APT_CACHE_CLEAN_STATUS=NOT_SAVED; check free disk/inodes and filesystem health')
+    if result['status'] != 'PASS':
+        print('Optional cache cleanup did not complete; node acceptance still runs. No locks/processes from other package operations were changed.')
+    # Cleanup is noncritical. Failure of node acceptance is NOT handled here.
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+VK_APT_CLEAN_PY
+    chmod 0700 "$destination"
+}
+
+vk_write_chrony_config_helper() {
+    local destination=${1:-"$LIB/chrony_config.py"}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_CHRONY_CONFIG_PY'
+#!/usr/bin/env python3
+"""Keep distro/provider sources and NTS; only add IPv4 + client-only policy."""
+import os
+from pathlib import Path
+import re
+import shlex
+import stat
+import subprocess
+import tempfile
+
+BEGIN = '# BEGIN VKarmani client-only policy'
+END = '# END VKarmani client-only policy'
+BLOCK = BEGIN + '\nport 0\ncmdport 0\n' + END + '\n'
+
+
+class Failure(Exception):
+    pass
+
+
+def render_config(text):
+    if '\x00' in text or len(text.encode()) > 1024 * 1024:
+        raise Failure('invalid chrony configuration')
+    if BEGIN in text or END in text:
+        pattern = re.escape(BEGIN) + r'\nport 0\ncmdport 0\n' + re.escape(END) + r'\n?'
+        if text.count(BEGIN) != 1 or text.count(END) != 1 or not re.search(pattern, text):
+            raise Failure('modified managed chrony policy; manual review required')
+        # Exact managed block is idempotent. Never rewrite the provider's sources.
+        text = re.sub(pattern, '', text)
+    return text.rstrip('\n') + '\n\n' + BLOCK
+
+
+def render_defaults(text):
+    """Do NOT source /etc/default/chrony as shell; retain literal package flags."""
+    matches = list(re.finditer(r'(?m)^[ \t]*DAEMON_OPTS[ \t]*=(.*)$', text))
+    if len(matches) > 1:
+        raise Failure('ambiguous DAEMON_OPTS')
+    if not matches:
+        return text.rstrip('\n') + '\nDAEMON_OPTS="-4"\n'
+    match = matches[0]
+    literal = match.group(1)
+    if any(x in literal for x in ('$', '`', '\\', '\x00', '\r')):
+        raise Failure('nonliteral DAEMON_OPTS; manual review required')
+    try:
+        value = shlex.split(literal, comments=True)
+    except ValueError as exc:
+        raise Failure('invalid DAEMON_OPTS quoting') from exc
+    if len(value) != 1:
+        raise Failure('DAEMON_OPTS must be a single quoted value')
+    flags = value[0].split()
+    # Supported package default is -F 1 (or none). Reject custom modes, especially
+    # -6, -x, -f (custom config), -q and positional config directives.
+    i = 0
+    while i < len(flags):
+        if flags[i] == '-4':
+            i += 1
+        elif flags[i] == '-F' and i + 1 < len(flags) and flags[i + 1] in ('0', '1', '2'):
+            i += 2
+        else:
+            raise Failure('custom chronyd launch flags require manual review')
+    if '-4' not in flags:
+        flags.append('-4')
+    new = 'DAEMON_OPTS="' + ' '.join(flags) + '"'
+    return text[:match.start()] + new + text[match.end():]
+
+
+def read_safe(path):
+    s = path.lstat()
+    if not stat.S_ISREG(s.st_mode) or s.st_uid != os.geteuid() or s.st_mode & 0o022:
+        raise Failure('unsafe chrony file: ' + path.name)
+    return path.read_text(), stat.S_IMODE(s.st_mode)
+
+
+def atomic(path, text, mode):
+    fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            os.fchmod(f.fileno(), mode)
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(name, path)
+        fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def configure(root=Path('/'), runner=subprocess.run):
+    config = root / 'etc/chrony/chrony.conf'
+    defaults = root / 'etc/default/chrony'
+    old_config, cmode = read_safe(config)
+    old_defaults, dmode = read_safe(defaults)
+    new_config, new_defaults = render_config(old_config), render_defaults(old_defaults)
+    # Existing syntax must already be valid; service is never stopped here.
+    def validate():
+        p = runner(['chronyd', '-p', '-4', '-f', str(config)], stdin=subprocess.DEVNULL,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False)
+        if p.returncode:
+            raise Failure('chronyd configuration validation failed; sources were not printed')
+    validate()
+    touched = False
+    try:
+        touched = True
+        atomic(config, new_config, cmode)
+        atomic(defaults, new_defaults, dmode)
+        validate()
+    except BaseException:
+        if touched:
+            # Service has not been restarted. The full installation backup also
+            # contains the original files if filesystem failure prevents rollback.
+            atomic(config, old_config, cmode)
+            atomic(defaults, old_defaults, dmode)
+        raise
+
+
+def main():
+    try:
+        configure()
+        print('CHRONY_SOURCES=PRESERVED; IPV4_ONLY=CONFIGURED; NTP_SERVER_PORTS=DISABLED')
+    except (Failure, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        print('STOP: ' + (str(exc) if isinstance(exc, Failure) else 'chrony configuration I/O/timeout; inspect backup'))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+VK_CHRONY_CONFIG_PY
+    chmod 0700 "$destination"
+}
+
+vk_write_site_tool() {
+    local destination=${1:-"$LIB/site_tool.py"}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_SITE_TOOL_PY'
+#!/usr/bin/env python3
+"""Small static site. Updates publish versioned assets before one atomic index swap.
+No service reload, package operation, socket change, VPN config or key access.
+"""
+import argparse
+import datetime as dt
+import hashlib
+import html
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import signal
+import stat
+import subprocess
+import tempfile
+
+MAX_INDEX = 128 * 1024
+BACKUP_NAME = re.compile(r'cover-\d{8}T\d{12}-[0-9a-f]{12}')
+DOMAIN = re.compile(r'(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?')
+
+
+class Failure(Exception):
+    pass
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def render(domain):
+    if not isinstance(domain, str) or not DOMAIN.fullmatch(domain) or re.fullmatch(r'[0-9.]+', domain):
+        raise Failure('invalid site domain')
+    identity = hashlib.sha256(domain.encode('ascii')).digest()
+    hue = (28, 36, 42, 155, 192, 216)[identity[0] % 6]
+    tilt = 16 + identity[1] % 13
+    label = html.escape(domain.split('.')[0].replace('-', ' ').upper())
+    safe_domain = html.escape(domain)
+    css = r'''*{box-sizing:border-box}html{color-scheme:dark;scroll-behavior:smooth}body{margin:0;background:#101211;color:#ebe9e1;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}::selection{background:hsl(HUE 30% 65% / .32)}a{color:inherit;text-decoration:none}a:focus-visible{outline:2px solid hsl(HUE 48% 71%);outline-offset:7px}body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 82% 44%,hsl(HUE 24% 23% / .16),transparent 56%)}.shell{max-width:1440px;margin:auto;padding:0 76px}.header{display:flex;align-items:center;justify-content:space-between;gap:28px;min-height:126px;border-bottom:1px solid #ffffff12}.brand{font-size:15px;font-weight:600;letter-spacing:.2em;display:flex;align-items:center;gap:15px;overflow-wrap:anywhere}.emblem{position:relative;width:23px;height:23px;border:1px solid hsl(HUE 39% 70%);transform:rotate(45deg);flex-shrink:0}.emblem:after{content:"";position:absolute;inset:5px;border:1px solid hsl(HUE 28% 66% / .65)}.status{font-size:10px;letter-spacing:.18em;color:#b2b6ac;display:flex;align-items:center;gap:10px;white-space:nowrap}.status:before{content:"";width:5px;height:5px;border-radius:50%;background:hsl(HUE 41% 68%);box-shadow:0 0 12px hsl(HUE 42% 70% / .35)}.hero{position:relative;min-height:650px;display:grid;grid-template-columns:1.08fr 1fr;align-items:center;gap:20px;padding:86px 0 92px}.copy{z-index:1}.eyebrow{display:flex;align-items:center;gap:15px;color:hsl(HUE 29% 69%);font-size:10px;letter-spacing:.22em;text-transform:uppercase;margin:0 0 34px}.eyebrow:before{content:"";width:29px;height:1px;background:currentColor}h1{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:clamp(48px,5.45vw,82px);line-height:1.06;letter-spacing:-.055em;margin:0 0 28px}h1 em{display:block;font-weight:400;color:hsl(HUE 27% 69%)}.description{max-width:360px;font-size:14px;line-height:1.95;color:#a0a79d;margin:0}.description strong{font-weight:400;color:#d0d3c9}.quiet-link{display:inline-flex;align-items:center;gap:20px;margin-top:37px;font-size:11px;letter-spacing:.035em;padding:10px 0;border-bottom:1px solid #ffffff28}.quiet-link span{font-size:16px;color:hsl(HUE 30% 72%)}.sculpture{position:relative;width:min(100%,510px);aspect-ratio:1;margin:0 auto;isolation:isolate}.halo{position:absolute;inset:4%;border:1px solid #ffffff0a;border-radius:50%}.halo:before,.halo:after{content:"";position:absolute;border:1px solid #ffffff05;inset:-9%;border-radius:50%}.halo:after{inset:10%}.orb{position:absolute;inset:19%;border-radius:50%;background:radial-gradient(circle at 30% 20%,hsl(HUE 18% 51%) 0%,hsl(HUE 13% 32%) 16%,#222822 39%,#101510 65%,#090d0a 86%);box-shadow:inset 1px 1px 5px #f0e8d03a,inset -16px -12px 35px #0008,26px 32px 60px #0006;transform:rotate(-12deg)}.orb:after{content:"";position:absolute;inset:0;border-radius:inherit;background:repeating-radial-gradient(ellipse at 70% 70%,transparent 0 3px,#ffffff03 3px 4px)}.ring{position:absolute;left:1%;right:1%;top:32%;height:36%;border:1px solid hsl(HUE 28% 61% / .53);border-radius:50%;transform:rotate(-TILTdeg);box-shadow:0 2px 0 hsl(HUE 20% 33% / .28),0 3px 8px #0003;z-index:2}.ring:after{content:"";position:absolute;inset:7px;border:1px solid hsl(HUE 27% 65% / .12);border-radius:50%}.point{position:absolute;right:15%;top:15%;width:4px;height:4px;background:hsl(HUE 40% 74%);border-radius:50%;box-shadow:0 0 14px hsl(HUE 40% 70% / .5)}.art-caption{position:absolute;bottom:4%;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.26em;color:#808b7e}.detail{display:flex;align-items:baseline;justify-content:space-between;gap:28px;border-top:1px solid #ffffff12;padding:33px 0 35px}.detail h2{font-size:11px;font-weight:400;color:#c5c9be;margin:0;letter-spacing:.04em}.detail p{max-width:390px;font-size:12px;line-height:1.85;margin:0;color:#8e9889}.footer{border-top:1px solid #ffffff12;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:23px 0 35px;font-size:10px;color:#7e897a}.domain{overflow-wrap:anywhere}.footer span:last-child{color:#9ba392;font-size:9px;letter-spacing:.15em}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}@media(min-width:1440px){.hero{min-height:700px}}@media(max-width:900px){.shell{padding:0 38px}.hero{min-height:570px;padding:62px 0;gap:0}.sculpture{width:100%;max-width:none;justify-self:center}h1{font-size:59px}.description{font-size:13px}.header{min-height:104px}}@media(max-width:620px){.shell{padding:0 25px}.header{min-height:88px;gap:16px}.brand{font-size:12px;letter-spacing:.13em;gap:12px}.emblem{width:19px;height:19px}.status{font-size:8px;letter-spacing:.1em;gap:7px}.hero{display:flex;flex-direction:column;align-items:stretch;padding:51px 0 21px;min-height:0}.eyebrow{font-size:9px;margin-bottom:26px}h1{font-size:clamp(43px,11.7vw,68px);margin-bottom:22px}.description{font-size:13px;max-width:320px}.quiet-link{margin-top:22px}.sculpture{width:84%;max-width:360px;margin:10px auto 0}.detail{display:block;padding:26px 0}.detail h2{margin-bottom:13px}.detail p{font-size:11px;max-width:320px}.footer{padding:22px 0 28px;font-size:9px}.footer span:last-child{font-size:8px;letter-spacing:.07em}.art-caption{font-size:7px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}'''.replace('HUE', str(hue)).replace('TILT', str(tilt))
+    icon = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#101211"/><g fill="none" stroke="hsl({hue} 29% 69%)" stroke-width="1.6"><path d="M32 11 53 32 32 53 11 32Z"/><path d="m32 22 10 10-10 10-10-10Z"/></g></svg>'''
+    css_bytes, icon_bytes = css.encode(), icon.encode()
+    css_name = 'assets/style-' + sha(css_bytes)[:20] + '.css'
+    icon_name = 'assets/icon-' + sha(icon_bytes)[:20] + '.svg'
+    index = f'''<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101211"><meta name="description" content="Сайт в разработке. Мы создаём новое пространство и скоро откроем его для вас."><title>{safe_domain} — скоро открытие</title><link rel="icon" type="image/svg+xml" href="{icon_name}"><link rel="stylesheet" href="{css_name}"></head>
+<body><div class="shell"><header class="header"><a class="brand" href="#" aria-label="На главную"><span class="emblem" aria-hidden="true"></span>{label}</a><span class="status">СКОРО ОТКРЫТИЕ</span></header><main><section class="hero" aria-labelledby="title"><div class="copy"><p class="eyebrow">НОВОЕ ПРОСТРАНСТВО</p><h1 id="title">Новая глава.<em>Скоро здесь.</em></h1><p class="description"><strong>Сайт в разработке.</strong><br>Мы продумываем каждую деталь, чтобы создать нечто особенное. Совсем скоро здесь появится наш новый проект.</p><a class="quiet-link" href="#about">Всё начинается с идеи <span aria-hidden="true">↗</span></a></div><div class="sculpture" aria-hidden="true"><div class="halo"></div><div class="orb"></div><div class="ring"></div><div class="point"></div><div class="art-caption">ФОРМА. СМЫСЛ. ДЕТАЛИ.</div></div></section><section class="detail" id="about" aria-labelledby="about-title"><h2 id="about-title">Хорошие вещи требуют внимания.</h2><p>Сейчас мы работаем над новым сайтом.<br>Спасибо за интерес и до скорой встречи.</p></section></main><footer class="footer"><span class="domain">© {safe_domain}</span><span>СОЗДАЁМ НОВОЕ</span></footer></div></body></html>
+'''.encode()
+    assert len(index) < MAX_INDEX
+    return index, {css_name: css_bytes, icon_name: icon_bytes}
+
+
+def sync_dir(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic(path, data, mode=0o600):
+    fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            os.fchmod(f.fileno(), mode)
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(name, path)
+        sync_dir(path.parent)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def safe_dir(path, private=False):
+    s = path.lstat()
+    if not stat.S_ISDIR(s.st_mode) or s.st_uid != os.geteuid() or s.st_mode & (0o077 if private else 0o022):
+        raise Failure('unsafe directory: ' + path.name)
+
+
+def safe_read(path, private=False, limit=MAX_INDEX):
+    s = path.lstat()
+    if not stat.S_ISREG(s.st_mode) or s.st_uid != os.geteuid() or s.st_mode & (0o077 if private else 0o022):
+        raise Failure('unsafe file: ' + path.name)
+    if s.st_size > limit:
+        raise Failure('file exceeds safe size: ' + path.name)
+    with path.open('rb') as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise Failure('file exceeds safe size: ' + path.name)
+    return data
+
+
+def node_config(root):
+    etc = root / 'etc/vkarmani-node'
+    safe_dir(etc, private=True)
+    c = json.loads(safe_read(etc / 'config.json', private=True))
+    if not isinstance(c, dict) or c.get('installation_mode') != 'secret-key-only':
+        raise Failure('foreign node configuration')
+    if not isinstance(c.get('domain'), str) or not DOMAIN.fullmatch(c['domain']):
+        raise Failure('invalid node domain')
+    address = ipaddress.ip_address(c.get('public_ipv4', ''))
+    if address.version != 4 or not address.is_global:
+        raise Failure('invalid node IPv4')
+    return c
+
+
+def sites(root):
+    site = root / 'var/www/vkarmani-node/site'
+    for p in (site.parent, site, site / 'assets'):
+        safe_dir(p)
+    return site
+
+
+def publish_assets(site, assets):
+    for name, data in assets.items():
+        if not re.fullmatch(r'assets/(?:style-[0-9a-f]{20}\.css|icon-[0-9a-f]{20}\.svg)', name):
+            raise Failure('invalid generated asset path')
+        dest = site / name
+        if dest.exists() or dest.is_symlink():
+            if safe_read(dest) != data:
+                raise Failure('asset hash collision or changed asset; not overwritten')
+        else:
+            atomic(dest, data, 0o644)
+
+
+def install_site(root=Path('/')):
+    c, site = node_config(root), sites(root)
+    index, assets = render(c['domain'])
+    path = site / 'index.html'
+    if path.exists() or path.is_symlink():
+        if safe_read(path) != index:
+            raise Failure('existing site differs; full installation will not replace it')
+    publish_assets(site, assets)
+    atomic(path, index, 0o644)
+    # These are only created on new nodes. Site-only update does not overwrite
+    # existing robots/favicon/404 files, so older pages remain rollback-ready.
+    defaults = {
+        'robots.txt': b'User-agent: *\nDisallow:\n',
+        '404.html': '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Страница не найдена</title><h1>404</h1><p>Страница не найдена.</p><a href="/">На главную</a></html>\n'.encode(),
+        'favicon.svg': next(value for key, value in assets.items() if key.endswith('.svg')),
+    }
+    for name, data in defaults.items():
+        dest = site / name
+        if not (dest.exists() or dest.is_symlink()):
+            atomic(dest, data, 0o644)
+    return 'COVER_INSTALL=PASS'
+
+
+def ready(root):
+    state = root / 'var/lib/vkarmani-node'
+    safe_dir(state, private=True)
+    safe_read(state / 'owned-installation', private=True)
+    complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
+    version = safe_read(state / 'install-version', private=True).decode().strip()
+    if version not in ('2.0.3', '2.1.0') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+        raise Failure('site-only update requires a completed 2.0.3 or 2.1.0 installation')
+    for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
+        p = state / name
+        if p.exists() or p.is_symlink():
+            raise Failure('unresolved transaction: ' + name)
+    return state, node_config(root), sites(root)
+
+
+def run_checks(c, site, state):
+    commands = [['nginx', '-t'], ['/usr/local/sbin/vkarmani-selfsteal-check']]
+    for cmd in commands:
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+        if p.returncode:
+            raise Failure('cover readiness failed: ' + Path(cmd[0]).name)
+    # Current working nodes must also serve the expected content on TCP/443.
+    # This is a LOCAL path, not a claim of external client reachability.
+    fd, name = tempfile.mkstemp(prefix='.cover-http-', dir=state)
+    os.close(fd)
+    try:
+        cmd = ['curl', '--noproxy', '*', '-4', '--fail', '--silent', '--show-error',
+               '--http2', '--tlsv1.3', '--tls-max', '1.3', '--connect-timeout', '5',
+               '--max-time', '15', '--max-filesize', str(MAX_INDEX),
+               '--resolve', f"{c['domain']}:443:{c['public_ipv4']}", '-o', name,
+               '-w', '%{http_code}', f"https://{c['domain']}/"]
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+        if p.returncode or p.stdout != b'200' or Path(name).read_bytes() != safe_read(site / 'index.html'):
+            raise Failure('TCP/443 does not serve the expected site; nothing is restarted')
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def receipt_write(folder, data):
+    atomic(folder / 'receipt.json', (json.dumps(data, sort_keys=True, indent=2) + '\n').encode())
+
+
+def pointer_read(state, filename):
+    value = safe_read(state / filename, private=True, limit=256).decode().strip()
+    if not BACKUP_NAME.fullmatch(value):
+        raise Failure('invalid cover backup pointer')
+    folder = state / 'backups' / value
+    safe_dir(state / 'backups', private=True)
+    safe_dir(folder, private=True)
+    r = json.loads(safe_read(folder / 'receipt.json', private=True))
+    if (not isinstance(r, dict) or set(r) != {'before', 'after', 'domain', 'state'}
+            or any(not isinstance(r.get(x), str) or not re.fullmatch(r'[0-9a-f]{64}', r[x]) for x in ('before', 'after'))
+            or r.get('state') not in ('pending', 'active', 'rolled-back')):
+        raise Failure('invalid cover receipt')
+    old = safe_read(folder / 'index.before', private=True)
+    if sha(old) != r['before']:
+        raise Failure('cover backup checksum mismatch')
+    return folder, r, old
+
+
+def clear_pending(state):
+    (state / 'cover-pending').unlink(missing_ok=True)
+    sync_dir(state)
+
+
+def update(root=Path('/'), checker=run_checks):
+    state, c, site = ready(root)
+    if (state / 'cover-pending').exists() or (state / 'cover-pending').is_symlink():
+        raise Failure('cover update interrupted; use --rollback-cover before another update')
+    checker(c, site, state)
+    old = safe_read(site / 'index.html')
+    index, assets = render(c['domain'])
+    if old == index:
+        # Verify assets too, do not call a damaged page "unchanged and healthy".
+        for name, data in assets.items():
+            if safe_read(site / name) != data:
+                raise Failure('generated site asset changed or missing')
+        return 'COVER_UPDATE=UNCHANGED'
+    backups = state / 'backups'
+    if not backups.exists():
+        backups.mkdir(mode=0o700)
+    safe_dir(backups, private=True)
+    name = 'cover-' + dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%f') + '-' + secrets.token_hex(6)
+    folder = backups / name
+    folder.mkdir(mode=0o700)
+    atomic(folder / 'index.before', old)
+    receipt = {'before': sha(old), 'after': sha(index), 'domain': c['domain'], 'state': 'pending'}
+    receipt_write(folder, receipt)
+    # Read back the actual backup bytes before marking or publishing anything.
+    if safe_read(folder / 'index.before', private=True) != old:
+        raise Failure('cover backup verification failed')
+    atomic(state / 'cover-pending', (name + '\n').encode())
+    published = False
+    try:
+        publish_assets(site, assets)
+        if safe_read(site / 'index.html') != old:
+            raise Failure('site changed concurrently; not overwritten')
+        # Set before writing: fsync can fail AFTER the atomic replacement.
+        published = True
+        atomic(site / 'index.html', index, 0o644)
+        checker(c, site, state)
+        receipt['state'] = 'active'
+        receipt_write(folder, receipt)
+        atomic(state / 'cover-last-update', (name + '\n').encode())
+        clear_pending(state)
+    except BaseException:
+        # Crash/SIGKILL may prevent execution here; the persisted pointer enables
+        # explicit recovery. Do not overwrite a third party's concurrent edit.
+        try:
+            current = safe_read(site / 'index.html')
+            if current not in (old, index):
+                raise Failure('concurrent site edit; automatic rollback refused')
+            if published and current == index:
+                atomic(site / 'index.html', old, 0o644)
+            checker(c, site, state)
+            receipt['state'] = 'rolled-back'
+            receipt_write(folder, receipt)
+            clear_pending(state)
+        except BaseException:
+            print('COVER_ROLLBACK=INCOMPLETE; backup=' + str(folder))
+        raise
+    return 'COVER_UPDATE=PASS backup=' + str(folder)
+
+
+def rollback(root=Path('/'), checker=run_checks):
+    state, c, site = ready(root)
+    pending = (state / 'cover-pending').exists() or (state / 'cover-pending').is_symlink()
+    folder, receipt, old = pointer_read(state, 'cover-pending' if pending else 'cover-last-update')
+    if receipt['domain'] != c['domain']:
+        raise Failure('backup belongs to a different domain')
+    current = safe_read(site / 'index.html')
+    if sha(current) not in (receipt['before'], receipt['after']):
+        raise Failure('site changed after update; rollback will not overwrite it')
+    if sha(current) == receipt['after']:
+        atomic(site / 'index.html', old, 0o644)
+    checker(c, site, state)
+    receipt['state'] = 'rolled-back'
+    receipt_write(folder, receipt)
+    if pending:
+        clear_pending(state)
+    return 'COVER_ROLLBACK=PASS; old assets retained, VPN files and services unchanged'
+
+
+def interrupted(signum, _frame):
+    raise SystemExit(128 + signum)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('install', 'update', 'rollback'))
+    args = parser.parse_args()
+    if os.geteuid() != 0:
+        parser.error('run as root on the node')
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, interrupted)
+    try:
+        print({'install': install_site, 'update': update, 'rollback': rollback}[args.action]())
+        return 0
+    except (Failure, ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        print('STOP: ' + (str(exc) if isinstance(exc, Failure) else 'cover operation failed (I/O, timeout or invalid state); no VPN restart'))
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+VK_SITE_TOOL_PY
+    chmod 0700 "$destination"
+}
+
+vk_write_resources_helper() {
+    local destination=${1:-"$LIB/resources.py"}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_RESOURCES_PY'
+#!/usr/bin/env python3
+"""Read-only host resource snapshot; no connection lists, user IDs or secrets."""
+import argparse
+import json
+import os
+from pathlib import Path
+import platform
+import shutil
+import subprocess
+import time
+
+
+def text(path):
+    try:
+        return path.read_text()
+    except OSError:
+        return ''
+
+
+def cpu_values(raw):
+    line = next((x for x in raw.splitlines() if x.startswith('cpu ')), '')
+    try:
+        values = [int(v) for v in line.split()[1:9]]
+        if len(values) != 8 or any(v < 0 for v in values):
+            return None
+        return values  # Do not double-count guest/guest_nice.
+    except ValueError:
+        return None
+
+
+def paired_counters(raw, group, selected):
+    rows = raw.splitlines()
+    for i in range(len(rows) - 1):
+        a, b = rows[i].split(), rows[i + 1].split()
+        if not a or not b or a[0] != group + ':' or b[0] != group + ':':
+            continue
+        try:
+            pairs = dict(zip(a[1:], (int(v) for v in b[1:]), strict=True))
+        except ValueError:
+            return {}
+        return {name: pairs[name] for name in selected if name in pairs}
+    return {}
+
+
+def sample(proc=Path('/proc')):
+    vm = {}
+    for line in text(proc / 'vmstat').splitlines():
+        pair = line.split()
+        if len(pair) == 2 and pair[0] in ('oom_kill', 'pswpin', 'pswpout') and pair[1].isdigit():
+            vm[pair[0]] = int(pair[1])
+    return {
+        'cpu': cpu_values(text(proc / 'stat')),
+        'tcp': paired_counters(text(proc / 'net/snmp'), 'Tcp', ('OutSegs', 'RetransSegs', 'AttemptFails', 'EstabResets')),
+        'tcp_ext': paired_counters(text(proc / 'net/netstat'), 'TcpExt', ('ListenOverflows', 'ListenDrops', 'TCPTimeouts')),
+        'vm': vm,
+    }
+
+
+def deltas(before, after):
+    return {k: (after[k] - before[k] if after[k] >= before[k] else None)
+            for k in before.keys() & after.keys()}
+
+
+def memory_info(raw):
+    result = {}
+    for line in raw.splitlines():
+        p = line.split()
+        if len(p) >= 2 and p[1].isdigit():
+            result[p[0].rstrip(':')] = int(p[1])
+    selected = {k + '_MiB': round(result[k] / 1024, 1)
+                for k in ('MemTotal', 'MemAvailable', 'SwapTotal', 'SwapFree') if k in result}
+    if 'SwapTotal' in result and 'SwapFree' in result:
+        selected['SwapUsed_MiB'] = round((result['SwapTotal'] - result['SwapFree']) / 1024, 1)
+    return selected
+
+
+def pressure(raw):
+    result = {}
+    for line in raw.splitlines():
+        p = line.split()
+        if p and p[0] in ('some', 'full'):
+            parsed = {}
+            for item in p[1:]:
+                if '=' not in item:
+                    continue
+                k, v = item.split('=', 1)
+                if k not in ('avg10', 'avg60', 'avg300', 'total'):
+                    continue
+                try:
+                    parsed[k] = int(v) if k == 'total' else float(v)
+                except ValueError:
+                    continue
+            result[p[0]] = parsed
+    return result or None
+
+
+def summarize(before, after):
+    result = {name + '_delta': deltas(before[name], after[name]) for name in ('tcp', 'tcp_ext', 'vm')}
+    cpu = None
+    if before['cpu'] is not None and after['cpu'] is not None:
+        delta = [b - a for a, b in zip(before['cpu'], after['cpu'])]
+        total = sum(delta)
+        if total > 0 and all(x >= 0 for x in delta):
+            cpu = {'busy_percent': round(100 * (total - delta[3] - delta[4]) / total, 2),
+                   'iowait_percent': round(100 * delta[4] / total, 2),
+                   'steal_percent': round(100 * delta[7] / total, 2)}
+    result['cpu'] = cpu
+    # No arbitrary "packet loss %": TCP retransmission counters are host-wide,
+    # not end-to-end losses nor traffic for this node only.
+    return result
+
+
+def container_state():
+    if not shutil.which('docker'):
+        return {'verified': False, 'reason': 'docker_cli_absent'}
+    fmt = '{"running":{{.State.Running}},"restarting":{{.State.Restarting}},"oom_killed":{{.State.OOMKilled}},"restarts":{{.RestartCount}}}'
+    try:
+        p = subprocess.run(['docker', 'inspect', '--format', fmt, 'remnanode'],
+                           stdin=subprocess.DEVNULL, capture_output=True, timeout=5)
+        if p.returncode:
+            return {'verified': False, 'reason': 'container_unavailable'}
+        data = json.loads(p.stdout)
+        if (not isinstance(data, dict) or set(data) != {'running', 'restarting', 'oom_killed', 'restarts'}
+                or any(type(data.get(k)) is not bool for k in ('running', 'restarting', 'oom_killed'))
+                or type(data.get('restarts')) is not int or data['restarts'] < 0):
+            raise ValueError()
+        return {'verified': True, **data}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {'verified': False, 'reason': 'timeout_or_invalid_response'}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--seconds', type=int, default=3, choices=range(1, 31), metavar='1..30')
+    args = parser.parse_args()
+    proc = Path('/proc')
+    start = time.monotonic()
+    before = sample(proc)
+    time.sleep(args.seconds)
+    after = sample(proc)
+    result = {'scope': 'HOST_LOCAL_ONLY_NOT_A_VPN_SPEED_TEST', 'kernel': platform.release(),
+              'sample_seconds': round(time.monotonic() - start, 3), **summarize(before, after),
+              'memory': memory_info(text(proc / 'meminfo')),
+              'pressure': {kind: pressure(text(proc / 'pressure' / kind)) for kind in ('cpu', 'memory', 'io')},
+              'container': container_state()}
+    try:
+        v = os.statvfs('/')
+        result['root_disk'] = {'available_MiB': round(v.f_bavail * v.f_frsize / 1048576, 1),
+                               'available_inodes': v.f_favail}
+    except OSError:
+        result['root_disk'] = None
+    result['interpretation'] = ('Counters are host-wide observations, not a diagnosis of censorship or proof of provider overselling. '
+                                'Compare idle/load samples and client-side throughput before changing MTU, queues, buffers or CPU settings.')
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+if __name__ == '__main__':
+    main()
+VK_RESOURCES_PY
+    chmod 0700 "$destination"
+}
+
+vkarmani_site_main() (
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    local action=$1 work
+    shift
+    [[ $# -eq 0 ]] || { echo 'Usage: bash install.sh --update-cover / --rollback-cover'; exit 2; }
+    [[ $EUID -eq 0 && -d /run/systemd/system ]] || { echo 'STOP: run as root on the installed node.'; exit 1; }
+    exec 9>/run/lock/vkarmani-node-installer.lock
+    flock -n 9 || { echo 'STOP: another installer/maintenance operation is running.'; exit 1; }
+    work=$(mktemp -d /root/vkarmani-cover.XXXXXXXX)
+    trap 'rm -rf -- "$work"' EXIT
+    vk_write_site_tool "$work/site_tool.py"
+    python3 "$work/site_tool.py" "$action"
+)
+
+vkarmani_resources_main() (
+    set -Eeuo pipefail
+    set +x
+    export LC_ALL=C PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    local work
+    work=$(mktemp -d /tmp/vkarmani-resources.XXXXXXXX)
+    trap 'rm -rf -- "$work"' EXIT
+    vk_write_resources_helper "$work/resources.py"
+    python3 "$work/resources.py" "$@"
+)
+
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.0.3 — 2026-09-30
-# Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
+# VKarmani Remnawave Node Installer 2.1.0 — 2026-09-30
+# Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; reboot is opt-in.
 # Node-only mode: does not create or edit panel objects. RAW+REALITY Selfsteal uses an Nginx Unix socket.
@@ -1976,7 +2813,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.0.3
+INSTALLER_VERSION=2.1.0
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -1991,7 +2828,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.0.3
+VKarmani Remnawave Node Installer 2.1.0
 
   sudo bash install.sh                         # установка / безопасный повторный запуск
   sudo bash install.sh --reboot                # явное разрешение одного reboot после проверок
@@ -2004,13 +2841,17 @@ VKarmani Remnawave Node Installer 2.0.3
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
   sudo bash install.sh --repair-node           # узкое исправление нашей завершённой 1.3.x
+  sudo bash install.sh --update-cover          # только сайт: 2.0.3/2.1.0, без restart VPN
+  sudo bash install.sh --rollback-cover        # проверенный откат только сайта
+  sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
   bash install.sh --version
 
 Три обязательных значения: SECRET_KEY → домен ноды → исходящий IPv4 технички.
 IP самой ноды выбирается по DNS среди публичных IPv4 её интерфейсов.
-Чистая выделенная Ubuntu 22.04/24.04 или Debian 12/13; amd64/arm64; systemd + GRUB.
-Минимум: 900 MiB RAM, 6 GiB свободно. NAT, LXC/OpenVZ, IPv6 SSH, чужая установка не поддержаны.
+Чистая выделенная Ubuntu 22.04/24.04/26.04 или Debian 12/13; amd64/arm64; systemd + GRUB.
+Минимум: 900 MiB RAM (26.04: 1536 MiB), 6 GiB свободно. NAT, LXC/OpenVZ, IPv6 SSH, чужая установка не поддержаны.
 SSH: парольный вход, существующие порты, без IP-allowlist. Пароли/аккаунты не создаются.
+26.04: адаптация по документации; полный цикл на VPS ещё требует приёмки.
 До запуска нужны снимок VPS, консоль хостера и действующий пароль администратора.
 IPv6: runtime sysctl + GRUB; для полного отключения socket API необходим reboot.
 Полного обновления ОС, autoremove, prune, смены MTU/маршрутов и автоперезагрузки по умолчанию нет.
@@ -2191,13 +3032,11 @@ fi
 # Only distro-owned os-release is sourced. User input is always JSON, never shell.
 # shellcheck disable=SC1091
 . /etc/os-release
-case "${ID:-}:${VERSION_ID:-}" in
-    ubuntu:22.04|ubuntu:24.04|debian:12|debian:13) ;;
-    *) echo "ОС вне поддерживаемого списка: ${PRETTY_NAME:-unknown}. Никаких изменений не выполнено." >&2; exit 1 ;;
-esac
-OS_ID=$ID
-OS_CODENAME=$VERSION_CODENAME
-case "$(dpkg --print-architecture)" in amd64|arm64) ;; *) echo 'Только amd64/arm64' >&2; exit 1 ;; esac
+vk_platform_settings "${ID:-}" "${VERSION_ID:-}" "${VERSION_CODENAME:-}" "$(dpkg --print-architecture)"
+if [[ "$OS_ID:$OS_CODENAME" == ubuntu:resolute && ! -f /sys/fs/cgroup/cgroup.controllers ]]; then
+    echo 'STOP: Ubuntu 26.04 requires cgroup v2. No boot/kernel conversion is attempted.' >&2; exit 1
+fi
+vk_base_tools_smoke
 [[ -f /boot/grub/grub.cfg && -f /etc/default/grub ]] && command -v update-grub >/dev/null || {
     echo 'Нужна загрузка через GRUB: update-grub, /boot/grub/grub.cfg, /etc/default/grub.' >&2; exit 1;
 }
@@ -2210,8 +3049,8 @@ install -d -o root -g root -m 0755 /run/sshd
 /usr/sbin/sshd -t
 MEM_MB=$(awk '/MemTotal:/{print int($2/1024)}' /proc/meminfo)
 FREE_MB=$(df -Pm / | awk 'NR==2{print $4}')
-[[ "$MEM_MB" -ge 900 && "$FREE_MB" -ge 6144 ]] || {
-    echo "Нужно >=900 MiB RAM и >=6144 MiB свободного места. Сейчас RAM=$MEM_MB, disk=$FREE_MB MiB." >&2; exit 1;
+[[ "$MEM_MB" -ge "$MIN_MEMORY_MB" && "$FREE_MB" -ge 6144 ]] || {
+    echo "Нужно >=${MIN_MEMORY_MB} MiB RAM и >=6144 MiB свободного места. Сейчас RAM=$MEM_MB, disk=$FREE_MB MiB." >&2; exit 1;
 }
 [[ -z "$(dpkg --audit)" ]] || { echo 'dpkg сообщает незавершённые операции. Исправьте пакетную базу прежде установки.' >&2; exit 1; }
 # Never overwrite the only pre-change access backup while its guard is pending.
@@ -2394,11 +3233,11 @@ Acquire::https::Timeout "30";
 DPkg::Lock::Timeout "300";
 EOF
 APT=(apt-get -y --no-remove --no-install-recommends -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
-apt-get update
+apt-get -o APT::Update::Error-Mode=any update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.0.3: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.1.0: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -2951,7 +3790,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.0.3 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.1.0 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -3108,8 +3947,11 @@ TIME_SERVICE=$(python3 "$TIME_HELPER" select)
 # BOTH the simulation and actual transaction; no whitelist/removal exception.
 NODE_PACKAGES=(openssh-server ufw fail2ban nginx certbot "$TIME_SERVICE" logrotate unattended-upgrades
     ethtool kmod util-linux procps dbus python3-systemd)
+DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
+vk_setup_docker_repository
+# Fail before changing access/boot if this release has no signed package candidates.
+"${APT[@]}" --simulate install "${NODE_PACKAGES[@]}" "${DOCKER_PACKAGES[@]}"
 printf 'TIME_PROVIDER=%s; системные NTP-пакеты не заменяются.\n' "$TIME_SERVICE"
-"${APT[@]}" --simulate install "${NODE_PACKAGES[@]}"
 "${APT[@]}" install "${NODE_PACKAGES[@]}"
 ensure_sshd_runtime
 [[ $(python3 "$TIME_HELPER" select) == "$TIME_SERVICE" ]] || die 'NTP provider изменился во время APT; останавливаюсь.'
@@ -3117,24 +3959,13 @@ ensure_sshd_runtime
 stage 'MSK, синхронизация времени и ограничение журналов'
 timedatectl set-timezone Europe/Moscow
 if [[ "$TIME_SERVICE" == chrony ]]; then
-cat > /etc/chrony/chrony.conf <<'EOF'
-pool time.cloudflare.com iburst maxsources 2
-pool pool.ntp.org iburst maxsources 2
-driftfile /var/lib/chrony/chrony.drift
-makestep 1.0 3
-rtcsync
-leapsectz right/UTC
-keyfile /etc/chrony/chrony.keys
-logdir /var/log/chrony
-cmdport 0
-port 0
-EOF
-printf 'DAEMON_OPTS="-F 1 -4"\n' > /etc/default/chrony
-# Both Debian and Ubuntu chrony units use DAEMON_OPTS (verified again locally below).
+# Preserve sources.d/conf.d, NTS bootstrap trust and provider configuration.
+# The managed addition disables server/control UDP ports; the daemon uses IPv4.
 if ! systemctl cat chrony.service | _contains 'DAEMON_OPTS'; then
     die 'Неизвестный chrony unit: параметр DAEMON_OPTS не поддерживается.'
 fi
-chronyd -p -f /etc/chrony/chrony.conf >/dev/null
+vk_write_chrony_config_helper
+python3 "$LIB/chrony_config.py"
 systemctl enable --now chrony
 systemctl restart chrony
 else
@@ -3424,24 +4255,8 @@ for package in docker.io docker-compose docker-compose-v2 podman-docker containe
         die "Установлен конфликтующий пакет $package. Не удаляю его автоматически вместе с чужими данными."
     fi
 done
-install -d -m 0755 /etc/apt/keyrings
-curl -4 --fail --show-error --silent --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
-    --connect-timeout 15 --max-time 120 --retry 3 \
-    "https://download.docker.com/linux/$OS_ID/gpg" -o /etc/apt/keyrings/docker-vkarmani.asc
-# Validate the official Docker CE signing-key fingerprint before trusting the repository.
-gpg --show-keys --with-colons /etc/apt/keyrings/docker-vkarmani.asc | \
-    awk -F: '$1=="fpr"{print $10}' | _contains -Fx '9DC858229FC7DD38854AE2D88D81803C0EBFCD88' || die 'Неожиданный fingerprint ключа Docker.'
-chmod 0644 /etc/apt/keyrings/docker-vkarmani.asc
-cat > /etc/apt/sources.list.d/docker-vkarmani.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/$OS_ID
-Suites: $OS_CODENAME
-Components: stable
-Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/docker-vkarmani.asc
-EOF
-apt-get update
-"${APT[@]}" install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# Repository/candidates were validated before SSH/UFW/GRUB changes.
+"${APT[@]}" install "${DOCKER_PACKAGES[@]}"
 helper docker-config
 dockerd --validate --config-file=/etc/docker/daemon.json
 systemctl enable docker.service containerd.service
@@ -3450,6 +4265,16 @@ systemctl restart docker
 systemctl restart vkarmani-node-network.service
 
 stage "Nginx + Let's Encrypt + изолированный Selfsteal socket для VLESS RAW REALITY"
+NGINX_NUM=$(nginx -v 2>&1 | sed -n 's/.*nginx\/\([0-9.]*\).*/\1/p')
+[[ "$NGINX_NUM" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'Не удалось определить версию Nginx.'
+NGINX_BUILD=$(nginx -V 2>&1)
+[[ "$NGINX_BUILD" == *--with-http_ssl_module* && "$NGINX_BUILD" == *--with-http_v2_module* ]] || die 'Nginx должен поддерживать TLS и HTTP/2.'
+NGINX_HTTP2_LISTEN='http2'
+NGINX_HTTP2_DIRECTIVE=''
+if dpkg --compare-versions "$NGINX_NUM" ge 1.25.1; then
+    NGINX_HTTP2_LISTEN=''
+    NGINX_HTTP2_DIRECTIVE='http2 on;'
+fi
 install -d -m 0750 -o root -g root /run/vkarmani-selfsteal
 cat > /etc/tmpfiles.d/vkarmani-selfsteal.conf <<'EOF'
 # Created during sysinit before Docker; no dependency on Nginx or external DNS.
@@ -3457,27 +4282,8 @@ d /run/vkarmani-selfsteal 0750 root root -
 EOF
 systemd-tmpfiles --create /etc/tmpfiles.d/vkarmani-selfsteal.conf
 install -d -m 0755 /var/www/vkarmani-node/acme /var/www/vkarmani-node/site /var/www/vkarmani-node/site/assets
-python3 - <<'PY'
-from pathlib import Path
-import json, secrets, html
-etc=Path('/etc/vkarmani-node'); root=Path('/var/www/vkarmani-node/site'); meta=etc/'selfsteal-site.json'
-try: m=json.loads(meta.read_text()) if meta.exists() else {}
-except Exception: m={}
-if not m:
-    choices=[('Workspace','Secure access to your online workspace.'),('Service Portal','Manage services and account settings in one place.'),('Cloud Desk','Simple tools for files, notes and shared work.'),('Account Center','Access your account and connected services.'),('Project Hub','A lightweight workspace for everyday projects.')]
-    title, subtitle=secrets.choice(choices)
-    m={'title':title,'subtitle':subtitle,'accent':secrets.randbelow(360),'asset':secrets.token_hex(6),'nonce':secrets.token_hex(12)}
-    tmp=meta.with_suffix('.tmp'); tmp.write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n'); tmp.chmod(0o600); tmp.replace(meta)
-asset='app-'+m['asset']+'.css'; hue=m['accent']
-css=f'''*{{box-sizing:border-box}}html{{color-scheme:light dark}}body{{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f1115;color:#e9edf3}}main{{max-width:920px;margin:0 auto;padding:72px 24px}}.mark{{width:48px;height:48px;border-radius:14px;background:hsl({hue} 72% 52%);box-shadow:0 10px 40px hsl({hue} 72% 52% / .24)}}h1{{font-size:clamp(2rem,6vw,4.4rem);line-height:1;margin:28px 0 18px}}p{{max-width:620px;color:#aeb7c5;font-size:1.05rem;line-height:1.7}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:42px}}.card{{padding:20px;border:1px solid #252b35;border-radius:16px;background:#151922}}.card b{{display:block;margin-bottom:8px}}footer{{margin-top:56px;color:#6e7887;font-size:.85rem}}@media(prefers-color-scheme:light){{body{{background:#f7f8fa;color:#171a20}}p{{color:#596270}}.card{{background:white;border-color:#e2e6ec}}footer{{color:#7a8492}}}}'''
-(root/'assets'/asset).write_text(css); (root/'assets'/asset).chmod(0o644)
-title=html.escape(m['title']); subtitle=html.escape(m['subtitle']); nonce=html.escape(m['nonce'])
-index=f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111318"><meta name="description" content="{subtitle}"><meta name="x-instance" content="{nonce}"><title>{title}</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/{asset}"></head><body><main><div class="mark"></div><h1>{title}</h1><p>{subtitle}</p><div class="grid"><section class="card"><b>Available</b><span>Services are online and ready.</span></section><section class="card"><b>Private by design</b><span>Connections use modern encrypted transport.</span></section><section class="card"><b>Simple access</b><span>Use your usual account to continue.</span></section></div><footer>© 2026 {title}</footer></main></body></html>'''
-(root/'index.html').write_text(index); (root/'index.html').chmod(0o644)
-(root/'404.html').write_text(f'<!doctype html><html><meta charset="utf-8"><title>Not found</title><body><h1>404</h1><p>Page not found.</p><!-- {nonce} --></body></html>'); (root/'404.html').chmod(0o644)
-(root/'robots.txt').write_text('User-agent: *\nDisallow:\n'); (root/'robots.txt').chmod(0o644)
-(root/'favicon.svg').write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="hsl({hue},72%,52%)"/><path d="M18 33 28 43 47 22" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>'); (root/'favicon.svg').chmod(0o644)
-PY
+vk_write_site_tool
+python3 "$LIB/site_tool.py" install
 find /var/www/vkarmani-node/site -type d -exec chmod 0755 {} +
 find /var/www/vkarmani-node/site -type f -exec chmod 0644 {} +
 python3 - <<'PY_NGINX_MAIN'
@@ -3526,13 +4332,6 @@ systemctl restart nginx
 certbot certonly --webroot --webroot-path /var/www/vkarmani-node/acme \
     --domain "$DOMAIN" --cert-name "$DOMAIN" --register-unsafely-without-email \
     --agree-tos --non-interactive --keep-until-expiring --key-type ecdsa --preferred-challenges http
-NGINX_NUM=$(nginx -v 2>&1 | sed -n 's/.*nginx\/\([0-9.]*\).*/\1/p')
-NGINX_HTTP2_LISTEN='http2'
-NGINX_HTTP2_DIRECTIVE=''
-if dpkg --compare-versions "$NGINX_NUM" ge 1.25.1; then
-    NGINX_HTTP2_LISTEN=''
-    NGINX_HTTP2_DIRECTIVE='http2 on;'
-fi
 cat > /etc/nginx/conf.d/20-vkarmani-selfsteal.conf <<EOF
 server {
     listen unix:/run/vkarmani-selfsteal/nginx.sock ssl $NGINX_HTTP2_LISTEN proxy_protocol;
@@ -3719,7 +4518,7 @@ exec 8>/run/lock/vkarmani-node-installer.lock
 flock -n 8 || exit 0
 # Only APT download cache and archived journals within the documented retention.
 # Serialize with installation/image updates; no package/image/data deletion.
-apt-get clean
+python3 /usr/local/lib/vkarmani-node/apt_clean.py
 journalctl --rotate
 journalctl --vacuum-time=14d --vacuum-size=200M
 # Never autoremove packages, delete backups, prune images, containers or volumes.
@@ -3758,6 +4557,8 @@ cat > /etc/logrotate.d/vkarmani-node <<'EOF'
 EOF
 
 stage 'Контроль после перезагрузки и диагностическая команда'
+vk_write_apt_clean_helper
+vk_write_resources_helper
 vk_write_acceptance
 vk_write_maintenance
 cat > /etc/systemd/system/vkarmani-node-postboot.service <<EOF
@@ -3784,7 +4585,7 @@ else
 fi
 
 stage 'Очистка только APT-кэша и ограниченных журналов'
-apt-get clean
+python3 /usr/local/lib/vkarmani-node/apt_clean.py
 /usr/local/sbin/vkarmani-node-check --preboot
 printf 'version=%s\nat=%s\nimage=%s\n' "$INSTALLER_VERSION" "$(date -Is)" "$DIGEST" > "$STATE/INSTALL_COMPLETE"
 rm -f "$STATE/INSTALL_FAILED" "$STATE/RESUME_FAILED" "$STATE/image-update-pending"
@@ -3797,7 +4598,11 @@ printf 'Профиль и действия в панели: /etc/vkarmani-node/P
 printf 'SSH-порты сохранены: %s\n' "${SSH_PORTS[*]}"
 printf 'Проверка после входа: sudo vkarmani-node-check\nЖурнал: /var/log/vkarmani-node-postboot.log\n'
 printf 'Резервная копия: %s\nПолное отключение IPv6 проверяется ПОСЛЕ загрузки нового ядра.\n' "$BK"
-systemctl list-timers --no-pager vkarmani-weekly-reboot.timer
+if [[ $WEEKLY_REBOOT -eq 1 ]]; then
+    systemctl list-timers --no-pager vkarmani-weekly-reboot.timer
+else
+    echo 'WEEKLY_REBOOT=DISABLED; timers Certbot and cleanup were checked separately.'
+fi
 if [[ $NO_REBOOT -eq 0 ]]; then
     # Scheduled by systemd rather than a background shell; survives SSH closure.
     systemd-run --collect --unit="vkarmani-install-reboot-$(date +%s)" --on-active=15s /usr/bin/systemctl reboot
@@ -3862,7 +4667,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.0.3-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.1.0-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -3913,7 +4718,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.0.3 — исправление только на НОДЕ'
+    echo 'VKarmani 2.1.0 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -3978,7 +4783,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.0.3\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.1.0\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -4008,7 +4813,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.0.3-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.1.0-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -4019,7 +4824,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.0.3 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.1.0 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -4056,7 +4861,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.0.3\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.1.0\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true
@@ -4084,10 +4889,13 @@ vkarmani_repair_network_main() {
     return "$check_rc"
 }
 
-# VKARMANI_COMPLETE_PAYLOAD_2_0_2
+# VKARMANI_COMPLETE_PAYLOAD_2_1_0
 # Sourcing definitions is intentionally inert: used by offline regression tests.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
+        --update-cover) shift; vkarmani_site_main update "$@" ;;
+        --rollback-cover) shift; vkarmani_site_main rollback "$@" ;;
+        --diagnose-resources) shift; vkarmani_resources_main "$@" ;;
         --repair-network) shift; vkarmani_repair_network_main "$@" ;;
         --repair-node) shift; vkarmani_repair_main "$@" ;;
         --check)
@@ -4097,7 +4905,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             ;;
         --backup|--refresh-image|--rollback-image)
             ACTION=${1#--}; shift
-            [[ -x /usr/local/sbin/vkarmani-node-maintain ]] || { echo 'Нужна завершённая установка 2.0.3. Старые ноды автоматически не мигрируются.'; exit 1; }
+            [[ -x /usr/local/sbin/vkarmani-node-maintain ]] || { echo 'Нужна завершённая установка 2.1.0. Старые ноды автоматически не мигрируются.'; exit 1; }
             exec /usr/local/sbin/vkarmani-node-maintain "$ACTION" "$@"
             ;;
         *) vkarmani_main "$@" ;;

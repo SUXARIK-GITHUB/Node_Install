@@ -28,6 +28,7 @@ def component_commands(provider, fail_simulation=False):
         preamble = '''set -Eeuo pipefail
 stage(){ :; }
 vk_write_time_helper(){ :; }
+vk_setup_docker_repository(){ :; } # signed repository I/O is outside this isolated solver fixture
 python3(){ printf '%s\\n' "$TEST_PROVIDER"; }
 LIB="$TEST_LIB"
 APT=(apt-get -y --no-remove --no-install-recommends -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
@@ -46,6 +47,9 @@ class PackageCommandTests(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertEqual(len(commands), 2)
         self.assertIn('--simulate', commands[0])
+        self.assertIn('docker-ce', commands[0])
+        self.assertIn('docker-compose-plugin', commands[0])
+        self.assertNotIn('docker-ce', commands[1])
         self.assertNotIn('--simulate', commands[1])
         for command in commands:
             self.assertIn('--no-remove', command)

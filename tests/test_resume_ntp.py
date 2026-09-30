@@ -199,7 +199,7 @@ class ResumeErrorHandlerTests(unittest.TestCase):
         end = SCRIPT.index("\ntrap 'on_error", start)
         with tempfile.TemporaryDirectory() as folder:
             state = Path(folder)
-            (state / 'install-version').write_text('2.0.3\n')
+            (state / 'install-version').write_text('2.1.0\n')
             code = ('set -Eeuo pipefail\nSTATE=$1\nLOG="$STATE/test.log"\n'
                     'ERROR_HANDLED=0\nRESUME_FROM=2.0.2\n' + SCRIPT[start:end] + '\non_error 100 999\n')
             p = subprocess.run(['bash', '-c', code, '_', folder], capture_output=True, text=True, timeout=10)

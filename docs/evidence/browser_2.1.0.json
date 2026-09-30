@@ -1,0 +1,57 @@
+{
+  "transport": "in-memory HTML + exact CSS asset (browser navigation restricted in sandbox)",
+  "cases": [
+    {
+      "width": 320,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 375,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 390,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 620,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 768,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 900,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 1024,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 1440,
+      "result": "PASS",
+      "horizontal_overflow": false
+    },
+    {
+      "width": 1920,
+      "result": "PASS",
+      "horizontal_overflow": false
+    }
+  ],
+  "engine": "Chromium",
+  "external_requests": [],
+  "page_errors": [],
+  "http_errors": [],
+  "browser_version": "144.0.7559.96",
+  "site_bytes": 7668,
+  "result": "PASS"
+}
