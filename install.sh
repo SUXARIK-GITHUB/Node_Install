@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
+<<<<<<< HEAD
 # VKarmani Node 2.0.2. Read README.md before running as root.
+=======
+# VKarmani Node 2.0.1. Read README.md before running as root.
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -819,7 +823,11 @@ if [[ "$MODE" == --postboot ]]; then
     done
 fi
 helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
+<<<<<<< HEAD
 if [[ -f "$STATE/install-version" && $(cat "$STATE/install-version") == 2.0.2 ]]; then
+=======
+if [[ -f "$STATE/install-version" && $(cat "$STATE/install-version") == 2.0.1 ]]; then
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY
     warn LIVE_PROFILE_POLICY 'NOT_VERIFIED: local JSON is not the live node config or Host SNI override'
 fi
@@ -1137,7 +1145,11 @@ vk_write_maintenance() {
     temp=$(mktemp /usr/local/sbin/vkarmani-node-maintain.tmp.XXXXXX)
     cat > "$temp" <<'VK_PAYLOAD_VK_WRITE_MAINTENANCE'
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """Explicit, serialized maintenance for VKarmani 2.0.2; never reconfigure the OS.
+=======
+"""Explicit, serialized maintenance for VKarmani 2.0.1; never reconfigure the OS.
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 
 Image rollback restores Compose + image only, NOT container writable-layer data,
 OS packages, panel objects or user sessions. A working panel must resend its profile.
@@ -1539,8 +1551,13 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
+<<<<<<< HEAD
             or 'version=2.0.2' not in (STATE / 'INSTALL_COMPLETE').read_text().splitlines()):
         raise Failure('ONLY_COMPLETED_2_0_2_SUPPORTED; legacy installation is not migrated')
+=======
+            or 'version=2.0.1' not in (STATE / 'INSTALL_COMPLETE').read_text().splitlines()):
+        raise Failure('ONLY_COMPLETED_2_0_1_SUPPORTED; legacy installation is not migrated')
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1579,6 +1596,7 @@ if __name__ == '__main__':
 VK_PAYLOAD_VK_WRITE_MAINTENANCE
     chmod 0700 "$temp"
     mv -f "$temp" /usr/local/sbin/vkarmani-node-maintain
+<<<<<<< HEAD
 }
 
 # Read-only preflight; source-safe and independent of Python/APT/ufw commands.
@@ -1639,12 +1657,18 @@ vk_check_saved_ufw_rules() {
     local directory=${1:-/etc/ufw}
     vk_ufw_saved_rules_pristine "$directory/user.rules" ufw &&
         vk_ufw_saved_rules_pristine "$directory/user6.rules" ufw6
+=======
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 }
 
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
+<<<<<<< HEAD
 # VKarmani Remnawave Node Installer 2.0.2 — 2026-09-30
+=======
+# VKarmani Remnawave Node Installer 2.0.1 — 2026-09-30
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 # Dedicated fresh Ubuntu 22.04/24.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; reboot is opt-in.
@@ -1656,7 +1680,11 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
+<<<<<<< HEAD
 INSTALLER_VERSION=2.0.2
+=======
+INSTALLER_VERSION=2.0.1
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -1671,7 +1699,11 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
+<<<<<<< HEAD
 VKarmani Remnawave Node Installer 2.0.2
+=======
+VKarmani Remnawave Node Installer 2.0.1
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 
   sudo bash install.sh                         # установка / безопасный повторный запуск
   sudo bash install.sh --reboot                # явное разрешение одного reboot после проверок
@@ -1930,8 +1962,13 @@ if [[ $FRESH -eq 1 ]]; then
             fi
         fi
     done
+<<<<<<< HEAD
     if ! vk_check_saved_ufw_rules; then
         echo 'STOP: UFW содержит сохранённые пользовательские правила или нестандартный user.rules/user6.rules. Не сбрасываю firewall.' >&2; exit 1
+=======
+    if [[ -f /etc/ufw/user.rules ]] && grep -E '^-A ufw-user-' /etc/ufw/user.rules | _contains .; then
+        echo 'STOP: UFW содержит сохранённые пользовательские правила, даже если выключен.'; exit 1
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     fi
     for p in /etc/docker/daemon.json /etc/nginx/conf.d /etc/nginx/sites-enabled; do
         if [[ -f "$p" ]] || { [[ -d "$p" ]] && find "$p" -mindepth 1 -maxdepth 1 ! -name default -print -quit | _contains .; }; then
@@ -2055,7 +2092,11 @@ apt-get update
 "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """VKarmani 2.0.2: node-only installer. No panel API, credentials or POST requests.
+=======
+"""VKarmani 2.0.1: node-only installer. No panel API, credentials or POST requests.
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -2608,7 +2649,11 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
+<<<<<<< HEAD
     txt = f'''VKarmani RemnaNode 2.0.2 — действия в панели
+=======
+    txt = f'''VKarmani RemnaNode 2.0.1 — действия в панели
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -3493,7 +3538,11 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
+<<<<<<< HEAD
     BK="$STATE/backups/repair-2.0.2-$(date +%Y%m%d-%H%M%S)-$$"
+=======
+    BK="$STATE/backups/repair-2.0.1-$(date +%Y%m%d-%H%M%S)-$$"
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/sbin/vkarmani-node-check
@@ -3543,7 +3592,11 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
+<<<<<<< HEAD
     echo 'VKarmani 2.0.2 — исправление только на НОДЕ'
+=======
+    echo 'VKarmani 2.0.1 — исправление только на НОДЕ'
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -3608,7 +3661,11 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
+<<<<<<< HEAD
     printf 'version=2.0.2\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+=======
+    printf 'version=2.0.1\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -3638,7 +3695,11 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
+<<<<<<< HEAD
     local bk="$state/backups/network-2.0.2-$(date +%Y%m%d-%H%M%S)-$$"
+=======
+    local bk="$state/backups/network-2.0.1-$(date +%Y%m%d-%H%M%S)-$$"
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -3649,7 +3710,11 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
+<<<<<<< HEAD
     echo 'VKarmani 2.0.2 — исправление применения sysctl после отключения IPv6'
+=======
+    echo 'VKarmani 2.0.1 — исправление применения sysctl после отключения IPv6'
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -3686,7 +3751,11 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
+<<<<<<< HEAD
     printf 'version=2.0.2\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+=======
+    printf 'version=2.0.1\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true
@@ -3714,7 +3783,11 @@ vkarmani_repair_network_main() {
     return "$check_rc"
 }
 
+<<<<<<< HEAD
 # VKARMANI_COMPLETE_PAYLOAD_2_0_2
+=======
+# VKARMANI_COMPLETE_PAYLOAD_2_0_1
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
 # Sourcing definitions is intentionally inert: used by offline regression tests.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
@@ -3727,7 +3800,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             ;;
         --backup|--refresh-image|--rollback-image)
             ACTION=${1#--}; shift
+<<<<<<< HEAD
             [[ -x /usr/local/sbin/vkarmani-node-maintain ]] || { echo 'Нужна завершённая установка 2.0.2. Старые ноды автоматически не мигрируются.'; exit 1; }
+=======
+            [[ -x /usr/local/sbin/vkarmani-node-maintain ]] || { echo 'Нужна завершённая установка 2.0.1. Старые ноды автоматически не мигрируются.'; exit 1; }
+>>>>>>> 9b766ae772c038c7a93e7565aafb49a5a1d960e6
             exec /usr/local/sbin/vkarmani-node-maintain "$ACTION" "$@"
             ;;
         *) vkarmani_main "$@" ;;
