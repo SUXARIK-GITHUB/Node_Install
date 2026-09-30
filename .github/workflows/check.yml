@@ -64,6 +64,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Trust only the current workspace in the disposable container
+        run: |
+          # checkout and shell steps can see different HOME/UID contexts.
+          # Write the exact checkout path in THIS shell user's global config.
+          : "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
+          [[ "$GITHUB_WORKSPACE" == /* ]]
+          test -d "$GITHUB_WORKSPACE/.git"
+          test "$(pwd -P)" = "$(cd -- "$GITHUB_WORKSPACE" && pwd -P)"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Verify Git checkout and release files
         run: |
           git rev-parse --is-inside-work-tree

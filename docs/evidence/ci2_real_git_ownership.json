@@ -1,0 +1,44 @@
+{
+  "git": "git version 2.47.3",
+  "process_uid": 1000,
+  "repository_owner_uid": 0,
+  "uses_git_test_hook": false,
+  "results": [
+    {
+      "step": "before_exact_trust",
+      "returncode": 128,
+      "stdout": "",
+      "stderr": "fatal: detected dubious ownership in repository at '/tmp/vk-real-git-owner-94ouua5x/Node Install'\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory '/tmp/vk-real-git-owner-94ouua5x/Node Install'\n"
+    },
+    {
+      "step": "actual_workflow_trust_step",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "step": "after_exact_trust_new_process",
+      "returncode": 0,
+      "stdout": "true\n",
+      "stderr": ""
+    },
+    {
+      "step": "unrelated_repo_still_blocked",
+      "returncode": 128,
+      "stdout": "",
+      "stderr": "fatal: detected dubious ownership in repository at '/tmp/vk-real-git-owner-94ouua5x/other'\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory /tmp/vk-real-git-owner-94ouua5x/other\n"
+    },
+    {
+      "step": "git_diff_after_trust",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "step": "only_exact_entry",
+      "returncode": 0,
+      "stdout": "/tmp/vk-real-git-owner-94ouua5x/Node Install\n",
+      "stderr": ""
+    }
+  ]
+}

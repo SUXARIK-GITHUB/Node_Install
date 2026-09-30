@@ -1,0 +1,25 @@
+test_existing_native_api_is_used_not_silently_replaced (test_hkdf_compat.HkdfCompatibilityTests.test_existing_native_api_is_used_not_silently_replaced) ... ok
+test_missing_api_path_canonicalizes_pem_whitespace (test_hkdf_compat.HkdfCompatibilityTests.test_missing_api_path_canonicalizes_pem_whitespace) ... ok
+test_node12_api_path_matches_embedded_sni_and_cryptography (test_hkdf_compat.HkdfCompatibilityTests.test_node12_api_path_matches_embedded_sni_and_cryptography) ... ok
+test_portable_output_length_bounds (test_hkdf_compat.HkdfCompatibilityTests.test_portable_output_length_bounds) ... ok
+test_rfc5869_fixed_vectors_runtime_selected_backend (test_hkdf_compat.HkdfCompatibilityTests.test_rfc5869_fixed_vectors_runtime_selected_backend) ... ok
+test_rfc5869_fixed_vectors_without_native_api (test_hkdf_compat.HkdfCompatibilityTests.test_rfc5869_fixed_vectors_without_native_api) ... ok
+test_actual_git_refuses_before_and_accepts_after_exact_trust (test_git_workspace.GitWorkspaceTests.test_actual_git_refuses_before_and_accepts_after_exact_trust) ... ok
+test_archive_without_git_refuses_without_config_write (test_git_workspace.GitWorkspaceTests.test_archive_without_git_refuses_without_config_write) ... ok
+test_checkout_home_exception_does_not_fix_shell_home (test_git_workspace.GitWorkspaceTests.test_checkout_home_exception_does_not_fix_shell_home) ... ok
+test_missing_workspace_refuses_without_config_write (test_git_workspace.GitWorkspaceTests.test_missing_workspace_refuses_without_config_write) ... ok
+test_relative_workspace_refuses_without_config_write (test_git_workspace.GitWorkspaceTests.test_relative_workspace_refuses_without_config_write) ... ok
+test_repeat_step_does_not_broaden_trust (test_git_workspace.GitWorkspaceTests.test_repeat_step_does_not_broaden_trust) ... ok
+test_trust_step_is_after_checkout_before_worktree_check (test_git_workspace.GitWorkspaceTests.test_trust_step_is_after_checkout_before_worktree_check) ... ok
+test_unrelated_repository_remains_blocked (test_git_workspace.GitWorkspaceTests.test_unrelated_repository_remains_blocked) ... ok
+test_wrong_working_directory_refuses_without_config_write (test_git_workspace.GitWorkspaceTests.test_wrong_working_directory_refuses_without_config_write) ... ok
+test_checkout_and_checksums_verified_before_tests (test_ci_contract.CIContractTests.test_checkout_and_checksums_verified_before_tests) ... ok
+test_nginx_fixture_redirects_all_compiled_temp_defaults (test_ci_contract.CIContractTests.test_nginx_fixture_redirects_all_compiled_temp_defaults) ... ok
+test_required_os_matrix_and_container_are_preserved (test_ci_contract.CIContractTests.test_required_os_matrix_and_container_are_preserved) ... ok
+test_tests_stay_unprivileged_on_vm_and_failures_are_not_ignored (test_ci_contract.CIContractTests.test_tests_stay_unprivileged_on_vm_and_failures_are_not_ignored) ... ok
+test_ubuntu_26_dependencies_including_git_precede_checkout (test_ci_contract.CIContractTests.test_ubuntu_26_dependencies_including_git_precede_checkout) ... ok
+
+----------------------------------------------------------------------
+Ran 20 tests in 0.384s
+
+OK

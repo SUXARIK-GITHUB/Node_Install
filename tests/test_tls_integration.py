@@ -14,6 +14,7 @@ import time
 import unittest
 
 from common import certificate_bundle, module, template
+from node_hkdf_oracle import NODE_SNI_PROGRAM
 
 
 @contextlib.contextmanager
@@ -118,15 +119,13 @@ class ApiTLSIntegrationTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which('node'), 'Node.js absent: independent JavaScript HKDF comparison skipped')
     def test_sni_matches_nodejs_hkdf(self):
-        program = r"""
-const fs=require('fs'), crypto=require('crypto'), b=JSON.parse(fs.readFileSync(0,'utf8'));
-const c=p=>p.replace(/-----[^-]+-----/g,'').replace(/[^A-Za-z0-9+/=]/g,'');
-const k=Buffer.concat([Buffer.from(c(b.jwtPublicKey),'utf8'),Buffer.from(c(b.caCertPem),'utf8')]);
-const o=Buffer.from(crypto.hkdfSync('sha256',k,Buffer.alloc(0),'rw-v1',22));
-process.stdout.write(o.subarray(0,16).toString('hex')+'.'+o.subarray(16,21).toString('hex')+'.'+['com','net','org','io','dev','app'][o[21]%6]);
-"""
-        result = subprocess.run(['node', '-e', program], input=json.dumps(self.bundle), text=True,
-                                capture_output=True, check=True, timeout=5)
+        # Jammy's distro Node 12 has createHmac but no hkdfSync. The test oracle
+        # keeps native HKDF where available and uses RFC 5869 otherwise.
+        public_bundle = {key: self.bundle[key] for key in ('caCertPem', 'jwtPublicKey')}
+        result = subprocess.run(['node', '-e', NODE_SNI_PROGRAM],
+                                input=json.dumps(public_bundle), text=True,
+                                capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, 'Node HKDF oracle failed: ' + result.stderr)
         self.assertEqual(result.stdout, self.sni)
 
 

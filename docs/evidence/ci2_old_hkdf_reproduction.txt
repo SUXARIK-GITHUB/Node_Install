@@ -1,0 +1,19 @@
+Node: v22.16.0
+Scope: Node 22 with hkdfSync removed; NOT a genuine Node 12 runtime.
+Old oracle exit=1
+[eval]:6
+const o=Buffer.from(crypto.hkdfSync('sha256',k,Buffer.alloc(0),'rw-v1',22));
+                           ^
+
+TypeError: crypto.hkdfSync is not a function
+    at [eval]:6:28
+    at [eval]:8:4
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:449:12
+    at [eval]-wrapper:6:24
+    at runScriptInContext (node:internal/process/execution:447:60)
+    at evalFunction (node:internal/process/execution:87:30)
+    at evalScript (node:internal/process/execution:99:3)
+    at node:internal/main/eval_string:74:3
+
+Node.js v22.16.0
