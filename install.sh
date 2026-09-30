@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.1.1. Read README.md before running as root.
+# VKarmani Node 2.1.2. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1543,7 +1543,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_COMPLETED_2_1_X_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -1737,7 +1737,7 @@ def saved_provider(etc=ETC, state=STATE):
         if value not in PROVIDERS:
             raise Failure('INVALID_TIME_PROVIDER')
         return value
-    # Explicit compatibility for existing legacy repair/check paths. A new 2.1.1
+    # Explicit compatibility for existing legacy repair/check paths. A new 2.1.2
     # installation must have its own marker; absence is NOT interpreted as success.
     version = (state / 'install-version').read_text().strip() if (state / 'install-version').is_file() else ''
     complete = (state / 'INSTALL_COMPLETE').read_text().splitlines() if (state / 'INSTALL_COMPLETE').is_file() else []
@@ -2526,8 +2526,8 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
-        raise Failure('site-only update requires a completed 2.0.3, 2.1.0 or 2.1.1 installation')
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+        raise Failure('site-only update requires a completed 2.0.3 or 2.1.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
         if p.exists() or p.is_symlink():
@@ -2885,10 +2885,10 @@ vkarmani_resources_main() (
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.1.1 — 2026-09-30
+# VKarmani Remnawave Node Installer 2.1.2 — 2026-09-30
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
-# WARNING: installs packages, modifies SSH/firewall/boot settings; reboot is opt-in.
+# WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
 # Node-only mode: does not create or edit panel objects. RAW+REALITY Selfsteal uses an Nginx Unix socket.
 set -Eeuo pipefail
 set +x
@@ -2897,25 +2897,27 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.1.1
+INSTALLER_VERSION=2.1.2
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
 OPT=/opt/vkarmani-node
 LOG=/var/log/vkarmani-node-install.log
+REALITY_KEYS_FILE=/root/reality-keys.txt
 # The panel IPv4 is entered on first run. The node IPv4 is never asked: it is selected from DNS + local interfaces.
 NODE_PORT_DEFAULT=2222
-NO_REBOOT=1
+NO_REBOOT=0
 WEEKLY_REBOOT=0
 ALLOW_NET_ADMIN=0
 IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.1.1
+VKarmani Remnawave Node Installer 2.1.2
 
-  sudo bash install.sh                         # установка / безопасный повторный запуск
-  sudo bash install.sh --reboot                # явное разрешение одного reboot после проверок
+  sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
+  sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
+  sudo bash install.sh --reboot                # совместимо: явно оставить auto-reboot включённым
   sudo bash install.sh --weekly-reboot         # необязательно: понедельник 04:00 МСК
   sudo bash install.sh --allow-net-admin       # только при необходимости IP-management plugins
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
@@ -2938,11 +2940,11 @@ SSH: парольный вход, существующие порты, без IP
 26.04: адаптация по документации; полный цикл на VPS ещё требует приёмки.
 До запуска нужны снимок VPS, консоль хостера и действующий пароль администратора.
 IPv6: runtime sysctl + GRUB; для полного отключения socket API необходим reboot.
-Полного обновления ОС, autoremove, prune, смены MTU/маршрутов и автоперезагрузки по умолчанию нет.
+Полного обновления ОС, autoremove, prune и смены MTU/маршрутов нет. После успешной установки один reboot выполняется автоматически.
 Nginx на хосте. Клиентский 443 принадлежит Xray; API 2222 разрешён только с IP технички.
 SECRET_KEY не даёт административного API панели: Node/Profile/Host/Squad назначаются в панели.
 Let's Encrypt: HTTP-01, порт 80, аккаунт без email; запуск означает согласие с условиями CA.
---no-reboot сохранён как совместимый явный запрет reboot. --image не является четвёртым вопросом.
+--no-reboot отключает одноразовый reboot; --reboot сохранён для совместимости. --image не является четвёртым вопросом.
 HELP
 }
 while (($#)); do
@@ -3035,7 +3037,7 @@ vk_collect_inputs() {
     trap 'vk_restore_tty; exit 129' HUP
     printf '\nVKarmani: SECRET_KEY → домен ноды → IPv4 технички.\n' >&"$VK_TTY_FD"
     printf 'IPv4 самой ноды НЕ спрашивается: он выбирается автоматически по DNS из адресов VPS.\n' >&"$VK_TTY_FD"
-    printf 'После трёх значений — автоматическая установка. Reboot только с --reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
+    printf 'После трёх значений — автоматическая установка и один auto-reboot после успешных проверок. Для запрета: --no-reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
     printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
     printf 'Если у хостера есть внешний firewall/security group: TCP/2222 должен быть разрешён с IPv4 панели.\n\n' >&"$VK_TTY_FD"
     # Noncanonical mode also permits long (>4096 byte) single-line SECRET_KEY bundles.
@@ -3322,7 +3324,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.1.1: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.1.2: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -3341,6 +3343,7 @@ import sys
 
 ETC = Path('/etc/vkarmani-node')
 STATE = Path('/var/lib/vkarmani-node')
+REALITY_EXPORT = Path('/root/reality-keys.txt')
 MODE = 'secret-key-only'
 class Failure(Exception):
     pass
@@ -3626,7 +3629,7 @@ def make_keys_profile(c):
                       'streamSettings': {
                           'network': 'raw', 'security': 'reality',
                           'realitySettings': {'show': False, 'target': '/dev/shm/nginx.sock',
-                                              'xver': 1, 'spiderX': '/',
+                                              'xver': 1, 'minClientVer': '1.0.0', 'spiderX': '/',
                                               'serverNames': [c['domain']],
                                               'privateKey': keys['private_key'],
                                               'shortIds': [keys['short_id']]}}}],
@@ -3671,6 +3674,8 @@ def validate_profile(profile, c):
         raise Failure('PROFILE_TARGET_MUST_BE_LOCAL_SELFSTEAL_SOCKET')
     if type(r.get('xver')) is not int or r['xver'] != 1:
         raise Failure('PROFILE_SELFSTEAL_REQUIRES_PROXY_V1')
+    if r.get('minClientVer') != '1.0.0':
+        raise Failure('PROFILE_MIN_CLIENT_VER_MUST_BE_1_0_0')
     settings = inbound.get('settings')
     if not isinstance(settings, dict) or settings.get('decryption') != 'none' or settings.get('fallbacks'):
         raise Failure('PROFILE_UNEXPECTED_VLESS_SETTINGS_OR_FALLBACKS')
@@ -3717,6 +3722,35 @@ def atomic_text(path, text):
     finally:
         if temp.exists():
             temp.unlink()
+
+
+def export_reality_keys_file(c):
+    # Derived convenience copy for the operator. reality.json remains authoritative.
+    make_keys_profile(c)
+    keys = read_json(ETC / 'reality.json')
+    path = REALITY_EXPORT
+    if path.exists() or path.is_symlink():
+        st = path.lstat()
+        if path.is_symlink() or not path.is_file() or st.st_uid != os.geteuid() or (st.st_mode & 0o777) != 0o600:
+            raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
+    text = (
+        '============================================================\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.1.2\n'
+        '============================================================\n'
+        f'Domain: {c["domain"]}\n'
+        f'PrivateKey: {keys["private_key"]}\n'
+        f'PublicKey: {keys["public_key"]}\n'
+        f'ShortID: {keys["short_id"]}\n'
+        'Reality target: /dev/shm/nginx.sock\n'
+        'xver: 1\n'
+        'minClientVer: 1.0.0\n'
+        f'serverName/SNI: {c["domain"]}\n'
+    )
+    atomic_text(path, text)
+    st = path.stat()
+    if st.st_uid != os.geteuid() or (st.st_mode & 0o777) != 0o600:
+        raise Failure('Не удалось зафиксировать владельца и 0600 для /root/reality-keys.txt.')
+    return path
 
 
 def normalize_config(raw):
@@ -3875,7 +3909,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.1.1 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.1.2 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -3899,7 +3933,7 @@ def write_panel_guide(c):
    Обновите подписку в клиенте и проверьте соединение извне.
 
 Шаблон: VLESS + RAW + REALITY.
-REALITY target: /dev/shm/nginx.sock; xver=1 (PROXY protocol v1).
+REALITY target: /dev/shm/nginx.sock; xver=1 (PROXY protocol v1); minClientVer=1.0.0.
 Selfsteal: Nginx + OpenSSL на Unix socket, порт 443 полностью остаётся за Xray.
 serverName/SNI: {c['domain']}
 REALITY publicKey: {keys['public_key']}
@@ -3929,7 +3963,7 @@ def control_ready(c):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['init', 'get', 'dns', 'keys', 'secret', 'docker-config', 'panel-guide', 'control-ready', 'image', 'allow-net-admin', 'weekly-reboot', 'profile-check'])
+    parser.add_argument('action', choices=['init', 'get', 'dns', 'keys', 'reality-export', 'secret', 'docker-config', 'panel-guide', 'control-ready', 'image', 'allow-net-admin', 'weekly-reboot', 'profile-check'])
     parser.add_argument('arg', nargs='?')
     args = parser.parse_args()
     if args.action == 'init':
@@ -3959,6 +3993,8 @@ def main():
         audit_profile(args.arg or ETC / 'profile.json', c)
     elif args.action == 'keys':
         make_keys_profile(c)
+    elif args.action == 'reality-export':
+        print(export_reality_keys_file(c))
     elif args.action == 'secret':
         check_secret(c)
         print('SECRET_KEY_VALID=PASS')
@@ -4672,6 +4708,8 @@ fi
 stage 'Очистка только APT-кэша и ограниченных журналов'
 python3 /usr/local/lib/vkarmani-node/apt_clean.py
 /usr/local/sbin/vkarmani-node-check --preboot
+helper reality-export >/dev/null
+[[ -f "$REALITY_KEYS_FILE" && ! -L "$REALITY_KEYS_FILE" && $(stat -c '%a' "$REALITY_KEYS_FILE") == 600 ]] || die 'Файл REALITY-ключей должен быть regular 0600.'
 printf 'version=%s\nat=%s\nimage=%s\n' "$INSTALLER_VERSION" "$(date -Is)" "$DIGEST" > "$STATE/INSTALL_COMPLETE"
 rm -f "$STATE/INSTALL_FAILED" "$STATE/RESUME_FAILED" "$STATE/image-update-pending"
 stage 'Установка завершена; проверки ДО перезагрузки пройдены'
@@ -4680,6 +4718,7 @@ printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
 printf 'Внешний firewall хостера (если есть): разрешить TCP/%s от %s к Node Address, указанному в панели.\n' "$NODE_PORT" "${PANEL_IPS[*]}"
 printf 'Транспорт: VLESS + RAW + REALITY; Selfsteal: /dev/shm/nginx.sock (xver=1)\n'
 printf 'Профиль и действия в панели: /etc/vkarmani-node/PANEL-SETUP.txt\n'
+printf 'REALITY_KEYS_FILE: %s (root:0600; PrivateKey не записывается в install log)\n' "$REALITY_KEYS_FILE"
 printf 'SSH-порты сохранены: %s\n' "${SSH_PORTS[*]}"
 printf 'Проверка после входа: sudo vkarmani-node-check\nЖурнал: /var/log/vkarmani-node-postboot.log\n'
 printf 'Резервная копия: %s\nПолное отключение IPv6 проверяется ПОСЛЕ загрузки нового ядра.\n' "$BK"
@@ -4688,13 +4727,30 @@ if [[ $WEEKLY_REBOOT -eq 1 ]]; then
 else
     echo 'WEEKLY_REBOOT=DISABLED; timers Certbot and cleanup were checked separately.'
 fi
+
+# The operator explicitly requested the three REALITY values at the end. Bypass tee so
+# PrivateKey is visible on the interactive terminal but is not duplicated into install.log.
+if [[ -r "$REALITY_KEYS_FILE" && -w /dev/tty ]]; then
+    {
+        printf '\n'
+        cat "$REALITY_KEYS_FILE"
+        printf 'Saved securely: %s (root:0600)\n\n' "$REALITY_KEYS_FILE"
+    } > /dev/tty
+else
+    echo "REALITY_KEYS_DISPLAY=SKIPPED_NO_TTY; сохранены в $REALITY_KEYS_FILE (root:0600)."
+fi
+
 if [[ $NO_REBOOT -eq 0 ]]; then
     # Scheduled by systemd rather than a background shell; survives SSH closure.
-    systemd-run --collect --unit="vkarmani-install-reboot-$(date +%s)" --on-active=15s /usr/bin/systemctl reboot
-    echo 'AUTO_REBOOT=ARMED. SSH отключится; после загрузки все настроенные службы запустятся автоматически.'
     sync
+    if systemd-run --collect --unit="vkarmani-install-reboot-$(date +%s)" --on-active=30s /usr/bin/systemctl reboot; then
+        echo 'AUTO_REBOOT=ARMED delay=30s. SSH отключится; после загрузки все настроенные службы запустятся автоматически.'
+    else
+        reboot_rc=$?
+        echo "AUTO_REBOOT=FAILED rc=$reboot_rc; установка уже завершена, выполните sudo reboot вручную." >&2
+    fi
 else
-    echo 'REBOOT_REQUIRED: автоматический reboot не запрошен. После проверки нового парольного SSH-входа выполните sudo reboot.'
+    echo 'AUTO_REBOOT=DISABLED_BY_FLAG. Выполните sudo reboot после проверки второго парольного SSH-входа.'
 fi
 
 }
@@ -4752,7 +4808,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.1.1-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.1.2-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -4803,7 +4859,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.1.1 — исправление только на НОДЕ'
+    echo 'VKarmani 2.1.2 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -4868,7 +4924,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.1.1\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.1.2\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -4898,7 +4954,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.1.1-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.1.2-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -4909,7 +4965,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.1.1 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.1.2 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -4946,7 +5002,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.1.1\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.1.2\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true

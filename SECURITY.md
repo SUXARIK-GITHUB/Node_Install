@@ -10,11 +10,11 @@
 
 ## Секреты
 
-Конфиденциальны `SECRET_KEY`, `/etc/vkarmani-node/remnanode.env`, `reality.json`, `profile.json`, приватные ключи Let's Encrypt, backups и дампы live-конфигурации. Base64 не является шифрованием. Backup tar тоже не шифруется, хотя хранится в закрытом каталоге; переносите его в защищённое off-host хранилище с ограниченным доступом.
+Конфиденциальны `SECRET_KEY`, `/etc/vkarmani-node/remnanode.env`, `reality.json`, `profile.json`, `/root/reality-keys.txt`, приватные ключи Let's Encrypt, backups и дампы live-конфигурации. Base64 не является шифрованием. Backup tar тоже не шифруется, хотя хранится в закрытом каталоге; переносите его в защищённое off-host хранилище с ограниченным доступом.
 
 Установщик отключает shell tracing, не передаёт секрет через argv внешней команды, не экспортирует его, считывает из TTY со скрытым вводом и сохраняет root-only файлы. Ошибки crypto/maintenance не печатают payload. Это не защищает от root, Docker socket, чтения памяти привилегированным процессом или записи экрана/терминала на машине администратора.
 
-**Не отправляйте публично** `.env`, `config.json`, `profile.json`, `reality.json`, полный `docker inspect`, развёрнутый `docker compose config`, `docker exec … env`, `cli --dump-config`, архив `/etc/letsencrypt` или полный backup. У Docker env доступен привилегированному оператору — отсутствие секрета в YAML не делает его недоступным root.
+**Не отправляйте публично** `.env`, `config.json`, `profile.json`, `reality.json`, `/root/reality-keys.txt`, полный `docker inspect`, развёрнутый `docker compose config`, `docker exec … env`, `cli --dump-config`, архив `/etc/letsencrypt` или полный backup. У Docker env доступен привилегированному оператору — отсутствие секрета в YAML не делает его недоступным root.
 
 В тестах ключи и CA создаются случайно в `TemporaryDirectory` и удаляются; постоянных боевых/test приватных PEM в репозитории нет. `.gitignore` не является гарантией отсутствия секретов в Git-истории: проверяйте staged diff перед commit.
 
@@ -71,3 +71,12 @@ CI использует read-only права, не хранит checkout credent
 ## Дополнение 2.1.1: пакетные блокировки
 
 Установщик не удаляет `/var/lib/dpkg/lock*`, `/var/cache/apt/archives/lock` или `/var/lib/apt/lists/lock` и не завершает `apt`, `dpkg` или `unattended-upgrade`. Активная штатная пакетная транзакция ожидается с ограниченным общим deadline; по timeout установка останавливается. Это сохраняет целостность dpkg и автоматические security updates. Подробности: [APT_LOCK_COORDINATION_2.1.1](docs/APT_LOCK_COORDINATION_2.1.1.md).
+
+
+## Дополнение 2.1.2: export REALITY-ключей и auto-reboot
+
+По прямому требованию оператора установщик создаёт `/root/reality-keys.txt` с `PrivateKey`, `PublicKey` и `ShortID`. Файл атомарный, `0600`, принадлежит пользователю, запускающему helper; в штатной установке это root. Symlink, не-regular файл, чужой владелец или более широкие права вызывают STOP вместо перезаписи. Это дополнительная копия секрета, поэтому её нельзя включать в публичные логи, issue, screenshots или CI artifacts.
+
+Финальный блок с `PrivateKey` выводится непосредственно в controlling TTY и не проходит через `tee` установочного журнала. Это не защищает от записи терминала, scrollback, screen recording или root-доступа.
+
+Одноразовый reboot после успешной установки теперь включён по умолчанию и ставится через transient systemd unit с задержкой 30 секунд. Для окна ручной проверки второго SSH-входа используйте `--no-reboot`. Не включайте авто-reboot при отсутствии console/recovery доступа у хостера. Ошибка постановки transient unit не удаляет `INSTALL_COMPLETE`: оператор получает явный `AUTO_REBOOT=FAILED` и выполняет `sudo reboot` вручную.

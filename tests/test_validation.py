@@ -80,7 +80,7 @@ class ValidationTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(self.h.Failure):
                 self.h.normalize_config(dict(base, **change))
 
-    def test_defaults_have_no_reboot_or_net_admin(self):
+    def test_config_schema_defaults_keep_legacy_auto_reboot_false(self):
         config = self.h.normalize_config(self.config())
         for flag in ('auto_reboot', 'weekly_reboot', 'allow_net_admin'):
             self.assertIs(config[flag], False)
@@ -110,7 +110,7 @@ class ValidationTests(unittest.TestCase):
             profile = first[2]
             self.assertEqual(profile['inbounds'][0]['settings']['clients'], [])
             reality = profile['inbounds'][0]['streamSettings']['realitySettings']
-            self.assertEqual((reality['target'], reality['xver']), ('/dev/shm/nginx.sock', 1))
+            self.assertEqual((reality['target'], reality['xver'], reality['minClientVer']), ('/dev/shm/nginx.sock', 1, '1.0.0'))
             blocked = profile['routing']['rules'][0]['ip']
             for target in ('127.0.0.0/8', '169.254.0.0/16', '1.1.1.1/32', '9.9.9.9/32', '::/0'):
                 self.assertIn(target, blocked)

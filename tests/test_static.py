@@ -33,7 +33,7 @@ class StaticTests(unittest.TestCase):
         for arg in ('--version', '--help'):
             result = subprocess.run(['bash', str(ROOT / 'install.sh'), arg], text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('2.1.1', result.stdout)
+            self.assertIn('2.1.2', result.stdout)
         result = subprocess.run(['bash', str(ROOT / 'install.sh'), '--invalid'], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 2)
 
@@ -56,7 +56,7 @@ class StaticTests(unittest.TestCase):
         self.assertNotRegex(active, r'docker\s+(?:system|image|volume|container)\s+prune')
         self.assertNotIn('curl -k', active)
         self.assertNotIn('--insecure', active)
-        self.assertIn('NO_REBOOT=1', SCRIPT)
+        self.assertIn('NO_REBOOT=0', SCRIPT)
         self.assertIn('WEEKLY_REBOOT=0', SCRIPT)
 
     def test_default_compose_has_no_net_admin_or_published_ports(self):

@@ -1,0 +1,47 @@
+{
+  "edition": "2.1.1",
+  "installer_version": "2.1.1",
+  "date": "2026-09-30",
+  "installer_sha256": "a3328b10583c4b3583778abcda3b08ead66fd4df05cef16f77b1bc53e23a504e",
+  "change_scope": "production APT/dpkg lock coordination + release version; VPN/network/site topology unchanged",
+  "local_environment": {
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "architecture": "x86_64",
+    "python": "3.13.5",
+    "node": "22.16.0",
+    "git": "2.47.3",
+    "nginx": "1.26.3"
+  },
+  "runs": {
+    "root": {
+      "tests": 377,
+      "seconds": 19.202,
+      "result": "OK",
+      "skips": 0
+    },
+    "uid1000": {
+      "tests": 377,
+      "seconds": 19.711,
+      "result": "OK",
+      "skips": 0
+    }
+  },
+  "new_apt_coordination_tests": 6,
+  "bash_documentation_blocks_syntax_checked": 36,
+  "python_test_modules": 30,
+  "apt_policy": {
+    "total_wait_seconds": 1800,
+    "report_interval_seconds": 30,
+    "poll_interval_seconds": 5,
+    "internal_dpkg_lock_timeout_seconds": 15,
+    "kills_foreign_package_processes": false,
+    "deletes_system_lock_files": false,
+    "disables_unattended_upgrades": false
+  },
+  "real_incident_basis": "Ubuntu 24.04 apt-daily-upgrade/unattended-upgrade held dpkg frontend/archive locks while actively configuring packages during Node_Install 2.1.0 Docker stage",
+  "full_vps_install_2_1_1_executed": false,
+  "ubuntu_26_full_vps_install_executed": false,
+  "github_actions_2_1_1_executed": false,
+  "working_vps_modified_by_release_build": false,
+  "post_zip_validation": "performed externally after archive creation"
+}

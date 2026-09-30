@@ -1,55 +1,60 @@
-# TEST_REPORT — Node_Install 2.1.1
+# TEST_REPORT — Node_Install 2.1.2
 
 Дата подготовки: 2026-09-30.
 
-## Изменение под проверкой
+## Изменения под проверкой
 
-2.1.1 меняет production-код только в части координации APT/dpkg и номера выпуска. Перед `dpkg --audit` и обязательными APT-командами добавлено ожидание фактических системных lock до 1800 секунд; `DPkg::Lock::Timeout` внутри отдельной попытки — 15 секунд для гонки. Установщик не удаляет lock-файлы, не завершает `apt`/`dpkg`/`unattended-upgrade` и не отключает автоматические security updates.
+2.1.2 добавляет три связанные production-функции без смены общей архитектуры ноды:
 
-VLESS RAW REALITY, Selfsteal, Nginx, UFW/Fail2ban, SSH, Docker Compose layout и три обязательных вопроса не менялись.
+1. Закрытый export текущих REALITY-ключей в `/root/reality-keys.txt` и terminal-only показ `PrivateKey`, `PublicKey`, `ShortID` в конце успешной установки.
+2. Одноразовый reboot по умолчанию через transient systemd unit с задержкой 30 секунд; `--no-reboot` сохраняет ручной режим.
+3. `minClientVer: "1.0.0"` в генерируемом RAW+REALITY profile template для совместимости старых Xray-core.
+
+Ключи не генерируются повторно на финальном этапе: export читает и проверяет уже сохранённый `/etc/vkarmani-node/reality.json`. Secret block не проходит через install-log `tee`.
 
 ## Полный набор
 
-**377 тестов, 0 failures, 0 errors, 0 skips.**
+**383 теста, 0 failures, 0 errors, 0 skips.**
 
 Выполнены два отдельных полных запуска:
 
 | Среда запуска | Результат |
 |---|---|
-| root | `Ran 377 tests ... OK` |
-| UID 1000, без sudo и дополнительных групп | `Ran 377 tests ... OK` |
+| root | `Ran 383 tests in 31.423s ... OK` |
+| UID 1000 (`oai`), без sudo | `Ran 383 tests in 29.481s ... OK` |
 
-Логи подготовки сохранены вне release manifest при сборке как `full-tests-1.log` и `full-tests-uid1000.log`; в финальный проект они не требуются для работы установщика.
+Перед ними отдельно прошли 6 новых targeted tests.
 
-## Новые регрессии 2.1.1
+## Новые регрессии 2.1.2
 
-Добавлен `tests/test_211_apt_coordination.py` — 6 проверок:
+Добавлен `tests/test_212_reality_keys_reboot.py` — 6 проверок:
 
-1. Контракт общего ожидания 1800 секунд, период статуса 30 секунд, poll 5 секунд и короткий внутренний lock-timeout 15 секунд.
-2. В APT-coordination коде нет удаления системных dpkg/apt lock и нет `kill`/`pkill`/`killall` package-manager процессов.
-3. Fixture формата реального `lslocks` с владельцем `unattended-upgr` ждётся, затем проходит после освобождения.
-4. Превышение общего бюджета возвращает явный временный отказ и не меняет lock.
-5. Узкая lock-race повторяется, а произвольная APT-ошибка с тем же кодом 100 не маскируется повтором.
-6. `dpkg --audit` вызывается после ожидания lock и до сбора пользовательских значений.
+1. Export создаётся атомарно с `0600`, содержит ровно текущие `PrivateKey`, `PublicKey`, `ShortID` и `minClientVer=1.0.0`.
+2. Повторный export использует ту же X25519-пару и не регенерирует `reality.json`.
+3. Symlink вместо файла export отклоняется и target symlink не изменяется.
+4. Profile policy отклоняет отсутствующий или изменённый `minClientVer`.
+5. Default reboot contract: `NO_REBOOT=0`, `--no-reboot` отключает, transient reboot имеет 30-секундную задержку.
+6. PrivateKey display идёт через `/dev/tty`, а helper export вызывается с подавленным stdout в общий log.
 
-Также обновлён изолированный package-plan test: production fragment теперь вызывается через настоящий `vk_apt_run`, а fake APT остаётся тестовым и не запускает dpkg.
+Также обновлены существующие regression tests для версии 2.1.2 и финального acceptance sequence.
 
 ## Сохранённые проверки
 
-Все 371 тест 2.1.0/ci-fix2 сохранены: валидация, терминальный ввод ровно трёх значений, firewall, SSH, DNS, APT solver, NTP provider, Chrony/NTS, atomic writes/ENOSPC/EIO, backup, maintenance/rollback, socket recovery, Nginx/TLS1.3/HTTP2, cover-site, resource snapshot, CI contracts, Node 12 HKDF compatibility и Git safe.directory contract.
+Все 377 тестов 2.1.1 сохранены: APT/dpkg lock coordination, терминальный ввод ровно трёх значений, DNS, firewall, SSH, NTP provider, package solver, atomic writes/fault injection, backups, Docker maintenance/rollback, Selfsteal socket, Nginx TLS1.3/HTTP2, cover site, resource snapshot, CI contracts, Node HKDF compatibility и Git workspace contract.
 
-## Что фактически не проверено
+## Реальные данные, уже подтверждённые до выпуска 2.1.2
 
-- Полная установка **2.1.1** на настоящей VPS после новой APT-координации.
-- Реальное ожидание живого `unattended-upgrades` установщиком 2.1.1 на Ubuntu — причиной изменения послужил реальный инцидент 2.1.0, но новый код на той VPS не запускался.
-- Полный install/reboot/panel/client на Ubuntu 26.04 и arm64.
-- Реальный Docker/Xray/ACME/UFW/Fail2ban в среде подготовки этой версии.
-- Длительная нагрузка, OOM/power-loss, маршруты разных стран и внешняя фильтрация.
+На Ubuntu 24.04 установка 2.1.1 реально встретила живой `unattended-upgrades` на Docker stage, ждала package-manager lock примерно 588 секунд и затем штатно продолжила установку Docker/Nginx/RemnaNode. На трёх ключевых нодах Ubuntu 24.04 были подтверждены Xray TCP/443, локальный Selfsteal и рабочий VPN; после перехода live REALITY profile на `/dev/shm/nginx.sock` строгая проверка одной ноды дала `REALITY_SELFSTEAL_443 PASS`.
 
-Проверенная пользователем работа нескольких нод 2.1.0 на Ubuntu 24.04 не подменяет пилот 2.1.1.
+Эти результаты подтверждают базу 2.1.1 и рабочую схему профиля, но **не заменяют** отдельный полный install → auto-reboot → postboot тест именно 2.1.2.
+
+## Что не проверено
+
+- Полная установка **2.1.2** на новой реальной VPS с фактическим terminal key export и автоматическим reboot.
+- Поведение transient reboot при реальном отказе systemd-run.
+- Полный install/panel/client цикл 2.1.2 на Ubuntu 26.04 и arm64.
+- Длительная нагрузка и восстановление после power-loss в момент финального export/reboot.
 
 ## Перед массовой раскаткой
 
-Сначала одна чистая Ubuntu 24.04 VPS: snapshot/консоль → установка 2.1.1 → reboot → `vkarmani-node-check` → подключение панели → реальный VLESS RAW REALITY клиент. Отдельно желательно воспроизвести ситуацию, когда `apt-daily-upgrade` уже держит lock, и подтвердить `APT_WAIT` без вмешательства в чужую транзакцию.
-
-Подробности алгоритма: [APT_LOCK_COORDINATION_2.1.1](APT_LOCK_COORDINATION_2.1.1.md).
+Одна чистая Ubuntu 24.04 canary: snapshot/console → 2.1.2 → проверить финальный key block и `/root/reality-keys.txt` (`0600`) → дождаться auto-reboot → новый SSH → `sudo vkarmani-node-check --require-xray` после назначения профиля → браузерный Selfsteal → современный и старый Xray-клиент.

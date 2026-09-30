@@ -1,5 +1,18 @@
 # Изменения
 
+## 2.1.2 — 2026-09-30
+
+Production-доработка финального этапа установки после проверки трёх реальных нод и перехода на собственный Selfsteal.
+
+- После успешной preboot-проверки создаётся `/root/reality-keys.txt` с правами `0600`: `PrivateKey`, `PublicKey`, `ShortID`, домен, `target`, `xver` и `minClientVer`. Используются уже созданные `/etc/vkarmani-node/reality.json` ключи; повторной генерации на финальном этапе нет.
+- Финальный блок `PrivateKey` / `PublicKey` / `ShortID` показывается непосредственно в controlling TTY, обходя `tee`; приватный ключ не дублируется в `/var/log/vkarmani-node-install.log`. При небезопасном существующем symlink/типе/владельце/правах export останавливается без перезаписи.
+- Одноразовый reboot после успешной установки теперь включён по умолчанию: transient systemd unit запускает `reboot` через 30 секунд. `--no-reboot` — явный opt-out; `--reboot` сохранён для совместимости. Ошибка постановки transient unit не отменяет уже завершённую локальную установку и требует ручного `sudo reboot`.
+- В генерируемый VLESS RAW REALITY template добавлен `minClientVer: "1.0.0"` для подтверждённой на рабочих профилях совместимости старых Xray-core. Selfsteal остаётся `target=/dev/shm/nginx.sock`, `xver=1`, собственный `serverNames` и индивидуальные ключи ноды.
+- APT/dpkg coordination 2.1.1, три обязательных вопроса, UFW/Fail2ban, SSH, Docker layout, Nginx/Selfsteal и image pinning не ослаблялись.
+- Добавлено 6 регрессий; полный локальный набор: 383 PASS от root и UID 1000, 0 skips. Полный VPS install/reboot именно 2.1.2 ещё не выполнялся.
+
+[Дизайн финального этапа](docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md), [проверки](docs/TEST_REPORT.md), [безопасность](SECURITY.md).
+
 ## 2.1.1 — 2026-09-30
 
 Production-исправление координации APT/dpkg после реального инцидента на свежей Ubuntu 24.04.

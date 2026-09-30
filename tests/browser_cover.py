@@ -23,7 +23,7 @@ def main():
     report={'transport':'in-memory HTML + exact CSS asset (browser navigation restricted in sandbox)', 'cases':[],'engine':'Chromium','external_requests':[],'page_errors':[],'http_errors':[]}
     with tempfile.TemporaryDirectory(prefix='vk-browser-cover-') as d:
         root=Path(d)
-        data,assets=m.render('venom.vkarmani.com');(root/'index.html').write_bytes(data)
+        data,assets=m.render('node.example.com');(root/'index.html').write_bytes(data)
         for name,body in assets.items():(root/name).parent.mkdir(exist_ok=True);(root/name).write_bytes(body)
         (root/'favicon.ico').write_bytes(b'')
         with sync_playwright() as p:
