@@ -1,0 +1,38 @@
+{
+  "VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK": {
+    "identical": true,
+    "sha256": "8f9e2f40829a2a892848b56af1351f1a66037a7c874025d6fd6c7e77dfe0587e"
+  },
+  "VK_PAYLOAD_VK_WRITE_TLS_CHECK": {
+    "identical": true,
+    "sha256": "831f03f01d9a8358db413c4fa3a95f5f8a3e04cb01a7264f77c4ec99c53947c6"
+  },
+  "/etc/nginx/conf.d/20-vkarmani-selfsteal.conf": {
+    "identical": true,
+    "sha256": "c71b11f48f81e80014d6ab663c1ed7988115bb47105d1392ef1f7f93c1c3b268"
+  },
+  "/etc/sysctl.d/99-vkarmani-node.conf": {
+    "identical": true,
+    "sha256": "43d82545de621a142f33ff3d4947acc659c02cbe5a213ade6cac054e4c013010"
+  },
+  "/etc/fail2ban/jail.d/99-vkarmani-sshd.local": {
+    "identical": true,
+    "sha256": "3f3da2e9b82303979a9cc57469a03854b3326caac50f1b200f32cac80f39fe2c"
+  },
+  "make_keys_profile": {
+    "identical": true,
+    "sha256": "244b998c9b17e982d7c3de5d98982a04ef65b601584dceca3a52eac29ee1406f"
+  },
+  "validate_profile": {
+    "identical": true,
+    "sha256": "240bdccbc6c123d06699a09b23f6a6de70e5fa10f6e00ab025f1c08076666597"
+  },
+  "\"$OPT/compose.yaml\"": {
+    "identical": true,
+    "sha256": "6ec9c8a1eefe95ad2ddc148b03d4892584b520e7611632bf0e4f2c6000c20800"
+  },
+  "/etc/nginx/conf.d/10-vkarmani-http.conf": {
+    "identical": true,
+    "sha256": "f327d4bc26beac5d3cad5f620384b9dd6e488ec9c7b105bcbbf9acc53aa60ca0"
+  }
+}

@@ -1,0 +1,27 @@
+test_busy_and_permission_are_distinct (test_210_cleanup.CleanupTests.test_busy_and_permission_are_distinct) ... ok
+test_failed_cleanup_does_not_skip_acceptance_and_acceptance_error_propagates (test_210_cleanup.CleanupTests.test_failed_cleanup_does_not_skip_acceptance_and_acceptance_error_propagates) ... ok
+test_missing_command_is_reported (test_210_cleanup.CleanupTests.test_missing_command_is_reported) ... ok
+test_no_lock_removal_or_security_update_disabling (test_210_cleanup.CleanupTests.test_no_lock_removal_or_security_update_disabling) ... ok
+test_real_apt_locked_cache_defers_then_cleans (test_210_cleanup.CleanupTests.test_real_apt_locked_cache_defers_then_cleans) ... FAIL
+test_status_record_private_atomic_and_old_survives_replace_error (test_210_cleanup.CleanupTests.test_status_record_private_atomic_and_old_survives_replace_error) ... ok
+test_success (test_210_cleanup.CleanupTests.test_success) ... ok
+test_timeout_kills_own_descendant_without_late_write (test_210_cleanup.CleanupTests.test_timeout_kills_own_descendant_without_late_write) ... ok
+
+======================================================================
+FAIL: test_real_apt_locked_cache_defers_then_cleans (test_210_cleanup.CleanupTests.test_real_apt_locked_cache_defers_then_cleans)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/cifix/original/Node_Install/tests/test_210_cleanup.py", line 64, in test_real_apt_locked_cache_defers_then_cleans
+    self.assertEqual(self.m.clean(argv)['status'],'PASS')
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'WARNING' != 'PASS'
+- WARNING
++ PASS
+
+
+----------------------------------------------------------------------
+Ran 8 tests in 3.509s
+
+FAILED (failures=1)
+
+PROCESS_EXIT=1

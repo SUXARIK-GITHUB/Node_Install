@@ -1,0 +1,4 @@
+uid= 65534 exit= 100 stdout=  stderr= W: Unable to read /etc/apt/-/ - DirectoryExists (2: No such file or directory)
+E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied)
+E: Unable to lock directory /var/lib/apt/lists/
+ sentinel_exists= False

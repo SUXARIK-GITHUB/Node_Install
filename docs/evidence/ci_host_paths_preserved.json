@@ -1,0 +1,20 @@
+{
+  "paths_observed": [
+    "/var/lib/apt/lists",
+    "/var/lib/apt/lists/partial",
+    "/var/lib/apt/lists/lock",
+    "/var/lib/apt/lists/auxfiles",
+    "/var/cache/apt",
+    "/var/cache/apt/archives",
+    "/var/cache/apt/archives/lock",
+    "/var/cache/apt/archives/partial",
+    "/var/lib/nginx",
+    "/var/lib/nginx/fastcgi",
+    "/var/lib/nginx/body",
+    "/var/lib/nginx/proxy",
+    "/var/lib/nginx/scgi",
+    "/var/lib/nginx/uwsgi",
+    "/var/lib/dpkg/status"
+  ],
+  "changed": []
+}
