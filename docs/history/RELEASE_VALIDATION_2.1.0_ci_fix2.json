@@ -1,0 +1,58 @@
+{
+  "edition": "2.1.0-ci-fix2",
+  "installer_version": "2.1.0",
+  "date": "2026-09-30",
+  "installer_sha256": "9420c5a76749fd0ae52c26279e78069fca42b40d8a7bae9d80b950a89b3f976c",
+  "installer_byte_identical_to_ci_fix1": true,
+  "preview_byte_identical_to_ci_fix1": true,
+  "original_file_count": 76,
+  "all_original_paths_retained": true,
+  "removed_original_tests": [],
+  "local_environment": {
+    "os": "Debian 13",
+    "architecture": "x86_64",
+    "python": "3.13.5",
+    "node": "22.16.0",
+    "git": "2.47.3",
+    "nginx": "1.26.3"
+  },
+  "runs": {
+    "root": {
+      "tests": 371,
+      "seconds": 20.176,
+      "result": "OK",
+      "skips": 0
+    },
+    "uid1000": {
+      "tests": 371,
+      "seconds": 18.878,
+      "result": "OK",
+      "skips": 0
+    },
+    "uid1000_node22_hkdf_api_disabled": {
+      "tests": 371,
+      "seconds": 19.667,
+      "result": "OK",
+      "skips": 0
+    }
+  },
+  "real_git_owner_mismatch_tested": true,
+  "new_github_actions_run_executed": false,
+  "real_node12_executed": false,
+  "ubuntu_guests_executed": false,
+  "vps_or_github_modified": false,
+  "workflow_run_bash_syntax": [
+    "test:1:Install test dependencies on disposable CI runner",
+    "test:2:Verify Git checkout and release files",
+    "test:3:Test embedded payloads; NEVER install a node on the runner",
+    "test:4:Check tracked files after tests",
+    "ubuntu-26-userspace:0:Dependencies before checkout in disposable Ubuntu 26.04 container",
+    "ubuntu-26-userspace:2:Trust only the current workspace in the disposable container",
+    "ubuntu-26-userspace:3:Verify Git checkout and release files",
+    "ubuntu-26-userspace:4:Embedded helpers, protocols and synthetic failure paths only",
+    "ubuntu-26-userspace:5:Check tracked files after tests"
+  ],
+  "python_test_modules_compiled": 29,
+  "relative_file_links_checked": 59,
+  "post_zip_validation": "External Node_Install_2.1.0_ci_fix2_RELEASE_VALIDATION.json after sealed archive extraction."
+}

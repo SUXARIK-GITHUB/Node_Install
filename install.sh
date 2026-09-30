@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.1.0. Read README.md before running as root.
+# VKarmani Node 2.1.1. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -821,7 +821,7 @@ if [[ "$MODE" == --postboot ]]; then
     done
 fi
 helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
-if [[ -f "$STATE/install-version" && $(cat "$STATE/install-version") == 2.1.0 ]]; then
+if [[ -f "$STATE/install-version" && $(cat "$STATE/install-version") =~ ^2\.1\.(0|1)$ ]]; then
     helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY
     warn LIVE_PROFILE_POLICY 'NOT_VERIFIED: local JSON is not the live node config or Host SNI override'
 fi
@@ -1140,7 +1140,7 @@ vk_write_maintenance() {
     temp=$(mktemp /usr/local/sbin/vkarmani-node-maintain.tmp.XXXXXX)
     cat > "$temp" <<'VK_PAYLOAD_VK_WRITE_MAINTENANCE'
 #!/usr/bin/env python3
-"""Explicit, serialized maintenance for VKarmani 2.1.0; never reconfigure the OS.
+"""Explicit, serialized maintenance for VKarmani 2.1.x; never reconfigure the OS.
 
 Image rollback restores Compose + image only, NOT container writable-layer data,
 OS packages, panel objects or user sessions. A working panel must resend its profile.
@@ -1543,8 +1543,8 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or 'version=2.1.0' not in (STATE / 'INSTALL_COMPLETE').read_text().splitlines()):
-        raise Failure('ONLY_COMPLETED_2_0_2_SUPPORTED; legacy installation is not migrated')
+            or not any(line in ('version=2.1.0', 'version=2.1.1') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+        raise Failure('ONLY_COMPLETED_2_1_X_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1737,7 +1737,7 @@ def saved_provider(etc=ETC, state=STATE):
         if value not in PROVIDERS:
             raise Failure('INVALID_TIME_PROVIDER')
         return value
-    # Explicit compatibility for existing legacy repair/check paths. A new 2.1.0
+    # Explicit compatibility for existing legacy repair/check paths. A new 2.1.1
     # installation must have its own marker; absence is NOT interpreted as success.
     version = (state / 'install-version').read_text().strip() if (state / 'install-version').is_file() else ''
     complete = (state / 'INSTALL_COMPLETE').read_text().splitlines() if (state / 'INSTALL_COMPLETE').is_file() else []
@@ -1962,6 +1962,89 @@ if __name__ == '__main__':
 PY_RESUME_NTP_CHECK
 }
 
+# Package-manager coordination: never delete APT/dpkg locks or kill the holder.
+# Fresh cloud images often start apt-daily/unattended-upgrades while provisioning.
+APT_LOCK_TOTAL_WAIT=1800
+APT_LOCK_REPORT_INTERVAL=30
+APT_LOCK_POLL_INTERVAL=5
+APT_LOCK_ATTEMPT_WAIT=15
+
+vk_apt_lock_snapshot() {
+    command -v lslocks >/dev/null || {
+        echo 'STOP: lslocks (util-linux) is required for safe APT coordination.' >&2
+        return 1
+    }
+    lslocks -n -o PID,COMMAND,PATH 2>/dev/null | awk '
+        $3=="/var/lib/dpkg/lock-frontend" ||
+        $3=="/var/lib/dpkg/lock" ||
+        $3=="/var/cache/apt/archives/lock" ||
+        $3=="/var/lib/apt/lists/lock" {
+            if ($1 ~ /^[0-9]+$/ && $2 ~ /^[A-Za-z0-9_.+-]+$/) print $1 "\t" $2 "\t" $3
+        }'
+}
+
+vk_wait_apt_idle() {
+    local budget=${1:-$APT_LOCK_TOTAL_WAIT}
+    local started=$SECONDS elapsed=0 next_report=0 snapshot holders
+    [[ "$budget" =~ ^[0-9]+$ && "$budget" -ge 1 && "$budget" -le 7200 ]] || {
+        echo 'STOP: invalid APT wait budget.' >&2; return 1;
+    }
+    while :; do
+        snapshot=$(vk_apt_lock_snapshot) || return 1
+        [[ -n "$snapshot" ]] || break
+        elapsed=$((SECONDS - started))
+        if (( elapsed >= budget )); then
+            holders=$(awk -F '\t' '{printf "%s%s(pid=%s)", (NR==1?"":","), $2, $1}' <<< "$snapshot")
+            printf 'STOP: пакетный менеджер занят более %ss: %s. Ничего не остановлено и lock-файлы не удалены.\n' \
+                "$budget" "${holders:-unknown}" >&2
+            return 75
+        fi
+        if (( elapsed >= next_report )); then
+            holders=$(awk -F '\t' '{printf "%s%s(pid=%s)", (NR==1?"":","), $2, $1}' <<< "$snapshot")
+            printf 'APT_WAIT: Ubuntu/Debian выполняет пакетную операцию: %s; ждём безопасно (%ss/%ss).\n' \
+                "${holders:-unknown}" "$elapsed" "$budget"
+            next_report=$((elapsed + APT_LOCK_REPORT_INTERVAL))
+        fi
+        sleep "$APT_LOCK_POLL_INTERVAL"
+    done
+    elapsed=$((SECONDS - started))
+    if (( elapsed > 0 )); then
+        printf 'APT_WAIT=PASS waited=%ss\n' "$elapsed"
+    fi
+}
+
+vk_apt_run() {
+    local deadline=$((SECONDS + APT_LOCK_TOTAL_WAIT)) remaining start_size=0 rc
+    while :; do
+        remaining=$((deadline - SECONDS))
+        if (( remaining <= 0 )); then
+            echo 'STOP: общий лимит ожидания пакетного менеджера исчерпан; команда APT не запущена повторно.' >&2
+            return 75
+        fi
+        vk_wait_apt_idle "$remaining" || return $?
+        if [[ -n "${LOG:-}" && -f "${LOG:-}" ]]; then
+            start_size=$(stat -c '%s' "$LOG" 2>/dev/null || printf '0')
+        else
+            start_size=0
+        fi
+        if "$@"; then
+            return 0
+        else
+            rc=$?
+        fi
+        # Close the tiny race between our lock snapshot and APT's own lock acquisition.
+        # Retry only a real lock error; repository/network/dpkg failures propagate unchanged.
+        if [[ "$rc" -eq 100 && -n "${LOG:-}" && -f "${LOG:-}" ]] &&
+           tail -c "+$((start_size + 1))" "$LOG" 2>/dev/null | grep -Eq \
+             'Could not get lock |Unable to acquire the dpkg frontend lock|Unable to lock directory '; then
+            printf 'APT_LOCK_RACE: другой пакетный процесс успел получить lock; повторяем после безопасного ожидания.\n'
+            sleep 2
+            continue
+        fi
+        return "$rc"
+    done
+}
+
 # Release mappings are exact. Never use noble packages on resolute as a fallback.
 vk_platform_settings() {
     local id=$1 version=$2 codename=$3 arch=$4
@@ -1999,6 +2082,7 @@ vk_base_tools_smoke() (
     [[ $(stat -c '%a' checked) == 600 ]] || exit 1
     timeout --kill-after=1s 2s bash -c 'exit 0' || exit 1
     timeout --foreground 2s bash -c 'exit 0' || exit 1
+    lslocks -n -o PID,COMMAND,PATH >/dev/null || exit 1
     date -Is >/dev/null || exit 1
     mv -- checked moved || exit 1
     [[ -s moved ]] || exit 1
@@ -2028,7 +2112,7 @@ Components: stable
 Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker-vkarmani.asc
 EOF
-    apt-get -o APT::Update::Error-Mode=any update
+    vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 }
 
 vk_write_apt_clean_helper() {
@@ -2442,8 +2526,8 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
-        raise Failure('site-only update requires a completed 2.0.3 or 2.1.0 installation')
+    if version not in ('2.0.3', '2.1.0', '2.1.1') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+        raise Failure('site-only update requires a completed 2.0.3, 2.1.0 or 2.1.1 installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
         if p.exists() or p.is_symlink():
@@ -2801,7 +2885,7 @@ vkarmani_resources_main() (
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.1.0 — 2026-09-30
+# VKarmani Remnawave Node Installer 2.1.1 — 2026-09-30
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; reboot is opt-in.
@@ -2813,7 +2897,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.1.0
+INSTALLER_VERSION=2.1.1
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -2828,7 +2912,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.1.0
+VKarmani Remnawave Node Installer 2.1.1
 
   sudo bash install.sh                         # установка / безопасный повторный запуск
   sudo bash install.sh --reboot                # явное разрешение одного reboot после проверок
@@ -2841,7 +2925,7 @@ VKarmani Remnawave Node Installer 2.1.0
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
   sudo bash install.sh --repair-node           # узкое исправление нашей завершённой 1.3.x
-  sudo bash install.sh --update-cover          # только сайт: 2.0.3/2.1.0, без restart VPN
+  sudo bash install.sh --update-cover          # только сайт: 2.0.3/2.1.x, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
   bash install.sh --version
@@ -3052,7 +3136,8 @@ FREE_MB=$(df -Pm / | awk 'NR==2{print $4}')
 [[ "$MEM_MB" -ge "$MIN_MEMORY_MB" && "$FREE_MB" -ge 6144 ]] || {
     echo "Нужно >=${MIN_MEMORY_MB} MiB RAM и >=6144 MiB свободного места. Сейчас RAM=$MEM_MB, disk=$FREE_MB MiB." >&2; exit 1;
 }
-[[ -z "$(dpkg --audit)" ]] || { echo 'dpkg сообщает незавершённые операции. Исправьте пакетную базу прежде установки.' >&2; exit 1; }
+vk_wait_apt_idle "$APT_LOCK_TOTAL_WAIT"
+[[ -z "$(dpkg --audit)" ]] || { echo 'dpkg сообщает незавершённые операции после освобождения package-manager locks. Исправьте пакетную базу прежде установки.' >&2; exit 1; }
 # Never overwrite the only pre-change access backup while its guard is pending.
 for marker in network-rollback-armed network-rollback-running; do
     if [[ -e "$STATE/$marker" ]]; then
@@ -3230,14 +3315,14 @@ Acquire::ForceIPv4 "true";
 Acquire::Retries "3";
 Acquire::http::Timeout "30";
 Acquire::https::Timeout "30";
-DPkg::Lock::Timeout "300";
+DPkg::Lock::Timeout "15";
 EOF
-APT=(apt-get -y --no-remove --no-install-recommends -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
-apt-get -o APT::Update::Error-Mode=any update
-"${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
+APT=(apt-get -y --no-remove --no-install-recommends -o "DPkg::Lock::Timeout=${APT_LOCK_ATTEMPT_WAIT}" -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+vk_apt_run apt-get -o APT::Update::Error-Mode=any update
+vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.1.0: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.1.1: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -3790,7 +3875,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.1.0 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.1.1 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -3950,9 +4035,9 @@ NODE_PACKAGES=(openssh-server ufw fail2ban nginx certbot "$TIME_SERVICE" logrota
 DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
 vk_setup_docker_repository
 # Fail before changing access/boot if this release has no signed package candidates.
-"${APT[@]}" --simulate install "${NODE_PACKAGES[@]}" "${DOCKER_PACKAGES[@]}"
+vk_apt_run "${APT[@]}" --simulate install "${NODE_PACKAGES[@]}" "${DOCKER_PACKAGES[@]}"
 printf 'TIME_PROVIDER=%s; системные NTP-пакеты не заменяются.\n' "$TIME_SERVICE"
-"${APT[@]}" install "${NODE_PACKAGES[@]}"
+vk_apt_run "${APT[@]}" install "${NODE_PACKAGES[@]}"
 ensure_sshd_runtime
 [[ $(python3 "$TIME_HELPER" select) == "$TIME_SERVICE" ]] || die 'NTP provider изменился во время APT; останавливаюсь.'
 
@@ -4256,7 +4341,7 @@ for package in docker.io docker-compose docker-compose-v2 podman-docker containe
     fi
 done
 # Repository/candidates were validated before SSH/UFW/GRUB changes.
-"${APT[@]}" install "${DOCKER_PACKAGES[@]}"
+vk_apt_run "${APT[@]}" install "${DOCKER_PACKAGES[@]}"
 helper docker-config
 dockerd --validate --config-file=/etc/docker/daemon.json
 systemctl enable docker.service containerd.service
@@ -4667,7 +4752,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.1.0-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.1.1-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -4718,7 +4803,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.1.0 — исправление только на НОДЕ'
+    echo 'VKarmani 2.1.1 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -4783,7 +4868,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.1.0\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.1.1\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -4813,7 +4898,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.1.0-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.1.1-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -4824,7 +4909,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.1.0 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.1.1 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -4861,7 +4946,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.1.0\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.1.1\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true
@@ -4889,7 +4974,7 @@ vkarmani_repair_network_main() {
     return "$check_rc"
 }
 
-# VKARMANI_COMPLETE_PAYLOAD_2_1_0
+# VKARMANI_COMPLETE_PAYLOAD_2_1_1
 # Sourcing definitions is intentionally inert: used by offline regression tests.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
@@ -4905,7 +4990,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             ;;
         --backup|--refresh-image|--rollback-image)
             ACTION=${1#--}; shift
-            [[ -x /usr/local/sbin/vkarmani-node-maintain ]] || { echo 'Нужна завершённая установка 2.1.0. Старые ноды автоматически не мигрируются.'; exit 1; }
+            [[ -x /usr/local/sbin/vkarmani-node-maintain ]] || { echo 'Нужна завершённая установка 2.1.x. Старые ноды автоматически не мигрируются.'; exit 1; }
             exec /usr/local/sbin/vkarmani-node-maintain "$ACTION" "$@"
             ;;
         *) vkarmani_main "$@" ;;

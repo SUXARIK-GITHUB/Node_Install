@@ -33,7 +33,7 @@ class StaticTests(unittest.TestCase):
         for arg in ('--version', '--help'):
             result = subprocess.run(['bash', str(ROOT / 'install.sh'), arg], text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('2.1.0', result.stdout)
+            self.assertIn('2.1.1', result.stdout)
         result = subprocess.run(['bash', str(ROOT / 'install.sh'), '--invalid'], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 2)
 

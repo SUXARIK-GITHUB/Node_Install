@@ -164,7 +164,7 @@ class CleanupTests(unittest.TestCase):
         final=SCRIPT.split("stage 'Очистка только APT-кэша и ограниченных журналов'",1)[1]
         final=final.split("stage 'Установка завершена",1)[0]
         with tempfile.TemporaryDirectory() as d:
-            code='set -Eeuo pipefail\nSTATE='+repr(d)+'; INSTALLER_VERSION=2.1.0; DIGEST=test\n'
+            code='set -Eeuo pipefail\nSTATE='+repr(d)+'; INSTALLER_VERSION=2.1.1; DIGEST=test\n'
             code+='python3(){ printf "cleanup deferred\\n"; return 0; }\n'
             # Only replace the diagnostic executable path, retaining shell strict mode.
             final=final.replace('/usr/local/sbin/vkarmani-node-check','test_check')

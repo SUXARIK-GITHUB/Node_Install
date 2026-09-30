@@ -29,9 +29,10 @@ def component_commands(provider, fail_simulation=False):
 stage(){ :; }
 vk_write_time_helper(){ :; }
 vk_setup_docker_repository(){ :; } # signed repository I/O is outside this isolated solver fixture
+vk_apt_run(){ "$@"; }
 python3(){ printf '%s\\n' "$TEST_PROVIDER"; }
 LIB="$TEST_LIB"
-APT=(apt-get -y --no-remove --no-install-recommends -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+APT=(apt-get -y --no-remove --no-install-recommends -o DPkg::Lock::Timeout=15 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 '''
         p = subprocess.run(['bash', '-c', preamble + fragment], capture_output=True, text=True, timeout=15,
                            env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],

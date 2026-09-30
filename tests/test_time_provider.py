@@ -122,7 +122,7 @@ class TimeProviderTests(unittest.TestCase):
             self.m.saved_provider(self.etc, self.state)
 
     def test_missing_marker_is_error_for_new_version(self):
-        (self.state / 'install-version').write_text('2.1.0\n')
+        (self.state / 'install-version').write_text('2.1.1\n')
         with self.assertRaisesRegex(self.m.Failure, 'NOT_SAVED'):
             self.m.saved_provider(self.etc, self.state)
 
