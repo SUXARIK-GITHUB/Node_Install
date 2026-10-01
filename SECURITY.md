@@ -1,82 +1,467 @@
-# Безопасность VKarmani Node Install
+# 🔐 Безопасность VKarmani Node Install 2.1.2
 
-## Модель доступа
+Этот файл описывает security-модель **установщика ноды**, а не всей Remnawave-инфраструктуры. Installer работает с root-правами на выделенной VPS и намеренно меняет SSH, UFW, GRUB, sysctl, Nginx, Docker и systemd. Безопасность зависит и от встроенных guard-проверок, и от внешних компонентов, которые установщик не контролирует: хостер, панель, DNS, Cloudflare, рабочая станция администратора и клиентские устройства.
 
-Установщик предназначен для собственной выделенной ноды. Запускается с root и меняет системные конфиги. Сначала — snapshot VPS, доступ к recovery/консоли, проверка исходного файла и тестовая нода. Не запускайте его на панели, сервере БД, машине с чужими контейнерами или ценной неучтённой конфигурацией.
+> **Базовое условие:** отдельная чистая VPS-нода, snapshot, независимая console/recovery хостера, проверенный пароль администратора, доверенный release-файл/контрольная сумма и одна canary-нода до массовой раскатки.
 
-По требованию проекта SSH работает по паролю, без постоянного IP-allowlist. Установщик не просит SSH-ключ, не создаёт пользователей, не задаёт/не разблокирует пароли и не удаляет существующие authorized_keys. При наличии действующего root-пароля допускается root login. Это осознанно более рискованная политика, чем отключённый парольный доступ: используйте уникальный случайный пароль и контролируйте журнал входов. Fail2ban ограничивает перебор, но не устраняет риск компрометации пароля.
+---
 
-Не отключайте guard/проверки ради обхода несовместимости. Локальная проверка listener не доказывает новый SSH-вход. Сохраняйте старую сессию до успешной новой парольной сессии; проверьте и внешний firewall хостера.
+## 1. Модель доверия и границы
 
-## Секреты
+```text
+Устройство администратора
+          │ SSH / пароль / terminal
+          ▼
+Выделенная VPS ноды
+          ├── host OS / root / systemd / UFW / Fail2ban
+          ├── host Nginx + private key Let's Encrypt
+          ├── Docker daemon
+          └── RemnaNode container (host networking)
+                  │
+                  ├── management API :2222  ◄── Remnawave backend / mTLS
+                  └── Xray public :443      ◄── REALITY-клиенты
 
-Конфиденциальны `SECRET_KEY`, `/etc/vkarmani-node/remnanode.env`, `reality.json`, `profile.json`, `/root/reality-keys.txt`, приватные ключи Let's Encrypt, backups и дампы live-конфигурации. Base64 не является шифрованием. Backup tar тоже не шифруется, хотя хранится в закрытом каталоге; переносите его в защищённое off-host хранилище с ограниченным доступом.
+Внешние зоны, не управляемые installer:
+provider hypervisor / security group / upstream ACL / anti-DDoS
+DNS / Cloudflare account
+Remnawave panel и её БД
+рабочая станция / terminal logging администратора
+клиентские приложения / subscription storage
+```
 
-Установщик отключает shell tracing, не передаёт секрет через argv внешней команды, не экспортирует его, считывает из TTY со скрытым вводом и сохраняет root-only файлы. Ошибки crypto/maintenance не печатают payload. Это не защищает от root, Docker socket, чтения памяти привилегированным процессом или записи экрана/терминала на машине администратора.
+Успешная локальная проверка доказывает только тот слой, который реально проверен. Listener на `2222` не доказывает panel mTLS; Xray на `443` не доказывает Host/Squad/subscription; local Selfsteal PASS не доказывает user VPN.
 
-**Не отправляйте публично** `.env`, `config.json`, `profile.json`, `reality.json`, `/root/reality-keys.txt`, полный `docker inspect`, развёрнутый `docker compose config`, `docker exec … env`, `cli --dump-config`, архив `/etc/letsencrypt` или полный backup. У Docker env доступен привилегированному оператору — отсутствие секрета в YAML не делает его недоступным root.
+Установщик нельзя запускать:
 
-В тестах ключи и CA создаются случайно в `TemporaryDirectory` и удаляются; постоянных боевых/test приватных PEM в репозитории нет. `.gitignore` не является гарантией отсутствия секретов в Git-истории: проверяйте staged diff перед commit.
+- на VPS панели/БД;
+- на сервере с чужими production-контейнерами/службами;
+- на машине с нестандартным firewall/network/boot stack без отдельного аудита;
+- там, где потеря SSH без provider console делает recovery невозможным.
 
-## Контейнер и firewall
+---
 
-RemnaNode работает в host networking; TCP/2222 разрешён только с IP backend панели. Ограничение только по source IP не заменяет mTLS. TCP/443 — Xray, не API. Не открывайте 2222 всем ради «починки» соединения.
+## 2. Парольный SSH — сознательная политика проекта
 
-По умолчанию NET_ADMIN отсутствует, NET_RAW убран, включён no-new-privileges. Это уменьшает полномочия, но не делает контейнер непривилегированной песочницей. Опция `--allow-net-admin` нужна только для осознанно выбранных функций upstream; с host networking она даёт возможность менять сеть хоста. Регрессии таких функций могут затронуть исходящий трафик всего VPS.
+По требованиям проекта password SSH сохраняется, постоянный source-IP allowlist не создаётся, существующие SSH-порты сохраняются.
 
-Read-only bind содержит только каталог Selfsteal socket. Он не даёт запись в весь host `/dev/shm`, но связь с Nginx остаётся намеренно доступной. Nginx не получает доверенные real-IP заголовки от произвольного интернета; PROXY protocol принимается на локальном socket, не на публичном API.
+Installer не:
 
-## Цепочка поставки
+- создаёт OS-пользователей;
+- задаёт/меняет пароли;
+- разблокирует заблокированный root;
+- удаляет существующие `authorized_keys`;
+- требует SSH-key;
+- добавляет бессрочный SSH allowlist для панели/администратора.
 
-Пакеты устанавливаются из подписанных репозиториев; Docker key fingerprint проверяется. Не обходите ошибку fingerprint без сверки с официальным источником. Образ разрешён только из предусмотренного official namespace, после загрузки закрепляется digest. Проверка namespace/digest сама по себе не является полной проверкой содержимого, подписи образа или совместимости с панелью.
+При уже действующем root-пароле root password login может оставаться доступным. Это сознательно рискованнее key-only SSH. Используйте длинный уникальный случайный пароль и password manager. Fail2ban снижает bruteforce-нагрузку, но не защищает от повторно используемого пароля, malware на рабочей станции, утечки terminal log или root-compromise.
 
-Не используйте `curl | bash` для живого потока. Команда README скачивает файл целиком и сверяет известный SHA256. При изменении `install.sh` пересчитайте и обновите checksum README и manifest; не подставляйте хеш произвольного скачанного файла вместо доверенного.
+Перед изменением SSH/UFW создаётся phase-specific backup и короткий rollback guard. Этот guard страхует **конкретную фазу**, но не доказывает внешний SSH-вход и не откатывает всю ОС.
 
-CI использует read-only права, не хранит checkout credentials, не выполняет deployment и не получает production-секретов. Коммит checkout action закреплён. `pull_request_target` с запуском чужого кода не используется.
+Безопасный порядок:
 
-## Инцидент или подозрение на утечку
+1. не закрывать старую SSH-сессию;
+2. после изменений открыть новую парольную сессию;
+3. проверить root/sudo;
+4. держать console/recovery хостера доступной до post-reboot приёмки.
 
-Сначала сохраните доступ через консоль и минимально необходимую закрытую диагностику. Установите, какие файлы/аккаунты/ключи были доступны, и изолируйте скомпрометированную ноду с учётом оставшихся пользователей. При подозрении на root-компрометацию безопаснее восстановить чистую VPS, чем доверять локальным проверкам.
+Не выключайте UFW/Fail2ban и не добавляйте широкий постоянный `ignoreip` ради unban. Через provider console или сохранённую trusted-сессию снимайте только точный подтверждённый бан.
 
-Смену SSH-пароля выполняйте через доверенный канал. Смена секрета ноды, CA, ключей REALITY и профиля должна быть согласована с панелью и клиентами; простое удаление файлов/перегенерация на VPS может оставить панель с прежними ключами. Масштаб перевыпуска зависит от модели вашей версии Remnawave: не заявляется, что замена одной строки решает компрометацию всей PKI.
+---
 
-Не публикуйте секреты в issue и не придумывайте email службы безопасности проекта. Для отчёта используйте доступный приватный канал владельца репозитория; если его нет, публично сообщите только факт необходимости приватного контакта без exploit-данных и секретов. В обезличенный отчёт достаточно включить версию, ОС, архитектуру, этап/код ошибки, безопасно отредактированные строки диагностики и шаги воспроизведения на тестовой ноде.
+## 3. Секреты и чувствительные данные
 
+### Критические секреты
 
-## Дополнения 2.0.1: хостеры и границы автоматизации
+| Данные | Почему чувствительны |
+|---|---|
+| RemnaNode `SECRET_KEY` | используется в control relationship ноды; это не panel admin API token |
+| `/etc/vkarmani-node/remnanode.env` | содержит `SECRET_KEY` |
+| REALITY `PrivateKey` | приватный X25519 key сервера |
+| `/etc/vkarmani-node/reality.json` | содержит REALITY PrivateKey |
+| `/etc/vkarmani-node/profile.json` | содержит REALITY PrivateKey |
+| `/root/reality-keys.txt` | явный export PrivateKey/PublicKey/ShortID; `root:0600` |
+| `/etc/letsencrypt/**/privkey.pem` | приватный TLS key |
+| `/etc/letsencrypt/` account/private state | чувствительное ACME-состояние |
+| configuration backups | агрегируют системные и application-конфиги |
+| live config/environment dumps | могут содержать секреты/идентификаторы/ключи |
 
-Не используйте чужие домены/IP в REALITY SNI/target. Selfsteal в этом проекте ведёт в локальный Nginx вашего домена; права на домен и допустимость сервиса по вашему договору проверяет оператор. Сертификат/DNS доказывают техническое управление в ограниченном смысле, не все условия оферты.
+`PublicKey`, `ShortID`, домен и клиентские параметры не эквивалентны PrivateKey, но полные production topology/config dumps тоже не нужно публиковать без необходимости.
 
-Нельзя передавать рабочий `SECRET_KEY`, приватный REALITY key или администраторский API token в сторонние DPI-checkers. VLESS-ссылка тоже предоставляет доступ: для необходимого внешнего теста используйте отдельного ограниченного тестового пользователя и отзовите его после теста. Пользовательские notices без имени хостера и URL не выдаются за подтверждённый общий запрет.
+### Что нельзя выкладывать публично
 
-Новый firewall check валидирует объявленные TCP-разрешения в `ufw-user-input` и прямую INPUT-топологию. Он не доказывает семантику всех `before/after` chains, raw/mangle/nft hooks, внешнего provider firewall, Fail2ban-событий или доступность из другой страны. Не добавляйте второй firewall manager; после любого ручного изменения правил нужны внешние разрешённые пробы.
+Не отправляйте без redaction:
 
-Отмена maintenance завершает локальную process group, но не принятый Docker daemon запрос. `IMAGE_APPLY=UNKNOWN` требует проверки и ручного решения, а не удаления pending или одновременных update/rollback. Локальный конфигурационный backup не заменяет snapshot/проверенный off-host restore.
+```text
+.env / *.env
+/etc/vkarmani-node/remnanode.env
+/etc/vkarmani-node/reality.json
+/etc/vkarmani-node/profile.json
+/root/reality-keys.txt
+/etc/letsencrypt/
+полные configuration backups
+полный `docker inspect`
+полный `docker compose config`
+`docker exec ... env`
+полный live Xray/Remnawave config dump
+production VLESS subscription links
+```
 
-## Дополнение 2.0.2: сохранённые UFW-правила
+VLESS-ссылка сама является access material. Для внешнего тестера создавайте отдельного ограниченного test-user и отзывайте его после проверки.
 
-Дефект широкого `^-A ufw-user-` исправлен без отключения защиты. Проверка разрешает только поддерживаемый пустой filter-шаблон и точные стандартные неиспользуемые limit-правила; как IPv4, так и IPv6 пользовательские записи и неизвестные изменения вызывают STOP. Проверка не выполняет содержимое файлов и не вызывает firewall-команды. Ошибки чтения, не-regular файлы и symlink не считаются отсутствием правил. Вывод содержит имя файла/номер строки/тип отказа, а не полное содержимое правил.
+### Как installer обращается с секретами
 
-Это не универсальный аудит всех UFW before/after-файлов, внешнего provider firewall, eBPF или скрытых политик хостера. При нестандартном формате требуется отдельный разбор, не автоматический reset/обход. См. [инцидент и ограничения](docs/UFW_PREFLIGHT_FIX.md).
+Используются `set +x`, restrictive `umask`, скрытый ввод из TTY и root-only файлы. `SECRET_KEY` не должен передаваться обычным argv внешней команды и не печатается в штатный вывод. Crypto/maintenance errors не должны dump-ить payload.
 
-## Дополнение2.1.0: пределы нового режима сайта
+В `2.1.2` `/root/reality-keys.txt` создаётся только после успешной local acceptance. Файл пишется атомарно и должен оставаться regular root-owned `0600`. Existing symlink, non-regular type, чужой owner или слишком широкие права вызывают STOP вместо перезаписи.
 
-Сайт не скрывает сам IP, связь доменов, TLS fingerprint и факт публичного SSH. Общий открытый шаблон может быть узнаваем. Нет гарантий неотличимости или обхода фильтрации. Не отключайте проверки ради внешних рекомендаций «анти-DPI».
+Финальный блок REALITY keys выводится напрямую в controlling TTY, поэтому PrivateKey не дублируется в общий install log. Это **не** защищает от:
 
-`--update-cover` требует завершённую принадлежащую проекту2.0.3/2.1.0, проверяет локальную готовность и создаёт SHA256-backup. Он не читает ключи и не вызывает изменения служб; исключение — встроенные read-only команды готовности читают необходимую публичную TLS-информацию. Добавленные assets сохраняются после rollback. При SIGKILL/потере питания/ошибке файловой системы rollback может не выполниться; нужны snapshot, сохранённый новый installer и диагностика pending.
+- MobaXterm/terminal session logging;
+- scrollback;
+- screenshot/screen recording;
+- root access;
+- Docker socket access;
+- privileged memory inspection.
 
-Сохранение Chrony NTS не означает принудительный NTS для всех дополнительных источников. Показанный NTP_SYNC не является проверкой authdata каждого источника. Не ослабляйте NTS/TLS автоматически при отсутствии синхронизации.
+Base64 — кодирование, а не шифрование. Configuration backup tar не становится encrypted только потому, что хранится в закрытой директории. Нужные backups переносите в защищённое off-host хранилище и отдельно проверяйте restore.
 
+---
 
-## Дополнение 2.1.1: пакетные блокировки
+## 4. Сетевая поверхность
 
-Установщик не удаляет `/var/lib/dpkg/lock*`, `/var/cache/apt/archives/lock` или `/var/lib/apt/lists/lock` и не завершает `apt`, `dpkg` или `unattended-upgrade`. Активная штатная пакетная транзакция ожидается с ограниченным общим deadline; по timeout установка останавливается. Это сохраняет целостность dpkg и автоматические security updates. Подробности: [APT_LOCK_COORDINATION_2.1.1](docs/APT_LOCK_COORDINATION_2.1.1.md).
+Ожидаемые входящие порты:
 
+| Порт | Роль | Ожидаемый источник |
+|---|---|---|
+| существующие SSH TCP-порты | администрирование | IPv4 Internet с временными Fail2ban-банами |
+| `80/tcp` | ACME HTTP-01 + redirect | IPv4 Internet к выбранному Node-domain IPv4 |
+| `443/tcp` | Xray VLESS RAW REALITY / Selfsteal | IPv4 Internet к выбранному Node-domain IPv4 |
+| `2222/tcp` | RemnaNode management API | **только** заданный backend egress IPv4 панели |
 
-## Дополнение 2.1.2: export REALITY-ключей и auto-reboot
+`2222/tcp` нельзя открывать всему Интернету как troubleshooting shortcut. Source-IP allowlist уменьшает поверхность, но не заменяет mTLS RemnaNode.
 
-По прямому требованию оператора установщик создаёт `/root/reality-keys.txt` с `PrivateKey`, `PublicKey` и `ShortID`. Файл атомарный, `0600`, принадлежит пользователю, запускающему helper; в штатной установке это root. Symlink, не-regular файл, чужой владелец или более широкие права вызывают STOP вместо перезаписи. Это дополнительная копия секрета, поэтому её нельзя включать в публичные логи, issue, screenshots или CI artifacts.
+UFW использует deny incoming/routed и allow outgoing. Installer проверяет ожидаемую UFW/INPUT-топологию, но не утверждает, что полностью понимает любой внешний/низкоуровневый фильтр:
 
-Финальный блок с `PrivateKey` выводится непосредственно в controlling TTY и не проходит через `tee` установочного журнала. Это не защищает от записи терминала, scrollback, screen recording или root-доступа.
+- provider security group / ACL;
+- upstream anti-DDoS;
+- custom nftables raw/mangle hooks;
+- eBPF;
+- hypervisor firewall;
+- маршрут из другой страны/ASN.
 
-Одноразовый reboot после успешной установки теперь включён по умолчанию и ставится через transient systemd unit с задержкой 30 секунд. Для окна ручной проверки второго SSH-входа используйте `--no-reboot`. Не включайте авто-reboot при отсутствии console/recovery доступа у хостера. Ошибка постановки transient unit не удаляет `INSTALL_COMPLETE`: оператор получает явный `AUTO_REBOOT=FAILED` и выполняет `sudo reboot` вручную.
+Не накладывайте второй firewall manager поверх этой схемы без отдельного design review.
+
+### Multi-IP ноды
+
+Домен ноды должен указывать на публичный IPv4, реально назначенный VPS. На multi-IP сервере management `Address` в Remnawave может использовать другой публичный IPv4 **той же VPS**, а клиентский Host/SNI продолжит использовать домен ноды.
+
+UFW допускает backend панели к `2222` на локальных публичных IPv4 ноды именно для такого сценария. Это не повод убирать source restriction панели.
+
+---
+
+## 5. IPv4-only и DNS
+
+Проект сознательно IPv4-only:
+
+- у домена ноды ровно одна A-запись на прямой local public IPv4 VPS;
+- AAAA у домена ноды отсутствует;
+- Cloudflare record ноды — DNS-only, не proxied/CDN;
+- IPv6 отключается runtime и через GRUB `ipv6.disable=1`;
+- полная socket-level проверка выполняется после reboot.
+
+NAT-only, IPv6-only, LXC/OpenVZ и неподдерживаемый boot layout не адаптируются «на глаз». Installer должен STOP-нуться, а не угадывать routes/IP или переписывать provider network config.
+
+Локальный `vkarmani-node-tls-check` не проходит реальный Internet path panel→node. Его PASS не исключает upstream firewall, PMTU, anti-DDoS или route problem.
+
+---
+
+## 6. Безопасность контейнера RemnaNode
+
+RemnaNode работает в `network_mode: host`. Это часть выбранной архитектуры и означает общий network namespace с хостом. Это **не** полноценная network isolation.
+
+По умолчанию:
+
+- `NET_ADMIN` не выдаётся;
+- `NET_RAW` сброшен;
+- включён `no-new-privileges`;
+- в контейнер read-only монтируется только dedicated Selfsteal socket directory;
+- private keys Let's Encrypt в Xray не монтируются;
+- после pull image фиксируется точным digest.
+
+`--allow-net-admin` существует только для осознанно выбранных upstream-функций управления IP/network. При host networking `NET_ADMIN` может позволить контейнеру менять сеть хоста. Не включайте capability «про запас».
+
+Доступ к Docker socket остаётся root-equivalent. Container hardening не защищает от root/Docker-daemon compromise.
+
+---
+
+## 7. REALITY / Selfsteal
+
+Архитектура проекта — **VLESS + RAW + REALITY**. В `serverNames` используется собственный домен ноды. Обычный HTTPS/не-REALITY путь отправляется через:
+
+```text
+target=/dev/shm/nginx.sock
+xver=1
+```
+
+Внутри контейнера `/dev/shm/nginx.sock` — read-only bind-представление host-каталога с:
+
+```text
+/run/vkarmani-selfsteal/nginx.sock
+```
+
+Nginx на хосте обслуживает TLS/cover на Unix socket. Публичный TCP/443 принадлежит Xray. Не заставляйте host Nginx слушать public 443 в этой архитектуре.
+
+Не используйте чужие домены/IP как REALITY target/SNI в рамках этого проекта. Владение доменом, правила провайдера и допустимость сервиса по договору остаются обязанностью оператора. Рабочий сертификат/DNS подтверждают только технический контроль в ограниченном смысле.
+
+Cover-site не является гарантией «невидимости». Он не скрывает IP сервера, связь доменов, TLS/client fingerprints, публичный SSH и все характеристики трафика. Не ослабляйте TLS/security checks на основании неподтверждённых «anti-DPI/undetectable» советов.
+
+### `minClientVer`
+
+Release `2.1.2` генерирует и локально валидирует:
+
+```json
+"minClientVer": "1.0.0"
+```
+
+Оператор может осознанно использовать в **live-профиле Remnawave**:
+
+```json
+"minClientVer": "0.0.0"
+```
+
+чтобы снять нижний version-gate ради более старых клиентских core. Это расширяет диапазон допускаемых версий и должно быть явным compatibility-решением. Значение `0.0.0` не добавляет старому клиенту отсутствующую поддержку REALITY/RAW/uTLS/flow.
+
+Не редактируйте local generated profile на другое значение, а затем не отключайте встроенный policy-validator `2.1.2` ради прохождения проверки. Либо используйте release default, либо документируйте live-panel override отдельно.
+
+---
+
+## 8. Nginx / TLS / ACME
+
+Nginx работает на хосте. Public TCP/80 нужен HTTP-01 и redirect. Selfsteal TLS обслуживается через local Unix socket. Сертификаты/private keys остаются на хосте.
+
+Перед ручной правкой Nginx:
+
+1. backup точных изменяемых файлов;
+2. `sudo nginx -t`;
+3. только после успешного syntax test — reload;
+4. `sudo vkarmani-selfsteal-check`;
+5. при ожидаемом live Xray — `sudo vkarmani-node-check --require-xray`.
+
+Проверка renewal:
+
+```bash
+sudo certbot renew --dry-run --non-interactive
+```
+
+Не используйте `--force-renewal` как повседневную диагностику. Если сохраняется HTTP-01, TCP/80 должен оставаться доступен для renewal.
+
+---
+
+## 9. Целостность APT/dpkg и time provider
+
+Нельзя «чинить» APT locks удалением lock-файлов или убийством штатных `apt`, `dpkg`, `unattended-upgrade`. В `2.1.1+` installer ждёт реальных владельцев package-manager lock в bounded deadline, затем делает `dpkg --audit` и продолжает только из согласованного состояния.
+
+Security updates не отключаются только ради более быстрой установки.
+
+Исправленный ранее конфликт time-daemon решён сохранением поддерживаемого существующего `systemd-timesyncd` или Chrony. Общий принцип `--no-remove` сохраняется: installer не должен молча удалять посторонние пакеты, чтобы удовлетворить новый APT plan.
+
+Если пакетная операция остановилась или состояние dpkg подозрительно:
+
+```bash
+sudo dpkg --audit
+```
+
+Сначала восстановите реальное package state. Незавершённую установку продолжайте **той же generation/version**, если нет документированного узкого migration path. Не редактируйте version/state markers вручную ради cross-version resume.
+
+---
+
+## 10. Supply chain
+
+### Получение `install.sh`
+
+Не используйте live `curl | bash`. Команда из README:
+
+1. скачивает полный файл;
+2. сверяет известный SHA256 release;
+3. делает `bash -n`;
+4. проверяет `--version`;
+5. запускает только после всех проверок.
+
+SHA256 `install.sh` для этого `2.1.2`:
+
+```text
+f95773a6f869e27bd3730c456542ac4c7e0d7e4c3bd609a414a6ee84eb3c3776
+```
+
+Если `install.sh` изменён, README и release manifest должны обновляться согласованно после review. Никогда не вычисляйте новый хеш из недоверенного изменившегося файла и не называйте его после этого «проверенным».
+
+### OS packages и Docker
+
+Пакеты ставятся из подписанных repositories. Fingerprint Docker signing key проверяется. Не обходите fingerprint failure без сверки нового ключа по авторитетному источнику vendor.
+
+RemnaNode image ограничивается ожидаемым official namespace и после pull закрепляется digest. Namespace/digest pinning улучшает repeatability, но не является полной cryptographic attestation содержимого image или доказательством совместимости с конкретной версией панели.
+
+### CI
+
+CI предназначен для test/validation, а не production deployment. Production secrets/deploy credentials не должны появляться там только ради удобства тестов. Не используйте `pull_request_target`-подходы, исполняющие недоверенный contributor code с privileged secrets.
+
+---
+
+## 11. Backup и rollback
+
+Configuration backups установщика полезны, но **не равны provider snapshot**. Snapshot/recovery остаётся whole-system boundary.
+
+`vkarmani-node-maintain backup` создаёт закрытый configuration archive + checksums. Относитесь к archive как к secret. Проверяйте его до того, как рассчитывать на restore, и храните off-host copy, если backup входит в recovery plan.
+
+Image update/rollback не возвращает:
+
+- OS packages;
+- GRUB/sysctl;
+- уже потерянный writable layer пересозданного контейнера;
+- Remnawave DB/objects;
+- user subscriptions/sessions;
+- provider network/firewall state.
+
+При `IMAGE_APPLY=UNKNOWN` сначала проверяется реальное состояние Docker. Не удаляйте pending state и не запускайте параллельные update/rollback.
+
+SSH/UFW rollback helper возвращает только принадлежащий ему phase backup. Это не rollback всей установки.
+
+---
+
+## 12. Auto-reboot
+
+В `2.1.2` один post-install reboot включён по умолчанию. Он ставится через transient systemd unit только после успешной local preboot acceptance и export ключей.
+
+Для ручного окна проверки:
+
+```bash
+sudo bash install.sh --no-reboot
+```
+
+Это особенно важно, если provider console/recovery ненадёжна.
+
+Если transient reboot unit не удалось поставить, installer сообщает `AUTO_REBOOT=FAILED`; успешный `INSTALL_COMPLETE` при этом не удаляется. Reboot выполняйте вручную только после проверки состояния.
+
+Weekly reboot остаётся opt-in через `--weekly-reboot` и по умолчанию выключен.
+
+---
+
+## 13. Безопасная диагностика и redaction
+
+Предпочитайте узкий read-only вывод:
+
+```bash
+sudo vkarmani-node-check
+sudo vkarmani-node-check --require-xray
+sudo systemctl --failed --no-pager
+sudo ufw status verbose
+sudo ss -4 -lntp
+sudo docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Networks}}\t{{.Ports}}'
+sudo fail2ban-client status sshd
+```
+
+Перед отправкой диагностики удалите/замаскируйте:
+
+- домашний/admin public IP, если он не нужен для анализа;
+- имена пользователей, не относящиеся к проблеме;
+- `SECRET_KEY`;
+- REALITY PrivateKey;
+- TLS private keys;
+- user UUID/VLESS subscription link;
+- cookies/tokens/authorization headers;
+- полный `.env`/container environment;
+- backup archives.
+
+PublicKey/ShortID/domain иногда нужны для protocol troubleshooting, но всё равно публикуйте только минимально необходимое.
+
+При проблеме panel→node packet capture **на самой ноде** позволяет отличить «пакет вообще не дошёл до интерфейса» от «его отбросили UFW/service», не требуя изменений на панели. PCAP/tcpdump содержит IP metadata — храните его приватно либо редактируйте перед публикацией.
+
+---
+
+## 14. Incident response
+
+### Утечка `SECRET_KEY` / REALITY PrivateKey
+
+1. Сохранить provider console access и минимально необходимую закрытую диагностику.
+2. Прекратить дальнейшую публикацию logs/screenshots/config dumps.
+3. Определить, что именно было раскрыто: `SECRET_KEY`, REALITY key, TLS key, SSH password, backup, root/panel credential.
+4. Согласованно ротировать material в панели/Node/client configuration. Простое удаление/перегенерация только на VPS может оставить панель со старыми данными.
+5. Обновить subscriptions/clients там, где credentials изменились.
+6. Удалить публичные копии, но считать уже опубликованный secret скомпрометированным даже после удаления поста.
+
+### Подозрение на root compromise
+
+Не доверяйте локальным integrity checks, выполненным из потенциально скомпрометированной root-среды. Безопаснее поднять чистую VPS из доверенного image, ротировать соответствующие credentials и переносить только просмотренные данные/config.
+
+### Потерян SSH
+
+Используйте provider console/recovery. Не отвечайте на проблему открытием всех портов/выключением firewall через сомнительный путь.
+
+### Панель не достаёт `2222`
+
+Не открывайте `2222` всему миру. Сначала:
+
+```bash
+sudo ss -4 -lntp | grep ':2222'
+sudo ufw status numbered
+sudo vkarmani-node-tls-check
+```
+
+Затем на ноде можно захватить только управление `2222`, параллельно инициировав попытку панели:
+
+```bash
+sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
+```
+
+Если во время заведомой попытки панели SYN вообще не приходит на interface, проблема находится до UFW/RemnaNode на этом path: egress/route панели, provider ACL/anti-DDoS и т.п. Если SYN приходит — дальше проверяются UFW/TCP/mTLS/service layers. Не называйте это «баном провайдера», пока evidence не показывает, где именно фильтрация.
+
+---
+
+## 15. Сообщение о security-проблеме
+
+Не придумывайте несуществующий security email. Используйте приватный contact method владельца репозитория/platform, если он доступен. Если есть только public issue tracker, публикуйте только просьбу дать private channel — без exploit details, secrets и production identifiers.
+
+Хороший redacted report содержит:
+
+- installer version;
+- OS/architecture;
+- clean/new node или existing install;
+- точный stage/error code;
+- минимальные отредактированные log lines;
+- reproducible steps на disposable test-node;
+- expected vs actual;
+- отдельно — что уже проверено на provider firewall/panel/client уровне.
+
+---
+
+## 16. Что security-модель не обещает
+
+Проект не обещает:
+
+- отсутствие provider blocking/route failures;
+- «невидимый/неопределяемый» трафик;
+- защиту от скомпрометированного root/Docker daemon;
+- безопасность слабого/повторно используемого SSH-пароля;
+- работоспособность панели/клиента только потому, что local tests PASS;
+- совместимость любого древнего core после `minClientVer=0.0.0`;
+- автоматическое понимание любого custom nftables/eBPF/provider firewall;
+- full OS rollback из configuration backup;
+- безопасный mass rollout без canary и provider-specific acceptance.
+
+Не обходите STOP/guard только потому, что другой сервер установился. STOP может защищать другое состояние: boot layout, firewall, package manager, provider image или уже существующий production config.
+
+---
+
+## 17. Связанные документы
+
+- [README.md](README.md) — установка, Remnawave, архитектура и operator commands.
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — эксплуатация, диагностика и recovery.
+- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — test coverage и явные gaps.
+- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md) — secure key export и auto-reboot.
+- [docs/APT_LOCK_COORDINATION_2.1.1.md](docs/APT_LOCK_COORDINATION_2.1.1.md) — package-manager lock policy.
+- [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md) — provider/network incidents.
+- [docs/COVER_SITE.md](docs/COVER_SITE.md) — cover-site update/rollback boundaries.
+- [docs/UFW_PREFLIGHT_FIX.md](docs/UFW_PREFLIGHT_FIX.md) — strict saved-UFW rules handling.
+- [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md) — сохранение поддерживаемого time provider.
+- [docs/UBUNTU_26_04.md](docs/UBUNTU_26_04.md) — статус 26.04 и требования canary.
+- [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — failure modes и остаточные риски.
