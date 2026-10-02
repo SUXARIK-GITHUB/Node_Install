@@ -154,6 +154,7 @@ class NginxSelfstealIntegrationTests(unittest.TestCase):
         import re
         version_tuple = tuple(int(x) for x in re.search(r'nginx/(\d+)\.(\d+)\.(\d+)', version).groups())
         cls.modern_h2 = version_tuple >= (1, 25, 1)
+        cls.reject_sni = version_tuple >= (1, 19, 4)
         cls.configure(cls.modern_h2)
         cls.proc = None
         cls.start()
@@ -163,6 +164,7 @@ class NginxSelfstealIntegrationTests(unittest.TestCase):
     def configure(cls, modern):
         fragment = (cls.fragment.replace('$NGINX_HTTP2_LISTEN', '' if modern else 'http2')
                     .replace('$NGINX_HTTP2_DIRECTIVE', 'http2 on;' if modern else '')
+                    .replace('$NGINX_REJECT_HANDSHAKE_DIRECTIVE', 'ssl_reject_handshake on;' if cls.reject_sni else '')
                     .replace('$DOMAIN', 'node.example.test').replace('\\$', '$')
                     .replace('/run/vkarmani-selfsteal/nginx.sock', cls.socket_path)
                     .replace('/etc/letsencrypt/live/node.example.test/fullchain.pem', str(cls.root / 'cert.pem'))
@@ -214,7 +216,7 @@ class NginxSelfstealIntegrationTests(unittest.TestCase):
                           site=self.site / 'index.html', cafile=self.root / 'ca.pem')
 
     def test_wrong_hostname_rejected(self):
-        with self.assertRaises(ssl.SSLCertVerificationError):
+        with self.assertRaises(ssl.SSLError):
             self.helper.check('wrong.example.test', path=self.socket_path,
                               site=self.site / 'index.html', cafile=self.root / 'ca.pem')
 

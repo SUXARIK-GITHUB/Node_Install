@@ -1,0 +1,36 @@
+{
+  "input_version": "2.1.3",
+  "output_version": "2.2.0",
+  "unique_payloads_unchanged": [
+    "VK_PAYLOAD_VK_WRITE_TLS_CHECK",
+    "VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT",
+    "VK_PAYLOAD_VK_WRITE_NETWORK_UNIT",
+    "VK_PAYLOAD_VK_WRITE_NODE_UNIT",
+    "VK_SOCKET_PREPARE",
+    "VK_PAYLOAD_VK_WRITE_NGINX_DROPIN",
+    "PY_FIREWALL_CHECK",
+    "PY_NETWORK_CHECK",
+    "VK_F2B_ACTION",
+    "VK_F2B_GLOBAL",
+    "PY_RESUME_NTP_CHECK",
+    "VK_APT_CLEAN_PY",
+    "VK_CHRONY_CONFIG_PY",
+    "VK_RESOURCES_PY",
+    "VK_TIMESYNCD_IPV4",
+    "PY_SSH_CONFIG",
+    "PY_NGINX_MAIN",
+    "WAITSELF"
+  ],
+  "unique_payloads_changed": [
+    "VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK",
+    "VK_PAYLOAD_VK_WRITE_ACCEPTANCE",
+    "VK_PAYLOAD_VK_WRITE_MAINTENANCE",
+    "PY_TIME_HELPER",
+    "VK_SITE_TOOL_PY",
+    "HELP",
+    "PY_HELPER"
+  ],
+  "generated_profile_function_ast_unchanged": true,
+  "profile_validator_function_ast_unchanged": true,
+  "ci_workflow_identical": true
+}

@@ -35,10 +35,10 @@ class RealityKeyExportTests(unittest.TestCase):
             self.assertIn('PrivateKey: ' + keys['private_key'], text)
             self.assertIn('PublicKey: ' + keys['public_key'], text)
             self.assertIn('ShortID: ' + keys['short_id'], text)
-            self.assertIn('minClientVer: 1.0.0', text)
+            self.assertIn('minClientVer: 0.0.0', text)
             profile = self.h.read_json(self.h.ETC / 'profile.json')
             reality = profile['inbounds'][0]['streamSettings']['realitySettings']
-            self.assertEqual(reality['minClientVer'], '1.0.0')
+            self.assertEqual(reality['minClientVer'], '0.0.0')
 
     def test_export_reuses_same_keys_and_does_not_regenerate(self):
         with tempfile.TemporaryDirectory() as folder, \

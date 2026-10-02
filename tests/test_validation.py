@@ -110,7 +110,7 @@ class ValidationTests(unittest.TestCase):
             profile = first[2]
             self.assertEqual(profile['inbounds'][0]['settings']['clients'], [])
             reality = profile['inbounds'][0]['streamSettings']['realitySettings']
-            self.assertEqual((reality['target'], reality['xver'], reality['minClientVer']), ('/dev/shm/nginx.sock', 1, '1.0.0'))
+            self.assertEqual((reality['target'], reality['xver'], reality['minClientVer']), ('/dev/shm/nginx.sock', 1, '0.0.0'))
             blocked = profile['routing']['rules'][0]['ip']
             for target in ('127.0.0.0/8', '169.254.0.0/16', '1.1.1.1/32', '9.9.9.9/32', '::/0'):
                 self.assertIn(target, blocked)
@@ -225,7 +225,8 @@ class SshTests(unittest.TestCase):
         self.assertTrue(result.endswith(old))
         self.assertIn('PasswordAuthentication yes\n', result)
         self.assertIn('PermitRootLogin yes\n', result)
-        self.assertIn('AuthenticationMethods any\n', result)
+        self.assertIn('AuthenticationMethods password\n', result)
+        self.assertIn('PubkeyAuthentication no\n', result)
         self.assertIn('Port 222\n', result)
         self.assertLess(result.index('PasswordAuthentication yes'), result.index('Include '))
 

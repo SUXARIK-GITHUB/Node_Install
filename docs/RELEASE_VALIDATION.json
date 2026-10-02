@@ -1,65 +1,123 @@
 {
-  "edition": "2.1.2",
-  "installer_version": "2.1.2",
-  "date": "2026-09-30",
-  "installer_sha256": "f95773a6f869e27bd3730c456542ac4c7e0d7e4c3bd609a414a6ee84eb3c3776",
-  "change_scope": "secure REALITY key export + terminal-only key display + default one-time reboot + minClientVer compatibility; APT/network/firewall/Docker topology otherwise preserved",
-  "local_environment": {
+  "version": "2.3.0",
+  "date": "2026-10-02",
+  "status": "LOCAL_TESTS_PASSED_VPS_PILOT_REQUIRED",
+  "base": {
+    "archive": "Node_Install_2.2.0.zip",
+    "sha256": "464ebf0c03a5cd9221fb2e8845f697f23ffcb9c9b54af55f6f3aef1eec4465a1",
+    "original_files": 157,
+    "removed_paths": []
+  },
+  "installer_sha256": "425e1541b23d97b0de8fd3f2ff72eb7566c8008be95b63a896baa47d561ded1c",
+  "tests": [
+    {
+      "stage": "baseline_2.2.0",
+      "uid": 0,
+      "count": 465,
+      "seconds": 19.038,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/230-baseline-220-tests.txt"
+    },
+    {
+      "stage": "release_2.3.0",
+      "uid": 0,
+      "count": 554,
+      "seconds": 20.653,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/230-root-tests.txt"
+    },
+    {
+      "stage": "release_2.3.0",
+      "uid": 1000,
+      "count": 554,
+      "seconds": 19.547,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/230-uid1000-tests.txt"
+    }
+  ],
+  "new_test_modules": {
+    "test_230_certdeploy.py": 22,
+    "test_230_listener.py": 11,
+    "test_230_resources.py": 9,
+    "test_230_selfsteal.py": 15,
+    "test_230_ssh.py": 32
+  },
+  "environment": {
     "os": "Debian GNU/Linux 13 (trixie)",
-    "architecture": "x86_64",
+    "arch": "x86_64",
     "python": "3.13.5",
     "node": "22.16.0",
+    "nginx": "1.26.3",
     "git": "2.47.3",
-    "nginx": "1.26.3"
+    "openssl": "3.5.5",
+    "chromium": "144.0.7559.96"
   },
-  "runs": {
-    "root": {
-      "tests": 383,
-      "seconds": 31.423,
-      "result": "OK",
-      "skips": 0
-    },
-    "uid1000": {
-      "tests": 383,
-      "seconds": 29.481,
-      "result": "OK",
-      "skips": 0
-    }
+  "static_checks": {
+    "shell_files": 2,
+    "python_modules": 40,
+    "embedded_python": 23,
+    "embedded_shell": 5,
+    "documentation_bash_blocks": 56,
+    "details": "evidence/230-static-validation.json"
   },
-  "new_2_1_2_tests": 6,
-  "bash_documentation_blocks_syntax_checked": 36,
-  "python_files_in_tests": 31,
-  "reality_export": {
-    "path": "/root/reality-keys.txt",
-    "mode": "0600",
-    "authoritative_source": "/etc/vkarmani-node/reality.json",
-    "regenerates_x25519_pair": false,
-    "private_key_written_to_install_log": false,
-    "terminal_sink": "/dev/tty"
+  "browser": {
+    "cases": 36,
+    "variants": 4,
+    "widths": [
+      320,
+      375,
+      390,
+      620,
+      768,
+      900,
+      1024,
+      1440,
+      1920
+    ],
+    "report": "evidence/230-browser-report.json",
+    "new_page_design": false,
+    "domain": "node.example.com",
+    "public_REALITY_path": false
   },
-  "reboot_policy": {
-    "default_one_time_reboot": true,
-    "delay_seconds": 30,
-    "scheduler": "systemd-run transient unit",
-    "explicit_opt_out": "--no-reboot",
-    "weekly_reboot_default": false,
-    "scheduler_failure_invalidates_install_complete": false
-  },
-  "profile_policy": {
-    "transport": "VLESS RAW REALITY",
-    "selfsteal_target": "/dev/shm/nginx.sock",
-    "xver": 1,
-    "minClientVer": "1.0.0"
-  },
-  "real_world_basis": {
-    "ubuntu_24_04_nodes_reinstalled_before_2_1_2": 3,
-    "2_1_1_live_unattended_upgrade_wait_seconds_observed": 588,
-    "strict_selfsteal_pass_observed_after_live_profile_switch": true
-  },
-  "full_vps_install_2_1_2_executed": false,
-  "full_vps_install_2_1_1_executed": true,
-  "ubuntu_26_full_vps_install_executed": false,
-  "github_actions_2_1_2_executed": false,
-  "working_vps_modified_by_release_build": false,
-  "post_zip_validation": "performed externally after final archive creation; see release handoff report"
+  "actual_local_components": [
+    "Nginx isolated master/workers",
+    "temporary CA/TLS/HTTP1.1/HTTP2",
+    "certificate rotation/reload in private Nginx prefix",
+    "OpenSSL",
+    "IPv4 and Unix sockets",
+    "filesystem locks/atomic writes",
+    "terminal input fixtures",
+    "APT solver with synthetic local metadata",
+    "Git workspaces"
+  ],
+  "simulated_or_injected": [
+    "systemctl deploy call redirected to private nginx -s reload in certificate integration tests",
+    "systemd and Docker service state",
+    "SSH daemon command results",
+    "local shadow/account policy fixtures",
+    "firewall output and mutations",
+    "public ACME replies"
+  ],
+  "not_executed": [
+    "full VPS install",
+    "real OpenSSH password login and key rejection",
+    "real Xray authenticated VLESS transport",
+    "live RemnaNode/panel API",
+    "public CA issuance/renewal",
+    "VPS reboot/restore",
+    "Ubuntu OS and arm64 full matrix",
+    "long load/soak/performance/carrier-DPI tests",
+    "remote GitHub Actions",
+    "old installed helper migration"
+  ],
+  "additional_packages_installed": false,
+  "user_servers_changed": false,
+  "github_changed": false,
+  "git_package_attestation": "Final exact-tree Git/manifest/archive checks are recorded externally in Node_Install_2.3.0_PACKAGE_VALIDATION.json; no self-referential manifest entry."
 }

@@ -1,0 +1,452 @@
+{
+  "date": "2026-10-02",
+  "errors": [],
+  "shell_files": [
+    "install.sh",
+    "tests/run.sh"
+  ],
+  "python_modules": [
+    "tests/test_firewall.py",
+    "tests/test_input_terminal.py",
+    "tests/test_nginx_faults.py",
+    "tests/test_static.py",
+    "tests/common.py",
+    "tests/test_230_listener.py",
+    "tests/test_maintenance.py",
+    "tests/browser_cover.py",
+    "tests/node_hkdf_oracle.py",
+    "tests/test_230_selfsteal.py",
+    "tests/test_update_faults.py",
+    "tests/test_git_workspace.py",
+    "tests/test_resume_ntp.py",
+    "tests/test_ufw_preflight.py",
+    "tests/test_validation.py",
+    "tests/test_220_cover_identity.py",
+    "tests/test_230_resources.py",
+    "tests/test_socket_prepare.py",
+    "tests/test_backup.py",
+    "tests/test_230_certdeploy.py",
+    "tests/test_210_cover_tls.py",
+    "tests/test_220_selfsteal.py",
+    "tests/test_211_apt_coordination.py",
+    "tests/test_230_ssh.py",
+    "tests/test_faults.py",
+    "tests/test_profile_policy.py",
+    "tests/test_ci_contract.py",
+    "tests/test_220_http_acme.py",
+    "tests/test_network.py",
+    "tests/test_hkdf_compat.py",
+    "tests/test_213_profile_contract.py",
+    "tests/test_210_platform_chrony.py",
+    "tests/test_210_resources.py",
+    "tests/test_protocol_faults.py",
+    "tests/test_210_cover.py",
+    "tests/test_tls_integration.py",
+    "tests/test_package_plan.py",
+    "tests/test_time_provider.py",
+    "tests/test_212_reality_keys_reboot.py",
+    "tests/test_210_cleanup.py"
+  ],
+  "embedded_python": [
+    {
+      "tag": "VK_PAYLOAD_VK_WRITE_TLS_CHECK",
+      "lines": 199
+    },
+    {
+      "tag": "VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK",
+      "lines": 456
+    },
+    {
+      "tag": "VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT",
+      "lines": 195
+    },
+    {
+      "tag": "VK_SOCKET_PREPARE",
+      "lines": 72
+    },
+    {
+      "tag": "PY",
+      "lines": 8
+    },
+    {
+      "tag": "PY_FIREWALL_CHECK",
+      "lines": 99
+    },
+    {
+      "tag": "PY_NETWORK_CHECK",
+      "lines": 10
+    },
+    {
+      "tag": "PY_XRAY_LISTENER_OWNER",
+      "lines": 93
+    },
+    {
+      "tag": "VK_PAYLOAD_VK_WRITE_MAINTENANCE",
+      "lines": 441
+    },
+    {
+      "tag": "PY_TIME_HELPER",
+      "lines": 213
+    },
+    {
+      "tag": "PY_RESUME_NTP_CHECK",
+      "lines": 91
+    },
+    {
+      "tag": "VK_APT_CLEAN_PY",
+      "lines": 105
+    },
+    {
+      "tag": "VK_CHRONY_CONFIG_PY",
+      "lines": 130
+    },
+    {
+      "tag": "VK_SITE_TOOL_PY",
+      "lines": 392
+    },
+    {
+      "tag": "VK_RESOURCES_PY",
+      "lines": 234
+    },
+    {
+      "tag": "VK_SSH_GUARD_PY",
+      "lines": 178
+    },
+    {
+      "tag": "VK_CERT_DEPLOY_PY",
+      "lines": 210
+    },
+    {
+      "tag": "PY_HELPER",
+      "lines": 844
+    },
+    {
+      "tag": "PY_SSH_CONFIG",
+      "lines": 72
+    },
+    {
+      "tag": "PY",
+      "lines": 2
+    },
+    {
+      "tag": "PY_NGINX_MAIN",
+      "lines": 11
+    },
+    {
+      "tag": "PY",
+      "lines": 5
+    },
+    {
+      "tag": "PY",
+      "lines": 20
+    }
+  ],
+  "embedded_shell": [
+    {
+      "tag": "VK_PAYLOAD_VK_WRITE_ACCEPTANCE",
+      "lines": 446
+    },
+    {
+      "tag": "EOF",
+      "lines": 46
+    },
+    {
+      "tag": "WAITSELF",
+      "lines": 14
+    },
+    {
+      "tag": "EOF",
+      "lines": 3
+    },
+    {
+      "tag": "EOF",
+      "lines": 14
+    }
+  ],
+  "documentation_bash": [
+    {
+      "path": "README.md",
+      "block": 0
+    },
+    {
+      "path": "README.md",
+      "block": 1
+    },
+    {
+      "path": "README.md",
+      "block": 2
+    },
+    {
+      "path": "README.md",
+      "block": 3
+    },
+    {
+      "path": "README.md",
+      "block": 4
+    },
+    {
+      "path": "README.md",
+      "block": 5
+    },
+    {
+      "path": "README.md",
+      "block": 6
+    },
+    {
+      "path": "README.md",
+      "block": 7
+    },
+    {
+      "path": "README.md",
+      "block": 8
+    },
+    {
+      "path": "README.md",
+      "block": 9
+    },
+    {
+      "path": "README.md",
+      "block": 10
+    },
+    {
+      "path": "README.md",
+      "block": 11
+    },
+    {
+      "path": "README.md",
+      "block": 12
+    },
+    {
+      "path": "README.md",
+      "block": 13
+    },
+    {
+      "path": "README.md",
+      "block": 14
+    },
+    {
+      "path": "README.md",
+      "block": 15
+    },
+    {
+      "path": "README.md",
+      "block": 16
+    },
+    {
+      "path": "README.md",
+      "block": 17
+    },
+    {
+      "path": "README.md",
+      "block": 18
+    },
+    {
+      "path": "README.md",
+      "block": 19
+    },
+    {
+      "path": "SECURITY.md",
+      "block": 0
+    },
+    {
+      "path": "SECURITY.md",
+      "block": 1
+    },
+    {
+      "path": "SECURITY.md",
+      "block": 2
+    },
+    {
+      "path": "SECURITY.md",
+      "block": 3
+    },
+    {
+      "path": "SECURITY.md",
+      "block": 4
+    },
+    {
+      "path": "SECURITY.md",
+      "block": 5
+    },
+    {
+      "path": "docs/CI_FIX2_2.1.0.md",
+      "block": 0
+    },
+    {
+      "path": "docs/COVER_SITE.md",
+      "block": 0
+    },
+    {
+      "path": "docs/COVER_SITE.md",
+      "block": 1
+    },
+    {
+      "path": "docs/HOSTING_AND_INCIDENTS.md",
+      "block": 0
+    },
+    {
+      "path": "docs/IMPROVEMENTS_2.1.0.md",
+      "block": 0
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 0
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 1
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 2
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 3
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 4
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 5
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 6
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 7
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 8
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 9
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 10
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 11
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 12
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 13
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 14
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 15
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 16
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 17
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 18
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 19
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 20
+    },
+    {
+      "path": "docs/OPERATIONS.md",
+      "block": 21
+    },
+    {
+      "path": "docs/PROFILE_COMPATIBILITY_2.1.3.md",
+      "block": 0
+    },
+    {
+      "path": "docs/TIME_SYNC_FIX.md",
+      "block": 0
+    },
+    {
+      "path": "docs/UBUNTU_26_04.md",
+      "block": 0
+    }
+  ],
+  "tests_by_file": {
+    "test_210_cleanup.py": 10,
+    "test_210_cover.py": 15,
+    "test_210_cover_tls.py": 3,
+    "test_210_platform_chrony.py": 13,
+    "test_210_resources.py": 6,
+    "test_211_apt_coordination.py": 6,
+    "test_212_reality_keys_reboot.py": 6,
+    "test_213_profile_contract.py": 37,
+    "test_220_cover_identity.py": 16,
+    "test_220_http_acme.py": 6,
+    "test_220_selfsteal.py": 23,
+    "test_230_certdeploy.py": 22,
+    "test_230_listener.py": 11,
+    "test_230_resources.py": 9,
+    "test_230_selfsteal.py": 15,
+    "test_230_ssh.py": 32,
+    "test_backup.py": 5,
+    "test_ci_contract.py": 5,
+    "test_faults.py": 13,
+    "test_firewall.py": 23,
+    "test_git_workspace.py": 9,
+    "test_hkdf_compat.py": 6,
+    "test_input_terminal.py": 5,
+    "test_maintenance.py": 13,
+    "test_network.py": 11,
+    "test_nginx_faults.py": 10,
+    "test_package_plan.py": 9,
+    "test_profile_policy.py": 23,
+    "test_protocol_faults.py": 8,
+    "test_resume_ntp.py": 26,
+    "test_socket_prepare.py": 9,
+    "test_static.py": 12,
+    "test_time_provider.py": 43,
+    "test_tls_integration.py": 11,
+    "test_ufw_preflight.py": 48,
+    "test_update_faults.py": 8,
+    "test_validation.py": 27
+  },
+  "test_methods": 554,
+  "new_test_methods": 89,
+  "baseline_paths": 157,
+  "baseline_missing_paths": [],
+  "preserved_payloads": [
+    "VK_CHRONY_CONFIG_PY",
+    "VK_APT_CLEAN_PY",
+    "VK_SOCKET_PREPARE",
+    "VK_PAYLOAD_VK_WRITE_NETWORK_SCRIPT"
+  ],
+  "time_helper_ast_unchanged": true,
+  "site_tool_only_version_allowlist_change": true,
+  "workflow_git_metadata_unchanged": true,
+  "nginx_http_tls_templates_unchanged": true,
+  "profile_validator_ast_unchanged": true,
+  "profile_generator_only_semantic_change": "Add common settings.flow=xtls-rprx-vision",
+  "runtime_package_plan_unchanged": true,
+  "base_zip_sha256": "464ebf0c03a5cd9221fb2e8845f697f23ffcb9c9b54af55f6f3aef1eec4465a1",
+  "installer_sha256": "425e1541b23d97b0de8fd3f2ff72eb7566c8008be95b63a896baa47d561ded1c",
+  "version": "2.3.0",
+  "result": "PASS"
+}

@@ -1,0 +1,65 @@
+{
+  "edition": "2.1.2",
+  "installer_version": "2.1.2",
+  "date": "2026-09-30",
+  "installer_sha256": "f95773a6f869e27bd3730c456542ac4c7e0d7e4c3bd609a414a6ee84eb3c3776",
+  "change_scope": "secure REALITY key export + terminal-only key display + default one-time reboot + minClientVer compatibility; APT/network/firewall/Docker topology otherwise preserved",
+  "local_environment": {
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "architecture": "x86_64",
+    "python": "3.13.5",
+    "node": "22.16.0",
+    "git": "2.47.3",
+    "nginx": "1.26.3"
+  },
+  "runs": {
+    "root": {
+      "tests": 383,
+      "seconds": 31.423,
+      "result": "OK",
+      "skips": 0
+    },
+    "uid1000": {
+      "tests": 383,
+      "seconds": 29.481,
+      "result": "OK",
+      "skips": 0
+    }
+  },
+  "new_2_1_2_tests": 6,
+  "bash_documentation_blocks_syntax_checked": 36,
+  "python_files_in_tests": 31,
+  "reality_export": {
+    "path": "/root/reality-keys.txt",
+    "mode": "0600",
+    "authoritative_source": "/etc/vkarmani-node/reality.json",
+    "regenerates_x25519_pair": false,
+    "private_key_written_to_install_log": false,
+    "terminal_sink": "/dev/tty"
+  },
+  "reboot_policy": {
+    "default_one_time_reboot": true,
+    "delay_seconds": 30,
+    "scheduler": "systemd-run transient unit",
+    "explicit_opt_out": "--no-reboot",
+    "weekly_reboot_default": false,
+    "scheduler_failure_invalidates_install_complete": false
+  },
+  "profile_policy": {
+    "transport": "VLESS RAW REALITY",
+    "selfsteal_target": "/dev/shm/nginx.sock",
+    "xver": 1,
+    "minClientVer": "1.0.0"
+  },
+  "real_world_basis": {
+    "ubuntu_24_04_nodes_reinstalled_before_2_1_2": 3,
+    "2_1_1_live_unattended_upgrade_wait_seconds_observed": 588,
+    "strict_selfsteal_pass_observed_after_live_profile_switch": true
+  },
+  "full_vps_install_2_1_2_executed": false,
+  "full_vps_install_2_1_1_executed": true,
+  "ubuntu_26_full_vps_install_executed": false,
+  "github_actions_2_1_2_executed": false,
+  "working_vps_modified_by_release_build": false,
+  "post_zip_validation": "performed externally after final archive creation; see release handoff report"
+}

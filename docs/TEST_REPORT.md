@@ -1,60 +1,67 @@
-# TEST_REPORT — Node_Install 2.1.2
+# TEST_REPORT — Node_Install 2.3.0
 
-Дата подготовки: 2026-09-30.
+Дата: **2026-10-02**. Статус: **LOCAL_TESTS_PASSED_VPS_PILOT_REQUIRED**.
 
-## Изменения под проверкой
+## Проверенная база и границы
 
-2.1.2 добавляет три связанные production-функции без смены общей архитектуры ноды:
+Исходный полный архив `Node_Install_2.2.0.zip`, SHA256 `464ebf0c03a5cd9221fb2e8845f697f23ffcb9c9b54af55f6f3aef1eec4465a1`, проверен по ZIP CRC, путям и 156 записям manifest. Все 157 исходных путей сохранены. Оригинальный архив не менялся. Разработка и тесты выполнялись в отдельном локальном рабочем дереве, не на пользовательских серверах.
 
-1. Закрытый export текущих REALITY-ключей в `/root/reality-keys.txt` и terminal-only показ `PrivateKey`, `PublicKey`, `ShortID` в конце успешной установки.
-2. Одноразовый reboot по умолчанию через transient systemd unit с задержкой 30 секунд; `--no-reboot` сохраняет ручной режим.
-3. `minClientVer: "1.0.0"` в генерируемом RAW+REALITY profile template для совместимости старых Xray-core.
+Установщик теперь реализует явное требование **password-only SSH**, не удаляя `authorized_keys`, не создавая и не меняя пароли. Три обязательных параметра сохранены: SECRET_KEY, домен, исходящий IPv4 панели. Новых пакетов, контейнеров, прокси, постоянных служб и транспортов не добавлено.
 
-Ключи не генерируются повторно на финальном этапе: export читает и проверяет уже сохранённый `/etc/vkarmani-node/reality.json`. Secret block не проходит через install-log `tee`.
+## Выполненные полные прогоны
 
-## Полный набор
+| Прогон | Число тестов | Время unittest | Errors / failures / skips |
+|---|---:|---:|---|
+| Исходная 2.2.0, root | 465 | 19.038 s | 0 / 0 / 0 |
+| Итоговая 2.3.0, root | 554 | 20.653 s | 0 / 0 / 0 |
+| Итоговая 2.3.0, UID 1000 | 554 | 19.547 s | 0 / 0 / 0 |
 
-**383 теста, 0 failures, 0 errors, 0 skips.**
+Журналы: [база 2.2.0](evidence/230-baseline-220-tests.txt), [root 2.3.0](evidence/230-root-tests.txt), [UID 1000 2.3.0](evidence/230-uid1000-tests.txt). Это отдельные прогоны одного набора, а не 1108 разных тестов. Тесты не отключались ради успешного результата.
 
-Выполнены два отдельных полных запуска:
+Финальная проверка уже упакованного Git-дерева и архивный manifest выполняются после фиксации отчётов. Их самостоятельная аттестация поставляется рядом с ZIP (`Node_Install_2.3.0_PACKAGE_VALIDATION.json` и `Node_Install_2.3.0_GIT_TESTS.txt`), чтобы исключить циклический self-hash. GitHub push/Actions не выполнялись.
 
-| Среда запуска | Результат |
-|---|---|
-| root | `Ran 383 tests in 31.423s ... OK` |
-| UID 1000 (`oai`), без sudo | `Ran 383 tests in 29.481s ... OK` |
+## 89 новых регрессий
 
-Перед ними отдельно прошли 6 новых targeted tests.
+| Файл | Тесты | Проверяемые сценарии |
+|---|---:|---|
+| `test_230_ssh.py` | 32 | Password-only, locked/expired/change-required account, небезопасные файлы, Match/Include policy, кандидат конфигурации, отсутствие перезаписи при отказе, сохранение authorized_keys и трёх полей |
+| `test_230_certdeploy.py` | 22 | Lineage, lock, phases/receipts, смена сертификата во время проверки, команды/таймауты/сигналы, отличие нового PASS от старого |
+| `test_230_selfsteal.py` | 15 | TLS-only отдельно от webroot, полная строгая проверка сайта, bounded config parsing, фактический Nginx reload и выдача нового leaf, отказ неправильной пары сертификат/ключ |
+| `test_230_resources.py` | 9 | FD/limits, PID reuse, ошибки proc/ss, очередь собственного Unix socket, отсутствие чужих адресов в выводе |
+| `test_230_listener.py` | 11 | Владение публичным TCP/443 процессом core нужного контейнера, чужой listener, неполные данные, смена контейнера/PID |
 
-## Новые регрессии 2.1.2
+Три существующих тестовых модуля скорректированы под новую версию и согласованный общий Vision. Старые проверки Nginx, сайта, профилей, UFW, Chrony, APT, input terminal, backup и image transactions не удалены.
 
-Добавлен `tests/test_212_reality_keys_reboot.py` — 6 проверок:
+## Что было реальным, а что имитацией
 
-1. Export создаётся атомарно с `0600`, содержит ровно текущие `PrivateKey`, `PublicKey`, `ShortID` и `minClientVer=1.0.0`.
-2. Повторный export использует ту же X25519-пару и не регенерирует `reality.json`.
-3. Symlink вместо файла export отклоняется и target symlink не изменяется.
-4. Profile policy отклоняет отсутствующий или изменённый `minClientVer`.
-5. Default reboot contract: `NO_REBOOT=0`, `--no-reboot` отключает, transient reboot имеет 30-секундную задержку.
-6. PrivateKey display идёт через `/dev/tty`, а helper export вызывается с подавленным stdout в общий log.
+Временный **Nginx 1.26.3 действительно запускается** с private prefix, CA и сертификатами теста. Прямые Unix socket/PROXY v1/TLS 1.3/HTTP/1.1/HTTP/2 запросы и ответы проходят в локальном окружении. В тесте смены сертификата используется master/worker-модель; проверяются неизменность master PID, выдача нового leaf и отказ некорректной пары до reload.
 
-Также обновлены существующие regression tests для версии 2.1.2 и финального acceptance sequence.
+В этой интеграции вызов `systemctl reload nginx` адаптирован тестовым runner к `nginx -s reload` **временного префикса**. Реальный host systemd не переключается. Публичный Certbot/CA не вызывался: контекст hook и коды ошибок моделируются. Успешные тесты не являются доказательством внешнего ACME-продления.
 
-## Сохранённые проверки
+OpenSSH server, Docker daemon и Xray executable в среде отсутствуют. Их вызовы проверяются через фиксируемые имитации/fixtures; полный набор НЕ содержит подтверждённого реального VLESS-подключения или новой парольной SSH-сессии. Попытка получить официальный Xray-артефакт по сети не удалась; бинарник в архив не включён и запуск не заявляется. Проверки locked/expired account используют синтетические локальные записи, а не изменяют `/etc/shadow` системы.
 
-Все 377 тестов 2.1.1 сохранены: APT/dpkg lock coordination, терминальный ввод ровно трёх значений, DNS, firewall, SSH, NTP provider, package solver, atomic writes/fault injection, backups, Docker maintenance/rollback, Selfsteal socket, Nginx TLS1.3/HTTP2, cover site, resource snapshot, CI contracts, Node HKDF compatibility и Git workspace contract.
+APT solver работает с искусственными локальными метаданными пакетов; Git-проверки создают временные репозитории. Установка реальных пакетов на пользовательскую VPS не выполнялась.
 
-## Реальные данные, уже подтверждённые до выпуска 2.1.2
+## Статический контроль и сохранность
 
-На Ubuntu 24.04 установка 2.1.1 реально встретила живой `unattended-upgrades` на Docker stage, ждала package-manager lock примерно 588 секунд и затем штатно продолжила установку Docker/Nginx/RemnaNode. На трёх ключевых нодах Ubuntu 24.04 были подтверждены Xray TCP/443, локальный Selfsteal и рабочий VPN; после перехода live REALITY profile на `/dev/shm/nginx.sock` строгая проверка одной ноды дала `REALITY_SELFSTEAL_443 PASS`.
+- Bash-синтаксис двух `.sh` файлов и пяти встроенных shell payloads.
+- AST 40 Python-модулей и 23 встроенных Python payloads.
+- Синтаксис 56 Bash-блоков текущего набора верхнеуровневой документации.
+- Внешние HTTP/TLS server templates Nginx сохранены побайтово относительно 2.2.0; менялись проверки и Certbot activation lifecycle, не схема ingress.
+- Генератор профиля проверен структурно: единственное изменение функции генерации — общий `settings.flow=xtls-rprx-vision`. DNS/routing не заменены; `minClientVer=0.0.0` сохранён. Profile-validator AST не изменён.
+- Site tool менялся только для допуска версии 2.3.0; рендеринг четырёх вариантов сохранён. Network/Chrony/APT-clean/socket payloads и package plan сохранены.
+- `.github/workflows/check.yml`, `.gitignore`, `.gitattributes` сохранены. Семь прежних актуальных документов дополнительно сохранены побайтово в `docs/history`.
 
-Эти результаты подтверждают базу 2.1.1 и рабочую схему профиля, но **не заменяют** отдельный полный install → auto-reboot → postboot тест именно 2.1.2.
+Детали: [статическая проверка](evidence/230-static-validation.json), [машиночитаемый отчёт](RELEASE_VALIDATION.json).
 
-## Что не проверено
+## Браузер
 
-- Полная установка **2.1.2** на новой реальной VPS с фактическим terminal key export и автоматическим reboot.
-- Поведение transient reboot при реальном отказе systemd-run.
-- Полный install/panel/client цикл 2.1.2 на Ubuntu 26.04 и arm64.
-- Длительная нагрузка и восстановление после power-loss в момент финального export/reboot.
+**36 случаев PASS**: четыре существующие темы × девять ширин 320, 375, 390, 620, 768, 900, 1024, 1440, 1920. Проверены переполнение, позиционирование, keyboard focus, переход по якорю, reduced motion, отсутствие JS, внешних запросов и browser errors. Chromium 144.0.7559.96. Два свежих снимка дополнительно просмотрены визуально: Orbit desktop, Fold mobile.
 
-## Перед массовой раскаткой
+[Новый браузерный отчёт](evidence/230-browser-report.json). Рендеринг выполнен в памяти с HTML/CSS из генератора, не через публичный Xray. HTTPS/MIME/cache/security headers проверяются отдельными Nginx-тестами. Старые preview и снимки 2.2.0 сохранены; оформление не менялось.
 
-Одна чистая Ubuntu 24.04 canary: snapshot/console → 2.1.2 → проверить финальный key block и `/root/reality-keys.txt` (`0600`) → дождаться auto-reboot → новый SSH → `sudo vkarmani-node-check --require-xray` после назначения профиля → браузерный Selfsteal → современный и старый Xray-клиент.
+## Ограничения приёмки
+
+Не выполнялись полная установка на VPS, реальная парольная авторизация/отказ SSH-ключа, фактический Xray/RemnaNode и пользовательский клиент, публичный ACME, reboot/restore, все поддерживаемые ОС/arm64, длительная нагрузка, измерение скорости или блокировок. Не было обновления существующих VPS или автоматической миграции их helpers.
+
+Состояние релиза — локально проверенная поставка для отдельного пилота. До пилота нужны snapshot с проверкой восстановления, независимая консоль, заранее проверенный пароль. Для ручного окна приёмки используется `--no-reboot`; default одноразовой перезагрузки сохранён. После установки проверить второй парольный SSH-вход, `sshd -t/-T`, Nginx, target-only, полный сайт, назначения панели, реальный клиент и затем согласованный reboot. Полный rollback установки — проверенный snapshot, не запуск старого installer поверх нового.

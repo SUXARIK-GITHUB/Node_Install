@@ -1,5 +1,49 @@
 # Изменения
 
+## 2.3.0 — 2026-10-02
+
+Локально проверенный release-candidate на базе 2.2.0. Полная VPS/клиентская приёмка не заявляется; TECH и рабочие ноды не изменялись.
+
+- Новый явно запрошенный SSH-контракт: password-only, publickey/kbd-interactive/hostbased/GSSAPI off. Пароли, accounts и authorized_keys не удаляются/не переписываются. Ровно три прежних вопроса; проверка локальной shadow/aging/shell без запроса пароля. Условные Match/нестандартные Includes требуют отдельного аудита. Candidate проверяется до atomic replace; безопасные порты и rollback guard сохранены.
+- Selfsteal readiness разделена: `--target-only` проверяет PROXY/TLS1.3/CA/hostname/leaf/ALPN без чтения страницы; обычный запуск сохраняет полную WEB_CONTENT-приёмку. Ошибка CSS не маскируется под неактивный сертификат. Config/certificate reading ограничены, private config symlinks/FIFO/дубли JSON отвергаются.
+- Certbot deploy: ограниченный по времени `nginx -t` → reload → target verify, private lock и atomic phase/generation receipt. Другие lineages не затрагиваются; сигналы не подавляются retry. Dry-run запускает deploy hooks и требует свежего успешного receipt с текущим сертификатом. Без NAT/перехвата443, новых timers или restart Xray.
+- TCP/443 сверяется с PID core внутри работающего host-network RemnaNode. Чужой владелец и неудачный сбор метаданных не получают Xray PASS. Секретные process arguments/environment не читаются.
+- Новый generated template добавляет общий Vision `xtls-rprx-vision`, minClientVer остаётся0.0.0. DNS/routing и live-профили не заменяются. Password policy не переносится на TECH.
+- Resource helper дополнен FD/soft-hard limits и очередью Selfsteal Unix socket; отсутствие/ошибка чтения отличены. Dpkg/IPv6 checks больше не принимают failed command+empty output за успех.
+- 89 новых тестов, всего554: включая настоящий Nginx cert reload и невалидную пару key/cert; SSH/Certbot/systemd/процессные отказы моделируются без установки на runner. Все465 прежних тестов сохранены, ожидания трёх файлов обновлены под явный новый контракт.
+- Новых runtime-пакетов, постоянных служб, HAProxy/Caddy/XHTTP/firewall agents нет. Сайт 2.2.0 и CI workflow сохранены. Автоматическая миграция старой установленной части не добавлена.
+
+[Реализация и пределы](docs/RELIABILITY_2.3.0.md) · [проверки](docs/TEST_REPORT.md).
+
+
+## 2.2.0 — 2026-10-02
+
+Локальный release-candidate собственного Selfsteal. База 2.1.3 сохранена; серверы и GitHub не изменены, полноценный VPS-пилот не заявлен.
+
+- Сохранены RAW/REALITY и собственный Unix-target, host Nginx, UFW/SSH/IPv4/Docker/ACME. XHTTP, HAProxy, NAT/string-firewall и новые зависимости не добавлены.
+- HTTP/80: ACME сохранён, redirect фиксирован на собственный домен; другой Host получает 404, разрешены GET/HEAD. TLS: default reject для неизвестного SNI на Nginx >=1.19.4; для старых пакетов ограничение отмечается явно. Неверный Host — 421, пишущий метод — 405.
+- Ограничен набор статических путей и доступ через symlink. CSP, nosniff и Referrer-Policy сохраняются на assets/304/404. Хешированные assets кэшируются семь дней, HTML требует revalidation. Ограничены send timeout и Range-запросы.
+- Extended target probe: проверка CA/TLS1.3/HTTP1/HTTP2, HEAD, assets/hash/MIME/ETag304, вспомогательных файлов, отрицательных URI/методов/Host/SNI. Чтение файлов ограничено по типу/правам/размеру. PASS не означает успешный VLESS-клиент или доступ с любой внешней сети.
+- Четыре собственных встроенных cover-варианта; стабильный случайный seed при первой установке/обновлении, атомарное root-only state без перезаписи, сохранён прежний receipt/rollback. Нет внешних шаблонов, JS или CDN.
+- 45 новых регрессионных тестов: локальный Nginx, ACME-пути, отрицательные URI, большой фрагментированный TLS ClientHello, параллельные проверки и identity state. Общий набор — 465 тестов. Браузерная проверка — 36 сочетаний четырёх вариантов и девяти ширин.
+- История документов 2.1.3 сохранена побайтово. Автоматической миграции Nginx/helpers старых узлов нет; обновление сайта не подменяет общий upgrade.
+
+[Selfsteal и приёмка](docs/SELFSTEAL_2.2.0.md), [источники](docs/SOURCE_REVIEW_2.2.0.md), [проверки](docs/TEST_REPORT.md).
+
+## 2.1.3 — 2026-10-02
+
+Локальная доработка генератора и проверки профиля; никакого production-deploy, смены транспорта или автоматической миграции старых нод.
+
+- Единая `PROFILE_MIN_CLIENT_VERSION=0.0.0`: generated profile, validator, key export, PANEL-SETUP. X25519/ShortID переиспользуются; остальные поля generated template не менялись.
+- Устранён пропуск import-profile проверки для 2.1.2: явный список 2.1.0/1/2/3; future/unknown version — FAIL, known legacy/missing marker — NOT_VERIFIED.
+- Проверяются формы DNS/routing, UseIPv4, существование/уникальность outbound tags, прямой IPv4 listener без входящего PROXY protocol. Общий Vision и корректная служебная API-вставка допускаются без изменения supplied JSON.
+- Чтение profile-check ограничено regular файлом до 2 MiB, без финального symlink; duplicate fields и NaN/Infinity отвергаются. PASS не выдаётся за проверку фактических TCP/UDP блокировок или клиента.
+- Maintenance/cover allowlists дополнены 2.1.3 с сохранением прежних версий.
+- 37 новых регрессионных тестов; 420 тестов прошли от root и UID 1000, без skips. Состояние старых нод/ядра/egress не менялось. Ubuntu/VPS/full-client приёмка 2.1.3 пока отсутствует.
+- README/SECURITY/OPERATIONS и manifest актуализированы; предыдущие README/SECURITY/TEST_REPORT/RELEASE_VALIDATION 2.1.2 сохранены побайтово в history. Release ZIP без `.git`; оригинальный input ZIP не изменён.
+
+[Область изменения и rollout](docs/PROFILE_COMPATIBILITY_2.1.3.md), [проверки](docs/TEST_REPORT.md).
+
 ## 2.1.2 — 2026-09-30
 
 Production-доработка финального этапа установки после проверки трёх реальных нод и перехода на собственный Selfsteal.

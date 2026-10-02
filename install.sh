@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.1.2. Read README.md before running as root.
+# VKarmani Node 2.3.0. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -214,6 +214,11 @@ vk_write_selfsteal_check() {
 """Check PROXY v1, verified TLS 1.3, HTTP/1.1 and actual HTTP/2 data on Selfsteal."""
 import hashlib
 import json
+import os
+import re
+import stat
+import subprocess
+from html.parser import HTMLParser
 import socket
 import ssl
 import sys
@@ -311,11 +316,10 @@ def hpack_string(value):
     return bytes(out) + b
 
 
-def check(domain, path=SOCKET, site=SITE, cafile=None, timeout=20.0, expected_leaf=None):
+def check(domain, path=SOCKET, site=SITE, cafile=None, timeout=20.0, expected_leaf=None, extended=False, reject_unknown_sni=True):
     deadline = time.monotonic() + timeout
-    if Path(site).stat().st_size > 131072:
-        raise ValueError('COVER_PAGE_EXCEEDS_128_KIB_PROBE_LIMIT')
-    expected = hashlib.sha256(Path(site).read_bytes()).digest()
+    content = local_bytes(Path(site))
+    expected = hashlib.sha256(content).digest()
     with connect(domain, 'http/1.1', path, cafile, deadline, expected_leaf) as s:
         s.sendall(('GET / HTTP/1.1\r\nHost: ' + domain + '\r\nConnection: close\r\n\r\n').encode('ascii'))
         data = bytearray()
@@ -387,18 +391,261 @@ def check(domain, path=SOCKET, site=SITE, cafile=None, timeout=20.0, expected_le
         if not (got_settings and got_headers and finished) or hashlib.sha256(body).digest() != expected:
             raise ValueError('HTTP/2 did not return the expected cover page')
 
+    if extended:
+        check_web_contract(domain, path, Path(site), content, cafile, deadline,
+                           expected_leaf, reject_unknown_sni)
+
+
+def local_bytes(path):
+    """Bounded, no-follow regular file read; public content only."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or st.st_mode & 0o022:
+            raise ValueError('UNSAFE_COVER_FILE')
+        if st.st_size > 131072:
+            raise ValueError('COVER_PAGE_EXCEEDS_128_KIB_PROBE_LIMIT')
+        data = f.read(131073)
+        after = os.fstat(f.fileno())
+    if len(data) > 131072 or (st.st_size, st.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+        raise ValueError('COVER_FILE_CHANGED_OR_TOO_LARGE')
+    return data
+
+
+class Assets(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.paths = set()
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'link' and attrs.get('rel') in ('stylesheet', 'icon'):
+            path = attrs.get('href', '')
+            if not re.fullmatch(r'assets/(?:style-[0-9a-f]{20}[.]css|icon-[0-9a-f]{20}[.]svg)', path):
+                raise ValueError('COVER_ASSET_REFERENCE_NOT_LOCAL_VERSIONED')
+            self.paths.add(path)
+
+
+def http1_request(domain, path, cafile, deadline, expected_leaf,
+                  uri='/', method='GET', host=None, etag=None):
+    if (not re.fullmatch(r'/[A-Za-z0-9_./-]*', uri) or method not in ('GET', 'HEAD', 'POST')
+            or '\r' in (host or domain) or '\n' in (host or domain)
+            or etag is not None and not re.fullmatch(r'"[0-9a-f-]{1,80}"', etag)):
+        raise ValueError('UNSAFE_PROBE_REQUEST')
+    request = f'{method} {uri} HTTP/1.1\r\nHost: {host or domain}\r\nConnection: close\r\nAccept-Encoding: identity\r\n'
+    if etag is not None:
+        request += 'If-None-Match: ' + etag + '\r\n'
+    if method == 'POST':
+        request += 'Content-Length: 0\r\n'
+    with connect(domain, 'http/1.1', path, cafile, deadline, expected_leaf) as c:
+        c.sendall((request + '\r\n').encode('ascii'))
+        data = bytearray()
+        while True:
+            piece = c.recv(8192)
+            if not piece:
+                break
+            data.extend(piece)
+            if len(data) > 147456:
+                raise ValueError('COVER_HTTP_RESPONSE_TOO_LARGE')
+    head, sep, body = bytes(data).partition(b'\r\n\r\n')
+    lines = head.split(b'\r\n')
+    if not sep or not re.fullmatch(rb'HTTP/1[.]1 [1-5][0-9]{2} [^\r\n]*', lines[0]):
+        raise ValueError('INVALID_COVER_HTTP_RESPONSE')
+    status = int(lines[0].split()[1])
+    headers = {}
+    for line in lines[1:]:
+        key, colon, value = line.partition(b':')
+        if not colon:
+            raise ValueError('INVALID_COVER_HTTP_HEADER')
+        key, value = key.decode('ascii').lower(), value.decode('ascii').strip()
+        if key in headers:
+            raise ValueError('DUPLICATE_COVER_HTTP_HEADER')
+        headers[key] = value
+    if 'transfer-encoding' in headers or headers.get('content-encoding', 'identity') != 'identity':
+        raise ValueError('UNEXPECTED_COVER_TRANSFER_ENCODING')
+    if method == 'HEAD' or status == 304:
+        if body:
+            raise ValueError('COVER_HEAD_OR_304_HAS_BODY')
+    elif headers.get('content-length') != str(len(body)):
+        raise ValueError('COVER_CONTENT_LENGTH_MISMATCH')
+    return status, headers, body
+
+
+def security_headers(headers):
+    required = ("default-src 'none'", "style-src 'self'", "img-src 'self'",
+                "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'")
+    if (headers.get('x-content-type-options') != 'nosniff'
+            or headers.get('referrer-policy') != 'strict-origin-when-cross-origin'
+            or any(part not in headers.get('content-security-policy', '') for part in required)):
+        raise ValueError('COVER_SECURITY_HEADERS_MISSING')
+    if re.search(r'nginx/[0-9]', headers.get('server', ''), re.I):
+        raise ValueError('COVER_SERVER_VERSION_EXPOSED')
+
+
+def negative_sni(path, name, deadline):
+    """Negative probe: success means the SERVER refuses TLS, not a client CA error.
+    CERT_NONE is intentionally used only here, never for acceptance/content.
+    A dropped connection or timeout is not sufficient evidence of this policy.
+    """
+    raw = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('SELFSTEAL_DEADLINE_EXCEEDED')
+        raw.settimeout(min(5, remaining))
+        raw.connect(path)
+        raw.sendall(b'PROXY TCP4 127.0.0.1 127.0.0.1 54321 443\r\n')
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+        ctx.set_alpn_protocols(['h2', 'http/1.1'])
+        try:
+            with ctx.wrap_socket(raw, server_hostname=name):
+                raise ValueError('UNEXPECTED_SNI_ACCEPTED')
+        except ssl.SSLError as exc:
+            if exc.reason not in ('TLSV1_UNRECOGNIZED_NAME', 'SSLV3_ALERT_HANDSHAKE_FAILURE'):
+                raise ValueError('SNI_REFUSAL_NOT_CONFIRMED') from None
+    finally:
+        raw.close()
+
+
+def check_web_contract(domain, path, site, content, cafile, deadline, expected_leaf, reject_unknown_sni):
+    def request(**kw):
+        return http1_request(domain, path, cafile, deadline, expected_leaf, **kw)
+    status, headers, body = request(method='HEAD')
+    if status != 200 or headers.get('content-length') != str(len(content)):
+        raise ValueError('COVER_HEAD_CONTRACT_FAILED')
+    security_headers(headers)
+    if 'no-cache' not in headers.get('cache-control', ''):
+        raise ValueError('COVER_HTML_CACHE_POLICY_FAILED')
+    parser = Assets()
+    parser.feed(content.decode('utf-8'))
+    parser.close()
+    if not 1 <= len(parser.paths) <= 8 or not any(x.endswith('.css') for x in parser.paths):
+        raise ValueError('COVER_VERSIONED_ASSETS_MISSING_OR_TOO_MANY')
+    asset_dir = site.parent / 'assets'
+    if asset_dir.is_symlink() or not asset_dir.is_dir():
+        raise ValueError('UNSAFE_COVER_ASSET_DIRECTORY')
+    for rel in sorted(parser.paths):
+        expected = local_bytes(site.parent / rel)
+        if hashlib.sha256(expected).hexdigest()[:20] not in rel:
+            raise ValueError('COVER_ASSET_HASH_NAME_MISMATCH')
+        status, headers, body = request(uri='/' + rel)
+        mime = 'text/css' if rel.endswith('.css') else 'image/svg+xml'
+        if status != 200 or body != expected or headers.get('content-type', '').split(';')[0] != mime:
+            raise ValueError('COVER_ASSET_RESPONSE_FAILED')
+        security_headers(headers)
+        if 'max-age=604800' not in headers.get('cache-control', ''):
+            raise ValueError('COVER_ASSET_CACHE_POLICY_FAILED')
+        if not headers.get('etag'):
+            raise ValueError('COVER_ASSET_ETAG_MISSING')
+        status, h304, body = request(uri='/' + rel, etag=headers['etag'])
+        if status != 304:
+            raise ValueError('COVER_ASSET_REVALIDATION_FAILED')
+        security_headers(h304)
+    for uri, mime in (('/robots.txt', 'text/plain'), ('/favicon.svg', 'image/svg+xml')):
+        expected_file = local_bytes(site.parent / uri[1:])
+        status, headers, body = request(uri=uri)
+        if status != 200 or body != expected_file or headers.get('content-type', '').split(';')[0] != mime:
+            raise ValueError('COVER_AUXILIARY_STATIC_FAILED')
+        security_headers(headers)
+    expected_404 = local_bytes(site.parent / '404.html')
+    for uri in ('/.env', '/config.json', '/vk-unlisted-path', '/assets/unlisted.css'):
+        status, headers, not_found = request(uri=uri)
+        if status != 404 or not_found != expected_404:
+            raise ValueError('COVER_UNLISTED_PATH_NOT_404')
+        security_headers(headers)
+    if request(method='POST')[0] != 405:
+        raise ValueError('COVER_WRITE_METHOD_NOT_REJECTED')
+    if request(host='wrong.example.invalid')[0] != 421:
+        raise ValueError('COVER_HOST_GUARD_FAILED')
+    if reject_unknown_sni:
+        negative_sni(path, 'wrong.example.invalid', deadline)
+        negative_sni(path, None, deadline)
+
+
+def nginx_sni_reject_supported():
+    p = subprocess.run(['nginx', '-v'], stdin=subprocess.DEVNULL, capture_output=True,
+                       timeout=5, env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'})
+    m = re.search(rb'nginx/([0-9]+)[.]([0-9]+)[.]([0-9]+)', p.stderr)
+    if p.returncode or not m:
+        raise ValueError('NGINX_VERSION_NOT_VERIFIED')
+    return tuple(map(int, m.groups())) >= (1, 19, 4)
+
+
+def target_tls(domain, path=SOCKET, cafile=None, timeout=15.0, expected_leaf=None):
+    """Only verified TLS/ALPN readiness; no dependency on page or asset integrity."""
+    if not isinstance(domain, str) or not re.fullmatch(r'[a-z0-9.-]{1,253}', domain):
+        raise ValueError('INVALID_TARGET_DOMAIN')
+    if not 0 < timeout <= 20:
+        raise ValueError('INVALID_PROBE_BUDGET')
+    deadline = time.monotonic() + timeout
+    for alpn in ('http/1.1', 'h2'):
+        with connect(domain, alpn, path, cafile, deadline, expected_leaf):
+            pass
+
+
+def load_target(etc=Path('/etc/vkarmani-node'), cert_root=Path('/etc/letsencrypt/live')):
+    """Read bounded local metadata; Certbot certificate symlinks are intentional."""
+    fd = os.open(etc / 'config.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as f:
+        info = os.fstat(f.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+            raise ValueError('UNSAFE_SELFSTEAL_CONFIG')
+        raw = f.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('SELFSTEAL_CONFIG_TOO_LARGE')
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('SELFSTEAL_CONFIG_DUPLICATE_FIELD')
+            result[key] = value
+        return result
+    def constant(_):
+        raise ValueError('SELFSTEAL_CONFIG_NONFINITE_VALUE')
+    cfg = json.loads(raw, object_pairs_hook=unique, parse_constant=constant)
+    domain = cfg.get('domain') if isinstance(cfg, dict) else None
+    if not isinstance(domain, str) or not re.fullmatch(
+            r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', domain):
+        raise ValueError('INVALID_SELFSTEAL_DOMAIN')
+    path = cfg.get('selfsteal_host_socket', SOCKET)
+    if path not in (SOCKET, '/run/vkarmani-selfsteal/nginx.sock'):
+        raise ValueError('UNKNOWN_SELFSTEAL_SOCKET_LAYOUT')
+    with (cert_root / domain / 'fullchain.pem').open('rb') as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise ValueError('SELFSTEAL_CERTIFICATE_NOT_REGULAR')
+        raw = f.read(1048577)
+    if len(raw) > 1048576:
+        raise ValueError('SELFSTEAL_CERTIFICATE_TOO_LARGE')
+    marker = '-----END CERTIFICATE-----'
+    text = raw.decode('ascii')
+    if marker not in text:
+        raise ValueError('SELFSTEAL_CERTIFICATE_PEM_INVALID')
+    fingerprint = hashlib.sha256(ssl.PEM_cert_to_DER_cert(text.split(marker, 1)[0] + marker + '\n')).digest()
+    return domain, path, fingerprint
+
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--target-only', action='store_true', help='TLS/certificate/ALPN only; no web content check')
+    args = parser.parse_args()
     try:
-        cfg = json.loads(Path('/etc/vkarmani-node/config.json').read_text())
-        path = cfg.get('selfsteal_host_socket', SOCKET)
-        if path not in (SOCKET, '/run/vkarmani-selfsteal/nginx.sock'):
-            raise ValueError('unknown socket layout')
-        cert_path = Path('/etc/letsencrypt/live') / cfg['domain'] / 'fullchain.pem'
-        cert_text = cert_path.read_text().split('-----END CERTIFICATE-----', 1)[0] + '-----END CERTIFICATE-----\n'
-        expected_leaf = hashlib.sha256(ssl.PEM_cert_to_DER_cert(cert_text)).digest()
-        check(cfg['domain'], path=path, expected_leaf=expected_leaf)
+        domain, path, expected_leaf = load_target()
+        if args.target_only:
+            target_tls(domain, path=path, expected_leaf=expected_leaf)
+            print('SELFSTEAL_TARGET_TLS=PASS; WEB_CONTENT=NOT_TESTED')
+            print('SELFSTEAL_SCOPE=LOCAL_TARGET_ONLY; AUTHENTICATED_VLESS_CLIENT=NOT_TESTED')
+            return 0
+        reject = nginx_sni_reject_supported()
+        check(domain, path=path, expected_leaf=expected_leaf,
+              extended=True, reject_unknown_sni=reject)
         print('SELFSTEAL_TLS13_HTTP1_HTTP2=PASS')
+        print('SELFSTEAL_STATIC_ASSETS_HEADERS_NEGATIVE_HTTP=PASS')
+        print('SELFSTEAL_SNI_REJECT=' + ('PASS' if reject else 'NOT_SUPPORTED_BY_LEGACY_NGINX'))
+        print('SELFSTEAL_SCOPE=LOCAL_TARGET_ONLY; AUTHENTICATED_VLESS_CLIENT=NOT_TESTED')
         return 0
     except Exception as e:
         # Do not print config, request headers, certificate material or bodies.
@@ -821,10 +1068,25 @@ if [[ "$MODE" == --postboot ]]; then
     done
 fi
 helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
-if [[ -f "$STATE/install-version" && $(cat "$STATE/install-version") =~ ^2\.1\.(0|1)$ ]]; then
-    helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY
+# Reviewed installer versions only. Never silently skip a current patch release.
+vk_check_import_profile() {
+    local version
+    if [[ ! -f "$STATE/install-version" ]]; then
+        warn IMPORT_PROFILE_POLICY 'NOT_VERIFIED: install-version is absent; legacy check only'
+    elif ! version=$(cat "$STATE/install-version"); then
+        fail IMPORT_PROFILE_POLICY 'cannot read install-version'
+    else
+        case "$version" in
+            2.1.0|2.1.1|2.1.2|2.1.3|2.2.0|2.3.0)
+                helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY ;;
+            1.3.*|2.0.3)
+                warn IMPORT_PROFILE_POLICY 'NOT_VERIFIED: historical installation requires its matching policy' ;;
+            *) fail IMPORT_PROFILE_POLICY 'unreviewed install-version; no automatic migration' ;;
+        esac
+    fi
     warn LIVE_PROFILE_POLICY 'NOT_VERIFIED: local JSON is not the live node config or Host SNI override'
-fi
+}
+vk_check_import_profile
 [[ "$(timedatectl show -p Timezone --value)" == Europe/Moscow ]] && pass TIMEZONE_MOSCOW || fail TIMEZONE_MOSCOW
 if [[ "$MODE" == --preboot ]]; then
     if [[ ! -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ]] || [[ $(cat /proc/sys/net/ipv6/conf/all/disable_ipv6) == 1 ]]; then
@@ -846,11 +1108,16 @@ else:
     sys.exit(1)
 PY
     then pass IPV6_SOCKET_DISABLED; else fail IPV6_SOCKET_DISABLED 'IPv6 sockets can still be created'; fi
-    IPV6_LISTENERS=$(ss -H -6 -lntup 2>/dev/null || true)
-    [[ -z "$IPV6_LISTENERS" ]] && pass NO_IPV6_LISTENERS || fail NO_IPV6_LISTENERS
+    if IPV6_LISTENERS=$(ss -H -6 -lntup 2>/dev/null); then
+        [[ -z "$IPV6_LISTENERS" ]] && pass NO_IPV6_LISTENERS || fail NO_IPV6_LISTENERS
+    else fail NO_IPV6_LISTENERS 'NOT_VERIFIED: ss failed'; fi
 fi
-if ip -6 address show 2>/dev/null | _contains 'inet6'; then fail NO_IPV6_ADDRESSES; else pass NO_IPV6_ADDRESSES; fi
-if ip -6 route show 2>/dev/null | _contains .; then fail NO_IPV6_ROUTES; else pass NO_IPV6_ROUTES; fi
+if IPV6_ADDR=$(ip -6 address show 2>/dev/null); then
+    if printf '%s\n' "$IPV6_ADDR" | _contains 'inet6'; then fail NO_IPV6_ADDRESSES; else pass NO_IPV6_ADDRESSES; fi
+else fail NO_IPV6_ADDRESSES 'NOT_VERIFIED: ip failed'; fi
+if IPV6_ROUTES=$(ip -6 route show 2>/dev/null); then
+    [[ -z "$IPV6_ROUTES" ]] && pass NO_IPV6_ROUTES || fail NO_IPV6_ROUTES
+else fail NO_IPV6_ROUTES 'NOT_VERIFIED: ip failed'; fi
 /usr/sbin/sshd -t >/dev/null 2>&1 && pass SSH_CONFIG || fail SSH_CONFIG
 /usr/sbin/sshd -T 2>/dev/null | _contains -Fx 'addressfamily inet' && pass SSH_IPV4_ONLY || fail SSH_IPV4_ONLY
 while IFS= read -r port; do
@@ -986,9 +1253,14 @@ PY_NETWORK_CHECK
 then pass NETWORK_EFFECTIVE; else fail NETWORK_EFFECTIVE; fi
 if [[ -f "$STATE/install-version" ]]; then
     [[ $(sysctl -n net.ipv4.tcp_mtu_probing 2>/dev/null) == 1 ]] && pass TCP_MTU_PROBING || fail TCP_MTU_PROBING
-    for expected in 'passwordauthentication yes' 'permitrootlogin yes' 'permitemptypasswords no' 'authenticationmethods any'; do
-        /usr/sbin/sshd -T 2>/dev/null | _contains -Fx "$expected" && pass "SSH_${expected// /_}" || fail "SSH_${expected// /_}"
-    done
+    if [[ $(cat "$STATE/install-version") == 2.3.0 ]]; then
+        python3 -I -B -S /usr/local/lib/vkarmani-node/ssh_guard.py check && pass SSH_PASSWORD_ONLY || fail SSH_PASSWORD_ONLY
+    else
+        # Historical installed policy: no implicit SSH migration in diagnostics.
+        for expected in 'passwordauthentication yes' 'permitrootlogin yes' 'permitemptypasswords no' 'authenticationmethods any'; do
+            /usr/sbin/sshd -T 2>/dev/null | _contains -Fx "$expected" && pass "SSH_${expected// /_}" || fail "SSH_${expected// /_}"
+        done
+    fi
 fi
 warn INTERFACE_QDISC 'сохранена текущая структура очередей; root qdisc не перезаписывается'
 if [[ "$MODE" == --postboot ]]; then
@@ -1026,16 +1298,120 @@ if [[ "$SELFSTEAL_SOCKET" == /run/vkarmani-selfsteal/nginx.sock ]]; then
 fi
 
 
-if ss -H -4 -lnt | awk '{print $4}' | _contains -E ':443$'; then
+# A listening port and a normal HTTPS page alone do not prove Xray ownership.
+if python3 -I -B -S - <<'PY_XRAY_LISTENER_OWNER'
+import ipaddress
+import json
+import os
+import re
+import subprocess
+import sys
+
+DOCKER = ['docker', '--host', 'unix:///var/run/docker.sock']
+ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}
+
+
+class Unverified(Exception):
+    pass
+
+
+def command(args, runner):
+    p = runner(args, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+               timeout=8, env=ENV)
+    if p.returncode or len(p.stdout) > 1048576:
+        raise Unverified('LOCAL_COMMAND_FAILED_OR_OVERSIZED')
+    return p.stdout
+
+
+def identity(runner):
+    template = '{"id":"{{.Id}}","running":{{.State.Running}},"pid":{{.State.Pid}},"network":"{{.HostConfig.NetworkMode}}"}'
+    d = json.loads(command(DOCKER + ['inspect', '--format', template, 'remnanode'], runner))
+    if (not isinstance(d, dict) or d.get('running') is not True or d.get('network') != 'host'
+            or not re.fullmatch(r'[a-f0-9]{64}', str(d.get('id')))
+            or type(d.get('pid')) is not int or d['pid'] < 1):
+        raise Unverified('NODE_CONTAINER_NOT_RUNNING_HOST_MODE')
+    return d['id'], d['pid']
+
+
+def core_pids(raw):
+    ids = set()
+    for line in raw.splitlines():
+        p = line.split()
+        if len(p) == 2 and p[0].isdigit() and p[1] in ('rw-core', 'xray'):
+            ids.add(int(p[0]))
+    return ids
+
+
+def listener_owners(raw):
+    rows = []
+    for line in raw.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) < 5 or fields[0] != 'LISTEN':
+            raise Unverified('SS_LISTENER_SCHEMA_UNRECOGNIZED')
+        host, sep, port = fields[3].rpartition(':')
+        if not sep or port != '443':
+            raise Unverified('UNEXPECTED_PUBLIC_PORT')
+        if host != '*':
+            ipaddress.IPv4Address(host)
+        ids = {int(x) for x in re.findall(r'\bpid=([0-9]+)', line)}
+        if not ids:
+            raise Unverified('LISTENER_PID_UNAVAILABLE')
+        rows.append(ids)
+    return rows
+
+
+def verify(runner=subprocess.run):
+    # Do not wake a socket-activated Docker daemon merely for this check.
+    command(['systemctl', 'is-active', '--quiet', 'docker.service'], runner)
+    before = identity(runner)
+    pids = core_pids(command(DOCKER + ['top', 'remnanode', '-eo', 'pid,comm'], runner))
+    rows = listener_owners(command(['ss', '-H', '-4', '-lntp', 'sport = :443'], runner))
+    if not rows:
+        return 3, 'XRAY_PUBLIC_LISTENER=NOT_LISTENING'
+    if not pids or any(not owners.issubset(pids) for owners in rows):
+        return 1, 'XRAY_PUBLIC_LISTENER=FAIL FOREIGN_OR_NON_CORE_OWNER'
+    if (identity(runner) != before
+            or core_pids(command(DOCKER + ['top', 'remnanode', '-eo', 'pid,comm'], runner)) != pids):
+        raise Unverified('NODE_PROCESS_CHANGED_DURING_CHECK')
+    return 0, 'XRAY_PUBLIC_LISTENER=PASS OWNED_BY_REMNANODE_CORE; USER_AUTH=NOT_TESTED'
+
+
+def main():
+    if os.geteuid() != 0:
+        print('XRAY_PUBLIC_LISTENER=NOT_VERIFIED ROOT_REQUIRED')
+        return 2
+    try:
+        rc, message = verify()
+        print(message)
+        return rc
+    except Exception:
+        print('XRAY_PUBLIC_LISTENER=NOT_VERIFIED LOCAL_STATE_OR_COMMAND_ERROR')
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+PY_XRAY_LISTENER_OWNER
+then
     XRAY_PRESENT=1
     pass XRAY_TCP443
 else
-    warn XRAY_TCP443 'NOT_LISTENING: причина не установлена; профиль, запуск Xray или канал управления'
+    OWNER_RC=$?
+    if [[ "$OWNER_RC" -eq 3 ]]; then
+        warn XRAY_TCP443 'NOT_LISTENING: профиль или запуск core ещё не подтверждён'
+    else
+        fail XRAY_TCP443 'NOT_VERIFIED_OR_FOREIGN_OWNER: не считаю чужой HTTPS работающим Xray'
+    fi
 fi
 [[ -S "$SELFSTEAL_SOCKET" ]] && pass SELFSTEAL_SOCKET || fail SELFSTEAL_SOCKET
 nginx -t >/dev/null 2>&1 && pass NGINX_CONFIG || fail NGINX_CONFIG
 openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -checkend 604800 >/dev/null 2>&1 && pass TLS_VALID_7DAYS || fail TLS_VALID_7DAYS
-timeout 25 /usr/local/sbin/vkarmani-selfsteal-check >/dev/null 2>&1 && pass SELFSTEAL_TLS13_HTTP1_HTTP2 || fail SELFSTEAL_TLS13_HTTP1_HTTP2
+if [[ $(cat "$STATE/install-version" 2>/dev/null) == 2.3.0 ]]; then
+    timeout 20 /usr/local/sbin/vkarmani-selfsteal-check --target-only && pass SELFSTEAL_TARGET_TLS || fail SELFSTEAL_TARGET_TLS
+fi
+timeout 25 /usr/local/sbin/vkarmani-selfsteal-check && pass SELFSTEAL_WEB_CONTENT || fail SELFSTEAL_WEB_CONTENT
 if docker exec remnanode test -S /dev/shm/nginx.sock >/dev/null 2>&1; then pass NODE_SELFSTEAL_SOCKET; else fail NODE_SELFSTEAL_SOCKET; fi
 if [[ "$XRAY_PRESENT" -eq 1 ]]; then
     BODY=$(mktemp "$STATE/.cover-check.XXXXXX") || exit 1
@@ -1140,7 +1516,7 @@ vk_write_maintenance() {
     temp=$(mktemp /usr/local/sbin/vkarmani-node-maintain.tmp.XXXXXX)
     cat > "$temp" <<'VK_PAYLOAD_VK_WRITE_MAINTENANCE'
 #!/usr/bin/env python3
-"""Explicit, serialized maintenance for VKarmani 2.1.x; never reconfigure the OS.
+"""Explicit, serialized maintenance for VKarmani reviewed 2.x; never reconfigure the OS.
 
 Image rollback restores Compose + image only, NOT container writable-layer data,
 OS packages, panel objects or user sessions. A working panel must resend its profile.
@@ -1340,7 +1716,7 @@ def healthy(config, require_xray, expected_digest, wait=180):
             if not before['State']['Running'] or before['Image'] != expected_id:
                 raise Failure('NODE_NOT_RUNNING_EXPECTED_IMAGE')
             run(['/usr/local/sbin/vkarmani-node-tls-check'], remaining(40))
-            run(['/usr/local/sbin/vkarmani-selfsteal-check'], remaining(25))
+            run(['/usr/local/sbin/vkarmani-selfsteal-check', '--target-only'], remaining(25))
             if require_xray:
                 cover_check(config, remaining(25))
             if remaining(5) < 5:
@@ -1543,7 +1919,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_COMPLETED_2_1_X_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -1737,7 +2113,7 @@ def saved_provider(etc=ETC, state=STATE):
         if value not in PROVIDERS:
             raise Failure('INVALID_TIME_PROVIDER')
         return value
-    # Explicit compatibility for existing legacy repair/check paths. A new 2.1.2
+    # Explicit compatibility for existing legacy repair/check paths. A new 2.3.0
     # installation must have its own marker; absence is NOT interpreted as success.
     version = (state / 'install-version').read_text().strip() if (state / 'install-version').is_file() else ''
     complete = (state / 'INSTALL_COMPLETE').read_text().splitlines() if (state / 'INSTALL_COMPLETE').is_file() else []
@@ -2402,22 +2778,40 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def render(domain):
+def render(domain, seed=None):
     if not isinstance(domain, str) or not DOMAIN.fullmatch(domain) or re.fullmatch(r'[0-9.]+', domain):
         raise Failure('invalid site domain')
-    identity = hashlib.sha256(domain.encode('ascii')).digest()
+    if seed is not None and (not isinstance(seed, str) or not re.fullmatch(r'[0-9a-f]{64}', seed)):
+        raise Failure('invalid cover seed')
+    identity = hashlib.sha256((domain + ':' + (seed or 'preview')).encode('ascii')).digest()
+    variant = identity[2] % 4
     hue = (28, 36, 42, 155, 192, 216)[identity[0] % 6]
     tilt = 16 + identity[1] % 13
     label = html.escape(domain.split('.')[0].replace('-', ' ').upper())
     safe_domain = html.escape(domain)
     css = r'''*{box-sizing:border-box}html{color-scheme:dark;scroll-behavior:smooth}body{margin:0;background:#101211;color:#ebe9e1;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}::selection{background:hsl(HUE 30% 65% / .32)}a{color:inherit;text-decoration:none}a:focus-visible{outline:2px solid hsl(HUE 48% 71%);outline-offset:7px}body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 82% 44%,hsl(HUE 24% 23% / .16),transparent 56%)}.shell{max-width:1440px;margin:auto;padding:0 76px}.header{display:flex;align-items:center;justify-content:space-between;gap:28px;min-height:126px;border-bottom:1px solid #ffffff12}.brand{font-size:15px;font-weight:600;letter-spacing:.2em;display:flex;align-items:center;gap:15px;overflow-wrap:anywhere}.emblem{position:relative;width:23px;height:23px;border:1px solid hsl(HUE 39% 70%);transform:rotate(45deg);flex-shrink:0}.emblem:after{content:"";position:absolute;inset:5px;border:1px solid hsl(HUE 28% 66% / .65)}.status{font-size:10px;letter-spacing:.18em;color:#b2b6ac;display:flex;align-items:center;gap:10px;white-space:nowrap}.status:before{content:"";width:5px;height:5px;border-radius:50%;background:hsl(HUE 41% 68%);box-shadow:0 0 12px hsl(HUE 42% 70% / .35)}.hero{position:relative;min-height:650px;display:grid;grid-template-columns:1.08fr 1fr;align-items:center;gap:20px;padding:86px 0 92px}.copy{z-index:1}.eyebrow{display:flex;align-items:center;gap:15px;color:hsl(HUE 29% 69%);font-size:10px;letter-spacing:.22em;text-transform:uppercase;margin:0 0 34px}.eyebrow:before{content:"";width:29px;height:1px;background:currentColor}h1{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:clamp(48px,5.45vw,82px);line-height:1.06;letter-spacing:-.055em;margin:0 0 28px}h1 em{display:block;font-weight:400;color:hsl(HUE 27% 69%)}.description{max-width:360px;font-size:14px;line-height:1.95;color:#a0a79d;margin:0}.description strong{font-weight:400;color:#d0d3c9}.quiet-link{display:inline-flex;align-items:center;gap:20px;margin-top:37px;font-size:11px;letter-spacing:.035em;padding:10px 0;border-bottom:1px solid #ffffff28}.quiet-link span{font-size:16px;color:hsl(HUE 30% 72%)}.sculpture{position:relative;width:min(100%,510px);aspect-ratio:1;margin:0 auto;isolation:isolate}.halo{position:absolute;inset:4%;border:1px solid #ffffff0a;border-radius:50%}.halo:before,.halo:after{content:"";position:absolute;border:1px solid #ffffff05;inset:-9%;border-radius:50%}.halo:after{inset:10%}.orb{position:absolute;inset:19%;border-radius:50%;background:radial-gradient(circle at 30% 20%,hsl(HUE 18% 51%) 0%,hsl(HUE 13% 32%) 16%,#222822 39%,#101510 65%,#090d0a 86%);box-shadow:inset 1px 1px 5px #f0e8d03a,inset -16px -12px 35px #0008,26px 32px 60px #0006;transform:rotate(-12deg)}.orb:after{content:"";position:absolute;inset:0;border-radius:inherit;background:repeating-radial-gradient(ellipse at 70% 70%,transparent 0 3px,#ffffff03 3px 4px)}.ring{position:absolute;left:1%;right:1%;top:32%;height:36%;border:1px solid hsl(HUE 28% 61% / .53);border-radius:50%;transform:rotate(-TILTdeg);box-shadow:0 2px 0 hsl(HUE 20% 33% / .28),0 3px 8px #0003;z-index:2}.ring:after{content:"";position:absolute;inset:7px;border:1px solid hsl(HUE 27% 65% / .12);border-radius:50%}.point{position:absolute;right:15%;top:15%;width:4px;height:4px;background:hsl(HUE 40% 74%);border-radius:50%;box-shadow:0 0 14px hsl(HUE 40% 70% / .5)}.art-caption{position:absolute;bottom:4%;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.26em;color:#808b7e}.detail{display:flex;align-items:baseline;justify-content:space-between;gap:28px;border-top:1px solid #ffffff12;padding:33px 0 35px}.detail h2{font-size:11px;font-weight:400;color:#c5c9be;margin:0;letter-spacing:.04em}.detail p{max-width:390px;font-size:12px;line-height:1.85;margin:0;color:#8e9889}.footer{border-top:1px solid #ffffff12;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:23px 0 35px;font-size:10px;color:#7e897a}.domain{overflow-wrap:anywhere}.footer span:last-child{color:#9ba392;font-size:9px;letter-spacing:.15em}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}@media(min-width:1440px){.hero{min-height:700px}}@media(max-width:900px){.shell{padding:0 38px}.hero{min-height:570px;padding:62px 0;gap:0}.sculpture{width:100%;max-width:none;justify-self:center}h1{font-size:59px}.description{font-size:13px}.header{min-height:104px}}@media(max-width:620px){.shell{padding:0 25px}.header{min-height:88px;gap:16px}.brand{font-size:12px;letter-spacing:.13em;gap:12px}.emblem{width:19px;height:19px}.status{font-size:8px;letter-spacing:.1em;gap:7px}.hero{display:flex;flex-direction:column;align-items:stretch;padding:51px 0 21px;min-height:0}.eyebrow{font-size:9px;margin-bottom:26px}h1{font-size:clamp(43px,11.7vw,68px);margin-bottom:22px}.description{font-size:13px;max-width:320px}.quiet-link{margin-top:22px}.sculpture{width:84%;max-width:360px;margin:10px auto 0}.detail{display:block;padding:26px 0}.detail h2{margin-bottom:13px}.detail p{font-size:11px;max-width:320px}.footer{padding:22px 0 28px;font-size:9px}.footer span:last-child{font-size:8px;letter-spacing:.07em}.art-caption{font-size:7px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}'''.replace('HUE', str(hue)).replace('TILT', str(tilt))
+    # A finite family of designs, not a claim of resistance to fingerprinting.
+    # Only the selected composition is included in the resulting stylesheet.
+    variants = (
+        '',
+        r"""html{color-scheme:light}body{background:#efece5;color:#242922}body:before{background:radial-gradient(ellipse at 82% 44%,#cbbda720,transparent 56%)}.header,.detail,.footer{border-color:#262c241c}.status,.description,.detail p,.footer{color:#515c4c}.description strong,.detail h2,.footer span:last-child{color:#354030}.eyebrow,h1 em,.quiet-link span{color:#586d46}.quiet-link{border-color:#35403050}.emblem,.emblem:after{border-color:#586d46}.orb{inset:17% 25%;border-radius:2px;transform:rotate(-19deg);background:linear-gradient(135deg,#fdfcf8,#b7b89f);box-shadow:12px 20px 28px #28281f30,inset 0 0 0 1px #515c4c25}.orb:after{border-radius:0;background:linear-gradient(40deg,transparent 49.8%,#fff9 50%,transparent 50.3%)}.ring{left:20%;right:19%;top:23%;height:61%;border:1px solid #626b5070;border-radius:2px;transform:rotate(13deg);box-shadow:none;z-index:-1}.ring:after{border-color:#626b5030;border-radius:2px}.halo{inset:8%;border-color:#626b5020}.halo:before,.halo:after{border-color:#626b5014}.point{background:#586d46;box-shadow:none}.art-caption{color:#65745b}.hero{grid-template-columns:1fr 1fr}h1 em{font-style:normal}""",
+        r"""body{background:#121923;color:#edf1f4}body:before{background:radial-gradient(ellipse at 82% 44%,#37567525,transparent 56%)}.status,.description,.detail p,.footer{color:#a0b0c0}.description strong,.detail h2,.footer span:last-child{color:#c5d3e0}.eyebrow,h1 em,.quiet-link span{color:#adc9e4}.orb{inset:22%;border-radius:13px;transform:rotate(-28deg);background:repeating-linear-gradient(90deg,#aacbe114 0 1px,transparent 1px 28px),repeating-linear-gradient(0deg,#aacbe114 0 1px,#263e55 1px 28px);box-shadow:18px 28px 55px #0005,inset 0 0 0 1px #c4d9e744}.orb:after{background:linear-gradient(120deg,#d9edff28,transparent);border-radius:13px}.ring{left:15%;right:15%;top:21%;height:58%;border-radius:12px;transform:rotate(13deg);border-color:#94b8d47a}.ring:after{border-radius:8px;border-color:#94b8d433}.halo,.halo:before,.halo:after{border-radius:12%;border-color:#94b8d417}.point{background:#b4d2e9}.art-caption{color:#a0b0c0}h1{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:clamp(44px,5vw,72px);font-weight:400;line-height:1.12}h1 em{font-style:normal;font-weight:300}.emblem,.emblem:after{border-color:#adc9e4}""",
+        r"""body{background:#171923;color:#f1edf6}body:before{background:radial-gradient(ellipse at 80% 48%,#65527722,transparent 56%)}.status,.description,.detail p,.footer{color:#b0a8bc}.description strong,.detail h2,.footer span:last-child{color:#d3cadd}.eyebrow,h1 em,.quiet-link span{color:#c0aacd}.orb{inset:12% 25% 19%;border-radius:48% 48% 3% 3%;background:linear-gradient(155deg,#a190ae,#4a435d 45%,#272536);transform:rotate(0);box-shadow:24px 24px 48px #0004,inset 1px 1px 1px #eee5ff66}.orb:after{border-radius:inherit;background:repeating-linear-gradient(90deg,transparent 0 13px,#ffffff07 13px 14px)}.ring{left:18%;right:18%;top:5%;height:76%;border:1px solid #b7a1ce66;border-radius:49% 49% 2% 2%;transform:rotate(-11deg);box-shadow:none;z-index:-1}.ring:after{border-radius:inherit;border-color:#b7a1ce33}.halo{inset:4% 12%;border-radius:49% 49% 3% 3%;border-color:#b7a1ce17}.halo:before,.halo:after{display:none}.point{background:#ccb8d9;box-shadow:none}.art-caption{color:#b0a8bc}.emblem,.emblem:after{border-color:#c0aacd}""",
+    )
+    css += variants[variant]
+    # Long hostnames and intermediate viewports must not stretch grid tracks.
+    css += '.hero>*{min-width:0}.copy,.brand,.domain{overflow-wrap:anywhere}.sculpture{overflow:hidden}.quiet-link{max-width:100%}.header>a{min-width:0}.header>.status{flex-shrink:0}'
+    headings = (('Новая глава.', 'Скоро здесь.'), ('Место для идей.', 'Скоро откроемся.'),
+                ('Всё начинается', 'с первого шага.'), ('Новый взгляд.', 'Скоро на сайте.'))
+    heading, subheading = headings[variant]
+    theme_color = ('#101211', '#efece5', '#121923', '#171923')[variant]
     icon = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#101211"/><g fill="none" stroke="hsl({hue} 29% 69%)" stroke-width="1.6"><path d="M32 11 53 32 32 53 11 32Z"/><path d="m32 22 10 10-10 10-10-10Z"/></g></svg>'''
     css_bytes, icon_bytes = css.encode(), icon.encode()
     css_name = 'assets/style-' + sha(css_bytes)[:20] + '.css'
     icon_name = 'assets/icon-' + sha(icon_bytes)[:20] + '.svg'
     index = f'''<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101211"><meta name="description" content="Сайт в разработке. Мы создаём новое пространство и скоро откроем его для вас."><title>{safe_domain} — скоро открытие</title><link rel="icon" type="image/svg+xml" href="{icon_name}"><link rel="stylesheet" href="{css_name}"></head>
-<body><div class="shell"><header class="header"><a class="brand" href="#" aria-label="На главную"><span class="emblem" aria-hidden="true"></span>{label}</a><span class="status">СКОРО ОТКРЫТИЕ</span></header><main><section class="hero" aria-labelledby="title"><div class="copy"><p class="eyebrow">НОВОЕ ПРОСТРАНСТВО</p><h1 id="title">Новая глава.<em>Скоро здесь.</em></h1><p class="description"><strong>Сайт в разработке.</strong><br>Мы продумываем каждую деталь, чтобы создать нечто особенное. Совсем скоро здесь появится наш новый проект.</p><a class="quiet-link" href="#about">Всё начинается с идеи <span aria-hidden="true">↗</span></a></div><div class="sculpture" aria-hidden="true"><div class="halo"></div><div class="orb"></div><div class="ring"></div><div class="point"></div><div class="art-caption">ФОРМА. СМЫСЛ. ДЕТАЛИ.</div></div></section><section class="detail" id="about" aria-labelledby="about-title"><h2 id="about-title">Хорошие вещи требуют внимания.</h2><p>Сейчас мы работаем над новым сайтом.<br>Спасибо за интерес и до скорой встречи.</p></section></main><footer class="footer"><span class="domain">© {safe_domain}</span><span>СОЗДАЁМ НОВОЕ</span></footer></div></body></html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="{theme_color}"><meta name="description" content="Сайт в разработке. Мы создаём новое пространство и скоро откроем его для вас."><title>{safe_domain} — скоро открытие</title><link rel="icon" type="image/svg+xml" href="{icon_name}"><link rel="stylesheet" href="{css_name}"></head>
+<body><div class="shell"><header class="header"><a class="brand" href="#" aria-label="На главную"><span class="emblem" aria-hidden="true"></span>{label}</a><span class="status">СКОРО ОТКРЫТИЕ</span></header><main><section class="hero" aria-labelledby="title"><div class="copy"><p class="eyebrow">НОВОЕ ПРОСТРАНСТВО</p><h1 id="title">{heading}<em>{subheading}</em></h1><p class="description"><strong>Сайт в разработке.</strong><br>Мы продумываем каждую деталь, чтобы создать нечто особенное. Совсем скоро здесь появится наш новый проект.</p><a class="quiet-link" href="#about">Всё начинается с идеи <span aria-hidden="true">↗</span></a></div><div class="sculpture" aria-hidden="true"><div class="halo"></div><div class="orb"></div><div class="ring"></div><div class="point"></div><div class="art-caption">ФОРМА. СМЫСЛ. ДЕТАЛИ.</div></div></section><section class="detail" id="about" aria-labelledby="about-title"><h2 id="about-title">Хорошие вещи требуют внимания.</h2><p>Сейчас мы работаем над новым сайтом.<br>Спасибо за интерес и до скорой встречи.</p></section></main><footer class="footer"><span class="domain">© {safe_domain}</span><span>СОЗДАЁМ НОВОЕ</span></footer></div></body></html>
 '''.encode()
     assert len(index) < MAX_INDEX
     return index, {css_name: css_bytes, icon_name: icon_bytes}
@@ -2452,16 +2846,70 @@ def safe_dir(path, private=False):
 
 
 def safe_read(path, private=False, limit=MAX_INDEX):
-    s = path.lstat()
-    if not stat.S_ISREG(s.st_mode) or s.st_uid != os.geteuid() or s.st_mode & (0o077 if private else 0o022):
+    path = Path(path)
+    before = path.lstat()
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    if not stat.S_ISREG(before.st_mode):
         raise Failure('unsafe file: ' + path.name)
-    if s.st_size > limit:
-        raise Failure('file exceeds safe size: ' + path.name)
-    with path.open('rb') as f:
+    fd = os.open(path, flags)
+    with os.fdopen(fd, 'rb') as f:
+        actual = os.fstat(f.fileno())
+        if ((actual.st_dev, actual.st_ino) != (before.st_dev, before.st_ino)
+                or not stat.S_ISREG(actual.st_mode) or actual.st_uid != os.geteuid()
+                or actual.st_mode & (0o077 if private else 0o022)):
+            raise Failure('unsafe or replaced file: ' + path.name)
+        if actual.st_size > limit:
+            raise Failure('file exceeds safe size: ' + path.name)
         data = f.read(limit + 1)
+        after = os.fstat(f.fileno())
+    if (actual.st_mtime_ns, actual.st_size) != (after.st_mtime_ns, after.st_size):
+        raise Failure('file changed during read: ' + path.name)
     if len(data) > limit:
         raise Failure('file exceeds safe size: ' + path.name)
     return data
+
+
+def cover_identity(state, domain):
+    """Prepare once; do not write until installation/publication is authorized."""
+    safe_dir(state, private=True)
+    path = state / 'cover-identity.json'
+    if path.exists() or path.is_symlink():
+        def pairs(entries):
+            result = {}
+            for k, v in entries:
+                if k in result:
+                    raise Failure('duplicate cover identity key')
+                result[k] = v
+            return result
+        value = json.loads(safe_read(path, private=True, limit=2048), object_pairs_hook=pairs)
+        if (not isinstance(value, dict) or set(value) != {'version', 'domain', 'seed'}
+                or type(value['version']) is not int or value['version'] != 1
+                or value['domain'] != domain or not isinstance(value['seed'], str)
+                or not re.fullmatch(r'[0-9a-f]{64}', value['seed'])):
+            raise Failure('invalid or foreign cover identity; not regenerated')
+        return value
+    return {'version': 1, 'domain': domain, 'seed': secrets.token_hex(32)}
+
+
+def store_identity(state, value):
+    """Atomic no-clobber creation. A interrupted write never leaves a partial seed."""
+    path = state / 'cover-identity.json'
+    data = (json.dumps(value, sort_keys=True) + '\n').encode()
+    if path.exists() or path.is_symlink():
+        if cover_identity(state, value['domain']) != value:
+            raise Failure('cover identity changed concurrently')
+        return
+    fd, name = tempfile.mkstemp(prefix='.cover-identity-', dir=state)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            os.fchmod(f.fileno(), 0o600)
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.link(name, path, follow_symlinks=False)
+        sync_dir(state)
+    finally:
+        Path(name).unlink(missing_ok=True)
 
 
 def node_config(root):
@@ -2499,11 +2947,14 @@ def publish_assets(site, assets):
 
 def install_site(root=Path('/')):
     c, site = node_config(root), sites(root)
-    index, assets = render(c['domain'])
+    state = root / 'var/lib/vkarmani-node'
+    identity = cover_identity(state, c['domain'])
+    index, assets = render(c['domain'], identity['seed'])
     path = site / 'index.html'
     if path.exists() or path.is_symlink():
         if safe_read(path) != index:
             raise Failure('existing site differs; full installation will not replace it')
+    store_identity(state, identity)
     publish_assets(site, assets)
     atomic(path, index, 0o644)
     # These are only created on new nodes. Site-only update does not overwrite
@@ -2526,8 +2977,8 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
-        raise Failure('site-only update requires a completed 2.0.3 or 2.1.x installation')
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+        raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.3.0 installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
         if p.exists() or p.is_symlink():
@@ -2546,7 +2997,7 @@ def run_checks(c, site, state):
     fd, name = tempfile.mkstemp(prefix='.cover-http-', dir=state)
     os.close(fd)
     try:
-        cmd = ['curl', '--noproxy', '*', '-4', '--fail', '--silent', '--show-error',
+        cmd = ['curl', '-q', '--noproxy', '*', '-4', '--fail', '--silent', '--show-error',
                '--http2', '--tlsv1.3', '--tls-max', '1.3', '--connect-timeout', '5',
                '--max-time', '15', '--max-filesize', str(MAX_INDEX),
                '--resolve', f"{c['domain']}:443:{c['public_ipv4']}", '-o', name,
@@ -2591,7 +3042,8 @@ def update(root=Path('/'), checker=run_checks):
         raise Failure('cover update interrupted; use --rollback-cover before another update')
     checker(c, site, state)
     old = safe_read(site / 'index.html')
-    index, assets = render(c['domain'])
+    identity = cover_identity(state, c['domain'])
+    index, assets = render(c['domain'], identity['seed'])
     if old == index:
         # Verify assets too, do not call a damaged page "unchanged and healthy".
         for name, data in assets.items():
@@ -2614,6 +3066,7 @@ def update(root=Path('/'), checker=run_checks):
     atomic(state / 'cover-pending', (name + '\n').encode())
     published = False
     try:
+        store_identity(state, identity)
         publish_assets(site, assets)
         if safe_read(site / 'index.html') != old:
             raise Failure('site changed concurrently; not overwritten')
@@ -2810,7 +3263,7 @@ def container_state():
         return {'verified': False, 'reason': 'docker_cli_absent'}
     fmt = '{"running":{{.State.Running}},"restarting":{{.State.Restarting}},"oom_killed":{{.State.OOMKilled}},"restarts":{{.RestartCount}}}'
     try:
-        p = subprocess.run(['docker', 'inspect', '--format', fmt, 'remnanode'],
+        p = subprocess.run(['docker', '--host', 'unix:///var/run/docker.sock', 'inspect', '--format', fmt, 'remnanode'],
                            stdin=subprocess.DEVNULL, capture_output=True, timeout=5)
         if p.returncode:
             return {'verified': False, 'reason': 'container_unavailable'}
@@ -2822,6 +3275,81 @@ def container_state():
         return {'verified': True, **data}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {'verified': False, 'reason': 'timeout_or_invalid_response'}
+
+
+def process_identity(path):
+    raw = (path / 'stat').read_text()
+    fields = raw.rsplit(')', 1)[1].split()
+    return int(fields[19])  # starttime; pid reuse must not yield a false snapshot
+
+
+def fd_snapshot(proc=Path('/proc'), limit=64):
+    """Only daemon counters, never fd targets, cmdline, environ or peer addresses."""
+    result, errors, truncated = [], 0, False
+    try:
+        with os.scandir(proc) as entries:
+            candidates = [Path(x.path) for x in entries if x.name.isdecimal()]
+    except OSError:
+        return {'verified': False, 'reason': 'proc_unavailable'}
+    for path in candidates:
+        try:
+            comm = (path / 'comm').read_text().strip()
+            if comm not in ('nginx', 'rw-core', 'xray', 'rw-node'):
+                continue
+            if len(result) >= limit:
+                truncated = True
+                break
+            identity = process_identity(path)
+            bounds = None
+            for line in (path / 'limits').read_text().splitlines():
+                if line.startswith('Max open files'):
+                    words = line.split()
+                    if len(words) != 6:
+                        raise ValueError('invalid limit record')
+                    bounds = [None if v == 'unlimited' else int(v) for v in words[3:5]]
+            if bounds is None:
+                raise ValueError('missing limit')
+            with os.scandir(path / 'fd') as fds:
+                count = sum(1 for _ in fds)
+            if process_identity(path) != identity:
+                raise ValueError('process changed')
+            result.append({'process': comm, 'pid': int(path.name), 'open_fds': count,
+                           'soft_limit': bounds[0], 'hard_limit': bounds[1],
+                           'soft_limit_percent': round(100 * count / bounds[0], 2) if bounds[0] else None})
+        except (OSError, ValueError, IndexError):
+            errors += 1
+    return {'verified': not errors and not truncated, 'processes': result,
+            'unreadable_or_changed': errors, 'truncated': truncated,
+            'scope': 'POINT_IN_TIME_DAEMON_FD_COUNTS_NOT_A_LEAK_DIAGNOSIS'}
+
+
+def parse_socket_queue(raw):
+    paths = {'/run/vkarmani-selfsteal/nginx.sock', '/dev/shm/nginx.sock'}
+    result = []
+    for line in raw.splitlines():
+        words = line.split()
+        if not paths.intersection(words):
+            continue
+        if len(words) < 5 or words[0] != 'u_str' or words[1] != 'LISTEN':
+            raise ValueError('unexpected listener fields')
+        pending, backlog = int(words[2]), int(words[3])
+        if pending < 0 or backlog < 0:
+            raise ValueError('negative listener counters')
+        result.append({'pending_connections': pending, 'backlog': backlog})
+    return result
+
+
+def socket_queue(runner=subprocess.run):
+    try:
+        p = runner(['ss', '-H', '-x', '-l', '-n'], stdin=subprocess.DEVNULL,
+                   capture_output=True, text=True, timeout=5,
+                   env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'})
+        if p.returncode:
+            raise ValueError('ss failed')
+        queues = parse_socket_queue(p.stdout)
+        return {'verified': True, 'listeners': queues, 'present': bool(queues)}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {'verified': False, 'reason': 'listener_snapshot_unavailable'}
 
 
 def main():
@@ -2837,7 +3365,8 @@ def main():
               'sample_seconds': round(time.monotonic() - start, 3), **summarize(before, after),
               'memory': memory_info(text(proc / 'meminfo')),
               'pressure': {kind: pressure(text(proc / 'pressure' / kind)) for kind in ('cpu', 'memory', 'io')},
-              'container': container_state()}
+              'container': container_state(), 'daemon_fds': fd_snapshot(proc),
+              'selfsteal_socket_queue': socket_queue()}
     try:
         v = os.statvfs('/')
         result['root_disk'] = {'available_MiB': round(v.f_bavail * v.f_frsize / 1048576, 1),
@@ -2883,9 +3412,413 @@ vkarmani_resources_main() (
     python3 "$work/resources.py" "$@"
 )
 
+vk_write_ssh_guard() {
+    local destination=${1:-"$LIB/ssh_guard.py"}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_SSH_GUARD_PY'
+#!/usr/bin/env python3
+"""Password-only SSH admission and effective policy; never reads operator input.
+No account/password/key changes. Preflight checks local password state, not an
+actual login. The operator must verify a second password session before deployment.
+"""
+import argparse
+import datetime as dt
+import os
+from pathlib import Path
+import pwd
+import re
+import shlex
+import stat
+import subprocess
+import sys
+
+EXPECTED = {
+    'addressfamily': 'inet', 'passwordauthentication': 'yes',
+    'pubkeyauthentication': 'no', 'authenticationmethods': 'password',
+    'kbdinteractiveauthentication': 'no', 'permitemptypasswords': 'no',
+    'hostbasedauthentication': 'no', 'gssapiauthentication': 'no',
+    'permitrootlogin': 'yes',
+}
+
+
+class Failure(Exception):
+    pass
+
+
+def password_state(row, today):
+    """Validate one shadow row in memory. Error codes never contain password data."""
+    fields = row.rstrip('\n').split(':')
+    if len(fields) != 9:
+        raise Failure('SHADOW_RECORD_INVALID')
+    password = fields[1]
+    if not password or password.startswith(('!', '*')):
+        raise Failure('PASSWORD_MISSING_OR_LOCKED')
+    # Avoid treating literal placeholders or unsupported records as a usable hash.
+    if not (password.startswith('$') or re.fullmatch(r'[./A-Za-z0-9]{13}', password)):
+        raise Failure('PASSWORD_HASH_FORMAT_UNRECOGNIZED')
+    try:
+        last, maximum, inactive, expiry = [int(fields[n]) if fields[n] else -1 for n in (2, 4, 6, 7)]
+    except ValueError:
+        raise Failure('PASSWORD_AGING_INVALID') from None
+    if any(n < -1 for n in (last, maximum, inactive, expiry)):
+        raise Failure('PASSWORD_AGING_INVALID')
+    if last == 0:
+        raise Failure('PASSWORD_CHANGE_REQUIRED')
+    if expiry != -1 and today >= expiry:
+        raise Failure('ACCOUNT_EXPIRED')
+    if last > today:
+        raise Failure('PASSWORD_DATE_IN_FUTURE_CHECK_CLOCK')
+    if last != -1 and maximum != -1 and today >= last + maximum:
+        raise Failure('PASSWORD_EXPIRED')
+    return True
+
+
+def preflight(user, shadow=Path('/etc/shadow'), lookup=pwd.getpwnam, today=None):
+    if not isinstance(user, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*[$]?', user):
+        raise Failure('ADMIN_NAME_INVALID')
+    try:
+        account = lookup(user)
+    except KeyError:
+        raise Failure('LOCAL_ADMIN_ACCOUNT_MISSING') from None
+    shell = account.pw_shell
+    if (not shell.startswith('/') or Path(shell).name in ('nologin', 'false')
+            or not os.access(shell, os.X_OK)):
+        raise Failure('ADMIN_LOGIN_SHELL_UNAVAILABLE')
+    fd = os.open(shadow, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as f:
+        info = os.fstat(f.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o027):
+            raise Failure('SHADOW_FILE_UNSAFE')
+        data = f.read(1024 * 1024 + 1)
+    if len(data) > 1024 * 1024:
+        raise Failure('SHADOW_FILE_TOO_LARGE')
+    rows = [row for row in data.decode('utf-8').splitlines() if row.split(':', 1)[0] == user]
+    if len(rows) != 1:
+        raise Failure('LOCAL_ADMIN_SHADOW_RECORD_MISSING_OR_DUPLICATE')
+    if today is None:
+        today = (dt.datetime.now(dt.timezone.utc).date() - dt.date(1970, 1, 1)).days
+    password_state(rows[0], today)
+    return True
+
+
+def inspect_policy(main=Path('/etc/ssh/sshd_config')):
+    """Refuse conditional/custom include policy rather than silently bypassing it.
+
+    sshd -T without connection context does not resolve all possible Match cases.
+    The dedicated-node installer supports the distro root file + its standard
+    drop-in directory only. No include, Match or access restriction is deleted.
+    """
+    dropin = main.parent / 'sshd_config.d'
+    files = [main]
+    if dropin.exists() or dropin.is_symlink():
+        info = dropin.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise Failure('SSH_INCLUDE_DIRECTORY_UNSAFE')
+        files += sorted(dropin.glob('*.conf'))
+    if len(files) > 129:
+        raise Failure('SSH_POLICY_TOO_MANY_FILES')
+    for path in files:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        with os.fdopen(fd, 'rb') as f:
+            info = os.fstat(f.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+                raise Failure('SSH_POLICY_FILE_UNSAFE')
+            raw = f.read(1048577)
+        if len(raw) > 1048576:
+            raise Failure('SSH_POLICY_FILE_TOO_LARGE')
+        for line in raw.decode('utf-8').splitlines():
+            # OpenSSH accepts optional '=' after a keyword; do not miss Match=.
+            line = re.sub(r'^([ \t]*[A-Za-z]+)[ \t]*=', r'\1 ', line)
+            try:
+                words = shlex.split(line, comments=True)
+            except ValueError:
+                raise Failure('SSH_POLICY_SYNTAX_REQUIRES_REVIEW') from None
+            if not words:
+                continue
+            key = words[0].lower()
+            if key in ('match', 'allowusers', 'denyusers', 'allowgroups', 'denygroups'):
+                raise Failure('SSH_CONDITIONAL_OR_ACCESS_POLICY_REQUIRES_REVIEW')
+            if key == 'include':
+                if path != main or words[1:] != [str(dropin / '*.conf')]:
+                    raise Failure('SSH_CUSTOM_OR_RECURSIVE_INCLUDE_REQUIRES_REVIEW')
+    return True
+
+
+def validate_effective(text):
+    values = {}
+    for line in text.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2 and parts[0] in EXPECTED:
+            if parts[0] in values:
+                raise Failure('SSH_EFFECTIVE_DUPLICATE_FIELD')
+            values[parts[0]] = parts[1]
+    if any(values.get(k) != v for k, v in EXPECTED.items()):
+        raise Failure('SSH_PASSWORD_ONLY_POLICY_MISMATCH')
+    return True
+
+
+def check(runner=subprocess.run):
+    result = runner(['/usr/sbin/sshd', '-T'], stdin=subprocess.DEVNULL,
+                    capture_output=True, text=True, timeout=10,
+                    env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'})
+    if result.returncode:
+        raise Failure('SSHD_EFFECTIVE_CONFIG_UNAVAILABLE')
+    validate_effective(result.stdout)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('action', choices=('preflight', 'check'))
+    p.add_argument('--user')
+    args = p.parse_args()
+    if os.geteuid() != 0:
+        p.error('root required')
+    if (args.action == 'preflight') != bool(args.user):
+        p.error('--user is required only for preflight')
+    try:
+        inspect_policy()
+        if args.action == 'preflight':
+            preflight(args.user)
+            print('SSH_PASSWORD_STATE=PASS; PASSWORD_NOT_REQUESTED_OR_CHANGED; REMOTE_LOGIN=NOT_TESTED')
+        else:
+            check()
+            print('SSH_PASSWORD_ONLY=PASS; PUBLICKEY_LOGIN=DISABLED; AUTHORIZED_KEYS_FILES=PRESERVED')
+        return 0
+    except Failure as exc:
+        print('SSH_GUARD=FAIL ' + str(exc), file=sys.stderr)
+    except Exception:
+        print('SSH_GUARD=FAIL LOCAL_CHECK_UNAVAILABLE (no credentials displayed)', file=sys.stderr)
+    return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+VK_SSH_GUARD_PY
+    chmod 0700 "$destination"
+}
+
+vk_write_cert_deploy() {
+    local destination=${1:-"$LIB/cert_deploy.py"}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_CERT_DEPLOY_PY'
+#!/usr/bin/env python3
+"""Activate this node's renewed certificate without Xray restarts or port redirects.
+A status receipt is evidence of one hook run, not proof of future renewal or WAN
+availability. Certbot owns certificate files; this helper never rolls them back.
+"""
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import signal
+import ssl
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+
+ETC = Path('/etc/vkarmani-node')
+STATE = Path('/var/lib/vkarmani-node')
+CERT_ROOT = Path('/etc/letsencrypt/live')
+STATUS = STATE / 'cert-deploy-status.json'
+LOCK = Path('/run/lock/vkarmani-cert-deploy.lock')
+ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}
+DOMAIN = re.compile(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?')
+
+
+class Failure(Exception):
+    pass
+
+
+def read_private(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or st.st_mode & 0o077:
+            raise Failure('UNSAFE_PRIVATE_STATE')
+        b = f.read(65537)
+    if len(b) > 65536:
+        raise Failure('STATE_TOO_LARGE')
+    return json.loads(b)
+
+
+def current_domain():
+    c = read_private(ETC / 'config.json')
+    d = c.get('domain')
+    if c.get('installation_mode') != 'secret-key-only' or not isinstance(d, str) or not DOMAIN.fullmatch(d):
+        raise Failure('NODE_DOMAIN_OR_OWNERSHIP_INVALID')
+    return d
+
+
+def leaf_fingerprint(domain):
+    # Certbot's live/fullchain.pem symlink is intentional, unlike arbitrary state files.
+    with (CERT_ROOT / domain / 'fullchain.pem').open('rb') as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise Failure('CERTIFICATE_NOT_REGULAR')
+        b = f.read(1024 * 1024 + 1)
+    if len(b) > 1024 * 1024:
+        raise Failure('CERTIFICATE_TOO_LARGE')
+    text = b.decode('ascii')
+    end = '-----END CERTIFICATE-----'
+    if end not in text:
+        raise Failure('CERTIFICATE_PEM_INVALID')
+    der = ssl.PEM_cert_to_DER_cert(text.split(end, 1)[0] + end + '\n')
+    return hashlib.sha256(der).hexdigest()
+
+
+def record(value):
+    parent = STATUS.parent.lstat()
+    if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.geteuid() or parent.st_mode & 0o077:
+        raise Failure('UNSAFE_STATUS_DIRECTORY')
+    if STATUS.exists() or STATUS.is_symlink():
+        read_private(STATUS)
+    fd, name = tempfile.mkstemp(prefix='.cert-deploy-', dir=STATUS.parent)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            os.fchmod(f.fileno(), 0o600)
+            json.dump(value, f, sort_keys=True)
+            f.write('\n'); f.flush(); os.fsync(f.fileno())
+        os.replace(name, STATUS)
+        dfd = os.open(STATUS.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(dfd)
+        finally: os.close(dfd)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def generation():
+    if not STATUS.exists() and not STATUS.is_symlink():
+        return 'absent'
+    value = read_private(STATUS).get('generation')
+    if not isinstance(value, str) or not re.fullmatch(r'[a-f0-9]{32}', value):
+        raise Failure('DEPLOY_GENERATION_INVALID')
+    return value
+
+
+def verify_new(before):
+    if before != 'absent' and not re.fullmatch(r'[a-f0-9]{32}', before):
+        raise Failure('PREVIOUS_GENERATION_INVALID')
+    after = read_private(STATUS)
+    current = after.get('generation') if isinstance(after, dict) else None
+    domain = current_domain()
+    if (not isinstance(current, str) or not re.fullmatch(r'[a-f0-9]{32}', current)
+            or current == before or after.get('result') != 'PASS'
+            or after.get('phase') != 'COMPLETE' or after.get('domain') != domain
+            or after.get('certificate_sha256') != leaf_fingerprint(domain)):
+        raise Failure('NEW_SUCCESSFUL_DEPLOY_NOT_PROVEN')
+    print('CERTBOT_DEPLOY_HOOK=PASS; CURRENT_CERTIFICATE_ACTIVATION_VERIFIED')
+
+
+def execute(args, deadline, runner):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise Failure('DEPLOY_DEADLINE_EXHAUSTED')
+    try:
+        p = runner(args, stdin=subprocess.DEVNULL, capture_output=True,
+                   timeout=min(20, remaining), env=ENV)
+    except subprocess.TimeoutExpired:
+        raise Failure('DEPLOY_COMMAND_TIMEOUT') from None
+    if p.returncode:
+        raise Failure('DEPLOY_COMMAND_FAILED')
+
+
+def deploy(domain, runner=subprocess.run, budget=75):
+    if not 1 <= budget <= 75:
+        raise Failure('DEPLOY_BUDGET_INVALID')
+    value = {'version': 1, 'generation': secrets.token_hex(16), 'domain': domain,
+             'started_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+             'result': 'RUNNING', 'phase': 'PRECHECK'}
+    deadline = time.monotonic() + budget
+    record(value)
+    try:
+        value['certificate_sha256'] = leaf_fingerprint(domain)
+        execute(['/usr/sbin/nginx', '-t'], deadline, runner)
+        value['phase'] = 'RELOAD'; record(value)
+        execute(['/usr/bin/systemctl', 'reload', 'nginx'], deadline, runner)
+        value['phase'] = 'VERIFY_TARGET_TLS'; record(value)
+        while True:
+            try:
+                execute(['/usr/local/sbin/vkarmani-selfsteal-check', '--target-only'], deadline, runner)
+                break
+            except Failure as exc:
+                if str(exc).startswith('INTERRUPTED_') or deadline - time.monotonic() <= 1:
+                    raise
+                time.sleep(1)
+        if leaf_fingerprint(domain) != value['certificate_sha256']:
+            raise Failure('CERTIFICATE_CHANGED_DURING_DEPLOY')
+        value.update(result='PASS', phase='COMPLETE', finished_at=dt.datetime.now(dt.timezone.utc).isoformat())
+        record(value)
+        print('CERT_DEPLOY=PASS; TARGET_TLS=PASS; WEB_CONTENT=NOT_TESTED; XRAY_RESTART=NOT_PERFORMED')
+    except BaseException as exc:
+        value['result'] = 'FAIL'
+        value['error'] = str(exc) if isinstance(exc, Failure) else 'INTERRUPTED_OR_LOCAL_ERROR'
+        try: record(value)
+        except Exception: print('CERT_DEPLOY_STATUS=NOT_SAVED', file=sys.stderr)
+        raise
+
+
+def interrupted(signum, _frame):
+    raise Failure('INTERRUPTED_' + str(signum))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('deploy', 'generation', 'verify-new'))
+    parser.add_argument('previous', nargs='?')
+    a = parser.parse_args()
+    if os.geteuid() != 0:
+        parser.error('root required')
+    if (a.action == 'verify-new') != (a.previous is not None):
+        parser.error('previous generation required only for verify-new')
+    os.umask(0o077)
+    if a.action == 'generation':
+        print(generation()); return 0
+    if a.action == 'verify-new':
+        verify_new(a.previous); return 0
+    d = current_domain()
+    lineage = os.environ.get('RENEWED_LINEAGE', '')
+    if not lineage:
+        raise Failure('CERTBOT_RENEWED_LINEAGE_MISSING')
+    if lineage != str(CERT_ROOT / d):
+        print('CERT_DEPLOY=SKIPPED_OTHER_LINEAGE'); return 0
+    if set(os.environ.get('RENEWED_DOMAINS', '').split()) != {d}:
+        raise Failure('CERTBOT_DOMAIN_CONTRACT_MISMATCH')
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, interrupted)
+    fd = os.open(LOCK, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(fd, 'r+') as lock:
+        st = os.fstat(lock.fileno())
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o077:
+            raise Failure('UNSAFE_DEPLOY_LOCK')
+        try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError: raise Failure('ANOTHER_CERT_DEPLOY_RUNNING') from None
+        deploy(d)
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        raise SystemExit(main())
+    except Failure as exc:
+        print('CERT_DEPLOY=FAIL ' + str(exc), file=sys.stderr)
+        raise SystemExit(1)
+    except Exception:
+        print('CERT_DEPLOY=FAIL LOCAL_IO_OR_CONFIG_ERROR (no secrets displayed)', file=sys.stderr)
+        raise SystemExit(1)
+VK_CERT_DEPLOY_PY
+    chmod 0700 "$destination"
+}
+
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.1.2 — 2026-09-30
+# VKarmani Remnawave Node Installer 2.3.0 — 2026-10-02
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -2897,7 +3830,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.1.2
+INSTALLER_VERSION=2.3.0
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -2913,7 +3846,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.1.2
+VKarmani Remnawave Node Installer 2.3.0
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -2927,7 +3860,7 @@ VKarmani Remnawave Node Installer 2.1.2
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
   sudo bash install.sh --repair-node           # узкое исправление нашей завершённой 1.3.x
-  sudo bash install.sh --update-cover          # только сайт: 2.0.3/2.1.x, без restart VPN
+  sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
   bash install.sh --version
@@ -2936,7 +3869,7 @@ VKarmani Remnawave Node Installer 2.1.2
 IP самой ноды выбирается по DNS среди публичных IPv4 её интерфейсов.
 Чистая выделенная Ubuntu 22.04/24.04/26.04 или Debian 12/13; amd64/arm64; systemd + GRUB.
 Минимум: 900 MiB RAM (26.04: 1536 MiB), 6 GiB свободно. NAT, LXC/OpenVZ, IPv6 SSH, чужая установка не поддержаны.
-SSH: парольный вход, существующие порты, без IP-allowlist. Пароли/аккаунты не создаются.
+SSH: только логин/пароль; ключевой вход отключается, authorized_keys не удаляются. Существующие порты, без IP-allowlist. Пароли/аккаунты не создаются.
 26.04: адаптация по документации; полный цикл на VPS ещё требует приёмки.
 До запуска нужны снимок VPS, консоль хостера и действующий пароль администратора.
 IPv6: runtime sysctl + GRUB; для полного отключения socket API необходим reboot.
@@ -3038,7 +3971,7 @@ vk_collect_inputs() {
     printf '\nVKarmani: SECRET_KEY → домен ноды → IPv4 технички.\n' >&"$VK_TTY_FD"
     printf 'IPv4 самой ноды НЕ спрашивается: он выбирается автоматически по DNS из адресов VPS.\n' >&"$VK_TTY_FD"
     printf 'После трёх значений — автоматическая установка и один auto-reboot после успешных проверок. Для запрета: --no-reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
-    printf 'Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
+    printf 'SSH-ключи для входа будут отключены; нужен проверенный вход по паролю. Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
     printf 'Если у хостера есть внешний firewall/security group: TCP/2222 должен быть разрешён с IPv4 панели.\n\n' >&"$VK_TTY_FD"
     # Noncanonical mode also permits long (>4096 byte) single-line SECRET_KEY bundles.
     # Disable echo BEFORE displaying the prompt, so immediate paste cannot reveal the key.
@@ -3139,7 +4072,8 @@ FREE_MB=$(df -Pm / | awk 'NR==2{print $4}')
     echo "Нужно >=${MIN_MEMORY_MB} MiB RAM и >=6144 MiB свободного места. Сейчас RAM=$MEM_MB, disk=$FREE_MB MiB." >&2; exit 1;
 }
 vk_wait_apt_idle "$APT_LOCK_TOTAL_WAIT"
-[[ -z "$(dpkg --audit)" ]] || { echo 'dpkg сообщает незавершённые операции после освобождения package-manager locks. Исправьте пакетную базу прежде установки.' >&2; exit 1; }
+DPKG_AUDIT=$(dpkg --audit) || { echo "STOP: dpkg --audit failed; package state is NOT verified." >&2; exit 1; }
+[[ -z "$DPKG_AUDIT" ]] || { echo 'dpkg сообщает незавершённые операции после освобождения package-manager locks. Исправьте пакетную базу прежде установки.' >&2; exit 1; }
 # Never overwrite the only pre-change access backup while its guard is pending.
 for marker in network-rollback-armed network-rollback-running; do
     if [[ -e "$STATE/$marker" ]]; then
@@ -3324,7 +4258,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.1.2: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.3.0: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -3345,6 +4279,9 @@ ETC = Path('/etc/vkarmani-node')
 STATE = Path('/var/lib/vkarmani-node')
 REALITY_EXPORT = Path('/root/reality-keys.txt')
 MODE = 'secret-key-only'
+PROFILE_MIN_CLIENT_VERSION = '0.0.0'
+PROFILE_FLOW = 'xtls-rprx-vision'
+
 class Failure(Exception):
     pass
 
@@ -3617,19 +4554,19 @@ def make_keys_profile(c):
         atomic_json(path, keys)
     suffix = hashlib.sha256(c['domain'].encode()).hexdigest()[:12]
     tag = 'VK_RAW_REALITY_' + suffix.upper()
-    # Remnawave fills clients dynamically. Do not force Vision here: RAW+REALITY works
-    # without it, and production profiles may choose their own client flow.
+    # Remnawave fills clients dynamically. New templates use the agreed common
+    # Vision flow; this generator never writes a live panel/node configuration.
     profile = {
         'log': {'loglevel': 'warning'},
         'dns': {'servers': ['1.1.1.1', '8.8.8.8'], 'queryStrategy': 'UseIPv4'},
         'inbounds': [{'tag': tag, 'listen': '0.0.0.0', 'port': 443, 'protocol': 'vless',
-                      'settings': {'clients': [], 'decryption': 'none'},
+                      'settings': {'clients': [], 'decryption': 'none', 'flow': PROFILE_FLOW},
                       'sniffing': {'enabled': True, 'routeOnly': True,
                                    'destOverride': ['http', 'tls', 'quic']},
                       'streamSettings': {
                           'network': 'raw', 'security': 'reality',
                           'realitySettings': {'show': False, 'target': '/dev/shm/nginx.sock',
-                                              'xver': 1, 'minClientVer': '1.0.0', 'spiderX': '/',
+                                              'xver': 1, 'minClientVer': PROFILE_MIN_CLIENT_VERSION, 'spiderX': '/',
                                               'serverNames': [c['domain']],
                                               'privateKey': keys['private_key'],
                                               'shortIds': [keys['short_id']]}}}],
@@ -3645,54 +4582,200 @@ def make_keys_profile(c):
     atomic_json(ETC / 'profile.json', profile)
     return 'VK-RAW-' + suffix, tag, profile
 
+def _profile_tag(value):
+    return isinstance(value, str) and 0 < len(value) <= 256 and all(ord(c) >= 32 for c in value)
+
+
+def _profile_api(profile, inbounds):
+    """Recognize only the local RemnaNode service API, never an extra VPN entry.
+
+    Xray creates the outbound from api.tag; it is not in the ordinary outbounds.
+    This checks a supplied JSON snapshot, not a live socket or panel entitlement.
+    """
+    api = profile.get('api')
+    extra = [i for i in inbounds if i.get('protocol') != 'vless']
+    if api is None and not extra:
+        return None, None
+    if not isinstance(api, dict) or not _profile_tag(api.get('tag')):
+        raise Failure('PROFILE_SERVICE_API_REQUIRES_VALID_API_TAG')
+    if api.get('listen') or len(extra) != 1:
+        raise Failure('PROFILE_SERVICE_API_REQUIRES_ONE_LOCAL_INBOUND')
+    item = extra[0]
+    listen = item.get('listen')
+    local = (isinstance(listen, str) and bool(re.fullmatch(r'@xtls-api-[A-Za-z0-9_-]{1,80}', listen)))
+    local = local or (listen == '127.0.0.1' and type(item.get('port')) is int
+                      and 1 <= item['port'] <= 65535)
+    if (item.get('tag') != 'REMNAWAVE_API_INBOUND'
+            or item.get('protocol') not in ('tunnel', 'dokodemo-door') or not local):
+        raise Failure('PROFILE_UNREVIEWED_EXTRA_INBOUND')
+    services = api.get('services')
+    if not isinstance(services, list) or not services or not all(_profile_tag(x) for x in services):
+        raise Failure('PROFILE_SERVICE_API_SERVICES_INVALID')
+    return api['tag'], item['tag']
+
+
+def _profile_network_policy(profile, api_tag, api_inbound, inbound_tags):
+    """Structural IPv4/routing checks, NOT an end-to-end egress security audit."""
+    dns = profile.get('dns')
+    if not isinstance(dns, dict) or dns.get('queryStrategy') != 'UseIPv4':
+        raise Failure('PROFILE_DNS_REQUIRES_USE_IPV4')
+    servers = dns.get('servers')
+    if not isinstance(servers, list) or not servers:
+        raise Failure('PROFILE_DNS_SERVERS_MISSING')
+    for server in servers:
+        if isinstance(server, str) and server:
+            continue
+        if (not isinstance(server, dict) or not isinstance(server.get('address'), str)
+                or not server['address']):
+            raise Failure('PROFILE_DNS_SERVER_INVALID')
+        if server.get('queryStrategy', 'UseIPv4') != 'UseIPv4':
+            raise Failure('PROFILE_DNS_SERVER_REQUIRES_USE_IPV4')
+    for key in ('serveStale', 'disableCache', 'enableParallelQuery'):
+        if key in dns and type(dns[key]) is not bool:
+            raise Failure('PROFILE_DNS_BOOLEAN_INVALID')
+    if 'serveExpiredTTL' in dns and (type(dns['serveExpiredTTL']) is not int or dns['serveExpiredTTL'] < 0):
+        raise Failure('PROFILE_DNS_EXPIRED_TTL_INVALID')
+
+    outbounds = profile.get('outbounds')
+    if not isinstance(outbounds, list) or not outbounds or any(
+            not isinstance(o, dict) or o.get('protocol') not in ('freedom', 'blackhole') for o in outbounds):
+        raise Failure('PROFILE_UNSUPPORTED_OUTBOUND_REQUIRES_MANUAL_AUDIT')
+    tags = [o.get('tag') for o in outbounds]
+    if not all(_profile_tag(x) for x in tags) or len(set(tags)) != len(tags) or api_tag in tags:
+        raise Failure('PROFILE_OUTBOUND_TAGS_INVALID_OR_DUPLICATE')
+    for outbound in outbounds:
+        if outbound['protocol'] == 'freedom':
+            settings = outbound.get('settings')
+            if not isinstance(settings, dict) or settings.get('domainStrategy') != 'UseIPv4':
+                raise Failure('PROFILE_FREEDOM_REQUIRES_USE_IPV4')
+    routing = profile.get('routing')
+    if not isinstance(routing, dict) or routing.get('domainStrategy') not in ('AsIs', 'IPIfNonMatch', 'IPOnDemand'):
+        raise Failure('PROFILE_ROUTING_STRATEGY_INVALID')
+    rules = routing.get('rules')
+    if not isinstance(rules, list) or not rules or routing.get('balancers'):
+        raise Failure('PROFILE_ROUTING_RULES_REQUIRED_NO_BALANCERS')
+    api_routes = 0
+    for rule in rules:
+        if not isinstance(rule, dict) or rule.get('type', 'field') != 'field':
+            raise Failure('PROFILE_ROUTING_RULE_TYPE_INVALID')
+        target = rule.get('outboundTag')
+        if not _profile_tag(target) or rule.get('balancerTag') or target not in tags + ([api_tag] if api_tag else []):
+            raise Failure('PROFILE_ROUTING_OUTBOUND_REFERENCE_INVALID')
+        if not any(k in rule for k in ('domain', 'ip', 'port', 'sourcePort', 'network',
+                                       'source', 'user', 'inboundTag', 'protocol', 'attrs')):
+            raise Failure('PROFILE_ROUTING_RULE_WITHOUT_MATCH')
+        for key in ('domain', 'ip', 'source', 'user', 'inboundTag', 'protocol'):
+            if key in rule and (not isinstance(rule[key], list) or not rule[key]
+                                or not all(isinstance(x, str) and x for x in rule[key])):
+                raise Failure('PROFILE_ROUTING_MATCH_LIST_INVALID')
+        if 'inboundTag' in rule and any(x not in inbound_tags for x in rule['inboundTag']):
+            raise Failure('PROFILE_ROUTING_INBOUND_REFERENCE_INVALID')
+        if api_tag and target == api_tag:
+            if rule.get('inboundTag') != [api_inbound] or set(rule) - {'type', 'inboundTag', 'outboundTag'}:
+                raise Failure('PROFILE_SERVICE_API_ROUTE_MUST_BE_LOCAL_ONLY')
+            api_routes += 1
+        elif api_inbound and api_inbound in rule.get('inboundTag', []):
+            raise Failure('PROFILE_SERVICE_API_ROUTE_TARGET_INVALID')
+    if api_tag and (api_routes != 1 or rules[0].get('outboundTag') != api_tag):
+        raise Failure('PROFILE_SERVICE_API_ROUTE_MISSING_OR_NOT_FIRST')
+
+
 def validate_profile(profile, c):
-    """Validate THIS node's masking policy, not legal ownership or panel state."""
+    """Validate supplied node JSON structure and Selfsteal contract, without mutation.
+
+    Does not test users, engine version, Host overrides, DNS answers or final
+    TCP/UDP enforcement. A correct API service inbound is not a second VPN.
+    """
     if not isinstance(profile, dict):
         raise Failure('PROFILE_NOT_XRAY_OBJECT')
     inbounds = profile.get('inbounds')
-    if not isinstance(inbounds, list) or len(inbounds) != 1 or not isinstance(inbounds[0], dict):
+    if not isinstance(inbounds, list) or not inbounds or any(not isinstance(i, dict) for i in inbounds):
         raise Failure('PROFILE_REQUIRES_ONE_VLESS_INBOUND')
-    inbound = inbounds[0]
-    if inbound.get('protocol') != 'vless' or type(inbound.get('port')) is not int or inbound['port'] != 443:
+    vpn = [i for i in inbounds if i.get('protocol') == 'vless']
+    if len(vpn) != 1:
+        raise Failure('PROFILE_REQUIRES_ONE_VLESS_INBOUND')
+    inbound_tags = [i.get('tag') for i in inbounds]
+    if not all(_profile_tag(x) for x in inbound_tags) or len(set(inbound_tags)) != len(inbound_tags):
+        raise Failure('PROFILE_INBOUND_TAGS_INVALID_OR_DUPLICATE')
+    api_tag, api_inbound = _profile_api(profile, inbounds)
+    inbound = vpn[0]
+    if type(inbound.get('port')) is not int or inbound['port'] != 443:
         raise Failure('PROFILE_REQUIRES_VLESS_TCP443')
-    stream = inbound.get('streamSettings') or {}
+    if inbound.get('listen') not in ('0.0.0.0', c['public_ipv4']):
+        raise Failure('PROFILE_REQUIRES_NODE_IPV4_LISTENER')
+    stream = inbound.get('streamSettings')
     if not isinstance(stream, dict) or stream.get('security') != 'reality':
         raise Failure('PROFILE_REQUIRES_RAW_REALITY_NO_OTHER_TRANSPORTS')
-    # Newer schemas use method; network is the older compatibility spelling.
-    # Never let a second spelling silently select XHTTP/WS behind a raw field.
+    # Inspect both spellings; never let an alias silently select another transport.
     methods = [stream[key] for key in ('network', 'method') if key in stream]
     if not methods or any(value not in ('raw', 'tcp') for value in methods):
         raise Failure('PROFILE_REQUIRES_RAW_REALITY_NO_OTHER_TRANSPORTS')
+    sockopt = stream.get('sockopt', {})
+    if not isinstance(sockopt, dict) or sockopt.get('acceptProxyProtocol', False) is not False:
+        raise Failure('PROFILE_DIRECT_INBOUND_MUST_NOT_REQUIRE_PROXY_PROTOCOL')
     r = stream.get('realitySettings')
     if not isinstance(r, dict):
         raise Failure('PROFILE_REALITY_SETTINGS_MISSING')
     if r.get('serverNames') != [c['domain']]:
         raise Failure('PROFILE_SNI_MUST_EQUAL_THIS_NODE_DOMAIN')
-    # target and the older dest alias cannot override one another silently.
     targets = [r[k] for k in ('target', 'dest') if k in r]
     if not targets or any(value != '/dev/shm/nginx.sock' for value in targets):
         raise Failure('PROFILE_TARGET_MUST_BE_LOCAL_SELFSTEAL_SOCKET')
     if type(r.get('xver')) is not int or r['xver'] != 1:
         raise Failure('PROFILE_SELFSTEAL_REQUIRES_PROXY_V1')
-    if r.get('minClientVer') != '1.0.0':
-        raise Failure('PROFILE_MIN_CLIENT_VER_MUST_BE_1_0_0')
+    if r.get('minClientVer') != PROFILE_MIN_CLIENT_VERSION:
+        raise Failure('PROFILE_MIN_CLIENT_VER_MUST_BE_0_0_0')
     settings = inbound.get('settings')
     if not isinstance(settings, dict) or settings.get('decryption') != 'none' or settings.get('fallbacks'):
         raise Failure('PROFILE_UNEXPECTED_VLESS_SETTINGS_OR_FALLBACKS')
-    outbounds = profile.get('outbounds')
-    if not isinstance(outbounds, list) or not outbounds or any(
-            not isinstance(o, dict) or o.get('protocol') not in ('freedom', 'blackhole') for o in outbounds):
-        raise Failure('PROFILE_UNSUPPORTED_OUTBOUND_REQUIRES_MANUAL_AUDIT')
+    if settings.get('flow', '') not in ('', 'xtls-rprx-vision'):
+        raise Failure('PROFILE_VLESS_FLOW_INVALID')
+    for key in ('clients', 'users'):
+        if key in settings:
+            if not isinstance(settings[key], list) or any(not isinstance(x, dict) for x in settings[key]):
+                raise Failure('PROFILE_VLESS_USERS_INVALID')
+            if any(x.get('flow', '') not in ('', 'xtls-rprx-vision') for x in settings[key]):
+                raise Failure('PROFILE_VLESS_CLIENT_FLOW_INVALID')
+    _profile_network_policy(profile, api_tag, api_inbound, inbound_tags)
     return True
 
 
+def _profile_object(pairs):
+    """Reject ambiguous duplicate fields without echoing any key or value."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise Failure('PROFILE_DUPLICATE_JSON_FIELD')
+        result[key] = value
+    return result
+
+
+def _profile_nonfinite(_value):
+    raise Failure('PROFILE_NONFINITE_JSON_NUMBER')
+
+
 def audit_profile(path, c):
-    path = Path(path)
-    if path.stat().st_size > 2 * 1024 * 1024:
-        raise Failure('PROFILE_TOO_LARGE_FOR_LOCAL_POLICY_AUDIT')
-    validate_profile(read_json(path), c)
+    # The JSON may contain private keys/users. Never print its contents or errors.
+    # O_NONBLOCK avoids hanging on a FIFO; fstat then rejects non-regular input.
+    import stat
+    limit = 2 * 1024 * 1024
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                raise Failure('PROFILE_INPUT_MUST_BE_REGULAR_FILE')
+            data = f.read(limit + 1)
+        if len(data) > limit:
+            raise Failure('PROFILE_TOO_LARGE_FOR_LOCAL_POLICY_AUDIT')
+        profile = json.loads(data.decode('utf-8'), object_pairs_hook=_profile_object,
+                             parse_constant=_profile_nonfinite)
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise Failure('PROFILE_INPUT_READ_OR_JSON_INVALID') from exc
+    validate_profile(profile, c)
     print('PROFILE_RAW_REALITY_SELFSTEAL_POLICY=PASS')
+    print('PROFILE_IPV4_ROUTING_STRUCTURE=PASS')
     print('SCOPE=SUPPLIED_JSON_ONLY; LIVE_NODE_AND_HOST_OVERRIDES=NOT_VERIFIED; DOMAIN_OWNERSHIP=OPERATOR_RESPONSIBILITY')
+    print('EGRESS_ENFORCEMENT=NOT_VERIFIED; CORE_VALIDATION_AND_CLIENT_TEST=NOT_PERFORMED')
 
 
 def docker_config():
@@ -3735,7 +4818,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.1.2\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.3.0\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -3743,7 +4826,8 @@ def export_reality_keys_file(c):
         f'ShortID: {keys["short_id"]}\n'
         'Reality target: /dev/shm/nginx.sock\n'
         'xver: 1\n'
-        'minClientVer: 1.0.0\n'
+        f'flow: {PROFILE_FLOW}\n'
+        f'minClientVer: {PROFILE_MIN_CLIENT_VERSION}\n'
         f'serverName/SNI: {c["domain"]}\n'
     )
     atomic_text(path, text)
@@ -3909,7 +4993,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.1.2 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.3.0 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -3932,8 +5016,8 @@ def write_panel_guide(c):
 4. Internal Squads: разрешите inbound {tag} нужной группе пользователей.
    Обновите подписку в клиенте и проверьте соединение извне.
 
-Шаблон: VLESS + RAW + REALITY.
-REALITY target: /dev/shm/nginx.sock; xver=1 (PROXY protocol v1); minClientVer=1.0.0.
+Шаблон: VLESS + RAW + REALITY + Vision (settings.flow=xtls-rprx-vision).
+REALITY target: /dev/shm/nginx.sock; xver=1 (PROXY protocol v1); minClientVer={PROFILE_MIN_CLIENT_VERSION}.
 Selfsteal: Nginx + OpenSSL на Unix socket, порт 443 полностью остаётся за Xray.
 serverName/SNI: {c['domain']}
 REALITY publicKey: {keys['public_key']}
@@ -4077,6 +5161,9 @@ vk_apt_run "${APT[@]}" install "${NODE_PACKAGES[@]}"
 ensure_sshd_runtime
 [[ $(python3 "$TIME_HELPER" select) == "$TIME_SERVICE" ]] || die 'NTP provider изменился во время APT; останавливаюсь.'
 
+vk_write_ssh_guard
+python3 -I -B -S "$LIB/ssh_guard.py" preflight --user "$LOGIN_USER"
+
 stage 'MSK, синхронизация времени и ограничение журналов'
 timedatectl set-timezone Europe/Moscow
 if [[ "$TIME_SERVICE" == chrony ]]; then
@@ -4184,11 +5271,12 @@ systemctl daemon-reload
 systemctl enable vkarmani-node-network
 systemctl restart vkarmani-node-network
 
-# Enable password SSH without changing accounts/passwords/authorized keys. Convert socket activation to an IPv4
+# Enforce password-only SSH without deleting accounts/passwords/authorized_keys files. Convert socket activation to an IPv4
 # ssh.service, whose KillMode=process preserves established SSH child sessions.
 ensure_sshd_runtime
 [[ "$(systemctl show ssh.service -p KillMode --value)" == process ]] || die 'SSH unit KillMode не process; безопасное переключение не подтверждено.'
-PUBKEY_BEFORE=$(/usr/sbin/sshd -T | awk '$1=="pubkeyauthentication"{print $2}')
+# Password-only admission has already been checked; do not preserve key login.
+python3 -I -B -S "$LIB/ssh_guard.py" preflight --user "$LOGIN_USER"
 NETBK="$STATE/network-backup"
 install -d -m 0700 "$NETBK"
 cp -a /etc/ssh/sshd_config "$NETBK/sshd_config"
@@ -4253,6 +5341,8 @@ systemd-run --collect --unit="$ROLLBACK_UNIT" --on-active=180s /usr/local/sbin/v
 python3 - <<'PY_SSH_CONFIG'
 from pathlib import Path
 import re
+import os
+import stat
 import subprocess
 
 START = '# BEGIN VKARMANI PASSWORD SSH'
@@ -4272,7 +5362,8 @@ def render_ssh(text, ports, existing):
     extra = ''.join('Port ' + str(p) + '\n' for p in selected)
     block = (START + '\nAddressFamily inet\nPasswordAuthentication yes\n'
              'PermitRootLogin yes\nPermitEmptyPasswords no\n'
-             'AuthenticationMethods any\nKbdInteractiveAuthentication no\n'
+             'AuthenticationMethods password\nPubkeyAuthentication no\n'
+             'KbdInteractiveAuthentication no\nHostbasedAuthentication no\nGSSAPIAuthentication no\n'
              'LoginGraceTime 30\nMaxAuthTries 5\nMaxStartups 10:30:60\nUseDNS no\n'
              + extra + END + '\n')
     return block + text
@@ -4281,13 +5372,41 @@ def render_ssh(text, ports, existing):
 def main():
     path = Path('/etc/ssh/sshd_config')
     ports = Path('/etc/vkarmani-node/ssh-ports').read_text().split()
-    current = subprocess.check_output(['/usr/sbin/sshd', '-T'], text=True)
+    current = subprocess.check_output(['/usr/sbin/sshd', '-T'], text=True, timeout=10)
     existing = set(re.findall(r'^port ([0-9]+)$', current, re.M))
-    result = render_ssh(path.read_text(), ports, existing)
-    tmp = path.with_name('.sshd_config.vkarmani.tmp')
-    tmp.write_text(result)
-    tmp.chmod(0o600)
-    tmp.replace(path)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as src:
+        info = os.fstat(src.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise ValueError('unsafe sshd_config; not overwritten')
+        original = src.read(1048577)
+    if len(original) > 1048576:
+        raise ValueError('sshd_config too large; not overwritten')
+    result = render_ssh(original.decode('utf-8'), ports, existing)
+    import tempfile
+    fd, name = tempfile.mkstemp(prefix='.sshd_config.vkarmani.', dir=path.parent)
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            os.fchmod(f.fileno(), 0o600)
+            f.write(result)
+            f.flush()
+            os.fsync(f.fileno())
+        subprocess.run(['/usr/sbin/sshd', '-t', '-f', str(tmp)], check=True,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=10)
+        actual = subprocess.check_output(['/usr/sbin/sshd', '-T', '-f', str(tmp)], text=True, timeout=10)
+        required = ('passwordauthentication yes', 'pubkeyauthentication no',
+                    'authenticationmethods password', 'kbdinteractiveauthentication no',
+                    'permitemptypasswords no', 'addressfamily inet')
+        if not all(x in actual.splitlines() for x in required):
+            raise ValueError('candidate SSH password-only policy not effective')
+        tmp.replace(path)
+        dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(dfd)
+        finally: os.close(dfd)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
@@ -4296,10 +5415,10 @@ PY_SSH_CONFIG
 ensure_sshd_runtime
 /usr/sbin/sshd -t
 SSH_EFFECTIVE=$(/usr/sbin/sshd -T)
-for expected in 'passwordauthentication yes' 'permitrootlogin yes' 'permitemptypasswords no' 'authenticationmethods any' 'addressfamily inet'; do
+for expected in 'passwordauthentication yes' 'permitrootlogin yes' 'permitemptypasswords no' 'authenticationmethods password' 'pubkeyauthentication no' 'kbdinteractiveauthentication no' 'hostbasedauthentication no' 'gssapiauthentication no' 'addressfamily inet'; do
     printf '%s\n' "$SSH_EFFECTIVE" | _contains -Fx "$expected" || die "Не применена SSH-политика: $expected"
 done
-[[ $(awk '$1=="pubkeyauthentication"{print $2}' <<< "$SSH_EFFECTIVE") == "$PUBKEY_BEFORE" ]] || die 'Настройка существующих SSH-ключей неожиданно изменилась.'
+printf '%s\n' "$SSH_EFFECTIVE" | _contains -Fx 'pubkeyauthentication no' || die 'SSH public-key login must be disabled.'
 unset SSH_EFFECTIVE
 if systemctl is-active --quiet ssh.socket; then systemctl stop ssh.socket; fi
 systemctl disable ssh.socket 2>/dev/null || true
@@ -4392,6 +5511,12 @@ NGINX_BUILD=$(nginx -V 2>&1)
 [[ "$NGINX_BUILD" == *--with-http_ssl_module* && "$NGINX_BUILD" == *--with-http_v2_module* ]] || die 'Nginx должен поддерживать TLS и HTTP/2.'
 NGINX_HTTP2_LISTEN='http2'
 NGINX_HTTP2_DIRECTIVE=''
+NGINX_REJECT_HANDSHAKE_DIRECTIVE=''
+if dpkg --compare-versions "$NGINX_NUM" ge 1.19.4; then
+    NGINX_REJECT_HANDSHAKE_DIRECTIVE='ssl_reject_handshake on;'
+else
+    echo 'SELFSTEAL_SNI_REJECT=UNAVAILABLE_LEGACY_NGINX; HTTP Host guard remains active.'
+fi
 if dpkg --compare-versions "$NGINX_NUM" ge 1.25.1; then
     NGINX_HTTP2_LISTEN=''
     NGINX_HTTP2_DIRECTIVE='http2 on;'
@@ -4425,6 +5550,13 @@ cat > /etc/nginx/conf.d/00-vkarmani-global.conf <<'EOF'
 server_tokens off;
 EOF
 cat > /etc/nginx/conf.d/10-vkarmani-http.conf <<EOF
+# Dedicated node only. Unknown Host must not redirect to a user supplied host.
+server {
+    listen $PUBLIC_IP:80 default_server;
+    server_name _;
+    access_log off;
+    return 404;
+}
 server {
     listen $PUBLIC_IP:80;
     server_name $DOMAIN;
@@ -4433,9 +5565,13 @@ server {
     client_max_body_size 1m;
     client_header_timeout 15s;
     client_body_timeout 15s;
+    send_timeout 15s;
+    if (\$host != $DOMAIN) { return 404; }
+    if (\$request_method !~ ^(GET|HEAD)\$) { return 405; }
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/vkarmani-node/acme;
         default_type text/plain;
+        disable_symlinks on from=\$document_root;
         try_files \$uri =404;
     }
     location / { return 301 https://$DOMAIN\$request_uri; }
@@ -4454,6 +5590,20 @@ certbot certonly --webroot --webroot-path /var/www/vkarmani-node/acme \
     --domain "$DOMAIN" --cert-name "$DOMAIN" --register-unsafely-without-email \
     --agree-tos --non-interactive --keep-until-expiring --key-type ecdsa --preferred-challenges http
 cat > /etc/nginx/conf.d/20-vkarmani-selfsteal.conf <<EOF
+# Selfsteal is the local REALITY target, not a TLS-terminating VPN frontend.
+# On supported Nginx, reject unknown / absent SNI before certificate disclosure.
+# Legacy packages retain an explicit HTTP refusal, not equivalent TLS protection.
+server {
+    listen unix:/run/vkarmani-selfsteal/nginx.sock ssl $NGINX_HTTP2_LISTEN proxy_protocol default_server;
+    $NGINX_HTTP2_DIRECTIVE
+    server_name _;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    $NGINX_REJECT_HANDSHAKE_DIRECTIVE
+    access_log off;
+    return 421;
+}
 server {
     listen unix:/run/vkarmani-selfsteal/nginx.sock ssl $NGINX_HTTP2_LISTEN proxy_protocol;
     $NGINX_HTTP2_DIRECTIVE
@@ -4472,13 +5622,27 @@ server {
     client_max_body_size 1m;
     client_header_timeout 15s;
     client_body_timeout 15s;
+    send_timeout 15s;
     keepalive_timeout 65s;
+    max_ranges 1;
+    disable_symlinks on from=\$document_root;
+    if (\$host != $DOMAIN) { return 421; }
+    if (\$request_method !~ ^(GET|HEAD)\$) { return 405; }
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
-    location = /robots.txt { try_files \$uri =404; }
-    location = /favicon.svg { try_files \$uri =404; }
-    location /assets/ { try_files \$uri =404; expires 1h; }
-    location / { try_files \$uri \$uri/ =404; }
+    add_header Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+    # No child add_header: preserve parent security headers on older Nginx.
+    location = / { try_files /index.html =404; expires -1; }
+    location = /index.html { try_files \$uri =404; expires -1; }
+    location = /robots.txt { try_files \$uri =404; expires -1; }
+    location = /favicon.svg { try_files \$uri =404; expires -1; }
+    location = /404.html { internal; try_files \$uri =404; expires -1; }
+    location ~ "^/assets/(style-[0-9a-f]{20}[.]css|icon-[0-9a-f]{20}[.]svg)\$" {
+        try_files \$uri =404;
+        expires 7d;
+    }
+    error_page 404 /404.html;
+    location / { return 404; }
 }
 EOF
 rm -f /etc/nginx/conf.d/20-vkarmani-reality-cover.conf
@@ -4496,7 +5660,7 @@ SECONDS=0
 while (( SECONDS < 60 )); do
     remaining=$((60 - SECONDS))
     budget=$((remaining < 22 ? remaining : 22))
-    if [[ -S /run/vkarmani-selfsteal/nginx.sock ]] && timeout --kill-after=2s "${budget}s" /usr/local/sbin/vkarmani-selfsteal-check >/dev/null 2>&1; then
+    if [[ -S /run/vkarmani-selfsteal/nginx.sock ]] && timeout --kill-after=2s "${budget}s" /usr/local/sbin/vkarmani-selfsteal-check --target-only >/dev/null 2>&1; then
         exit 0
     fi
     (( SECONDS >= 60 )) || sleep 1
@@ -4505,19 +5669,21 @@ echo 'SELFSTEAL_NOT_READY: 60-second budget exhausted; check nginx, socket and l
 exit 1
 WAITSELF
 chmod 0755 /usr/local/sbin/vkarmani-wait-selfsteal
+vk_write_cert_deploy
 install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/30-vkarmani-nginx <<'EOF'
 #!/bin/sh
 set -eu
-/usr/sbin/nginx -t
-/usr/bin/systemctl reload nginx
-/usr/local/sbin/vkarmani-wait-selfsteal
+exec /usr/bin/python3 -I -B -S /usr/local/lib/vkarmani-node/cert_deploy.py deploy
 EOF
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/30-vkarmani-nginx
 systemctl enable --now certbot.timer
-if [[ $(helper get certbot_dry_run) == true && ! -f "$STATE/certbot-dry-run-pass" ]]; then
-    certbot renew --cert-name "$DOMAIN" --dry-run --non-interactive
-    touch "$STATE/certbot-dry-run-pass"
+if [[ $(helper get certbot_dry_run) == true ]] && ! grep -Fx 'deploy_hook=pass' "$STATE/certbot-dry-run-pass" >/dev/null 2>&1; then
+    DEPLOY_BEFORE=$(python3 -I -B -S "$LIB/cert_deploy.py" generation)
+    certbot renew --cert-name "$DOMAIN" --dry-run --run-deploy-hooks --non-interactive
+    python3 -I -B -S "$LIB/cert_deploy.py" verify-new "$DEPLOY_BEFORE"
+    printf 'deploy_hook=pass\nat=%s\n' "$(date -Is)" > "$STATE/certbot-dry-run-pass"
+    unset DEPLOY_BEFORE
 fi
 
 stage 'RemnaNode: проверка введённого SECRET_KEY, образ по digest, автозапуск'
@@ -4716,7 +5882,7 @@ stage 'Установка завершена; проверки ДО переза
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"
 printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
 printf 'Внешний firewall хостера (если есть): разрешить TCP/%s от %s к Node Address, указанному в панели.\n' "$NODE_PORT" "${PANEL_IPS[*]}"
-printf 'Транспорт: VLESS + RAW + REALITY; Selfsteal: /dev/shm/nginx.sock (xver=1)\n'
+printf 'Транспорт: VLESS + RAW + REALITY + Vision; Selfsteal: /dev/shm/nginx.sock (xver=1)\n'
 printf 'Профиль и действия в панели: /etc/vkarmani-node/PANEL-SETUP.txt\n'
 printf 'REALITY_KEYS_FILE: %s (root:0600; PrivateKey не записывается в install log)\n' "$REALITY_KEYS_FILE"
 printf 'SSH-порты сохранены: %s\n' "${SSH_PORTS[*]}"
@@ -4808,7 +5974,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.1.2-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.3.0-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -4859,7 +6025,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.1.2 — исправление только на НОДЕ'
+    echo 'VKarmani 2.3.0 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -4924,7 +6090,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.1.2\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.3.0\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -4954,7 +6120,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.1.2-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.3.0-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -4965,7 +6131,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.1.2 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.3.0 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -5002,7 +6168,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.1.2\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.3.0\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true

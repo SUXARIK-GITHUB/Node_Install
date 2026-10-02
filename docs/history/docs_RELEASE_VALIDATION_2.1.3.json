@@ -1,0 +1,61 @@
+{
+  "version": "2.1.3",
+  "release_date": "2026-10-02",
+  "status": "LOCAL_TESTS_PASSED_VPS_PILOT_REQUIRED",
+  "source_archive": "Node_Install_2.1.2_docs_ci_fixed.zip",
+  "source_archive_sha256": "2a64f7036466aa791ac06038048984f0d9280be9c89a91f1e420a31916bfcadb",
+  "installer_sha256": "40124966b043e280f843cea06f681472b39ac01447e9692566d4dbeb82a59b1b",
+  "environment": {
+    "os": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"",
+    "machine": "x86_64",
+    "python": "3.13.5"
+  },
+  "tests": {
+    "baseline_root": {
+      "ran": 383,
+      "seconds": 17.945,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "release_root": {
+      "ran": 420,
+      "seconds": 19.345,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "release_uid1000": {
+      "ran": 420,
+      "seconds": 18.458,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "new_regressions": 37
+  },
+  "doc_bash_blocks_syntax_checked": 46,
+  "source_worktree_files_preserved": 102,
+  "source_worktree_deleted": 0,
+  "original_archive_unchanged": true,
+  "historical_documents_copied_verbatim": 4,
+  "unchanged_embedded_payloads": 21,
+  "preview_unchanged": true,
+  "ci_workflow_unchanged": true,
+  "new_runtime_dependencies": 0,
+  "remote_github_modified": false,
+  "user_vps_modified": false,
+  "live_profiles_modified": false,
+  "full_install_or_reboot_executed": false,
+  "real_client_test_executed": false,
+  "actual_remnanode_bundled_xray_validation_executed": false,
+  "ubuntu_matrix_or_arm64_executed": false,
+  "helper_auto_migration_added": false,
+  "runtime_socket_auto_reader_added": false,
+  "limits": [
+    "Supplied JSON structure is not a complete Xray schema or egress-security audit.",
+    "New generation changes only minClientVer; does not adopt custom live DNS/routing/Vision defaults.",
+    "Existing installed checkers are not replaced by re-running installer.",
+    "Full VPS pilot and remote CI are pending."
+  ]
+}

@@ -92,7 +92,7 @@ class NginxFaultIntegrationTests(unittest.TestCase):
         self.stop()
         config = self.root / 'nginx.conf'
         original = config.read_text()
-        altered = original.replace('try_files $uri $uri/ =404;', 'return 404;')
+        altered = original.replace('try_files /index.html =404;', 'return 404;')
         self.assertNotEqual(altered, original)
         try:
             config.write_text(altered)

@@ -1,0 +1,196 @@
+{
+  "transport": "in-memory HTML + exact CSS, not the VPN path",
+  "cases": [
+    {
+      "variant": "orbit",
+      "width": 320,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 375,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 390,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 620,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 768,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 900,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 1024,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 1440,
+      "result": "PASS"
+    },
+    {
+      "variant": "orbit",
+      "width": 1920,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 320,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 375,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 390,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 620,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 768,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 900,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 1024,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 1440,
+      "result": "PASS"
+    },
+    {
+      "variant": "fold",
+      "width": 1920,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 320,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 375,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 390,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 620,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 768,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 900,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 1024,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 1440,
+      "result": "PASS"
+    },
+    {
+      "variant": "grid",
+      "width": 1920,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 320,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 375,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 390,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 620,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 768,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 900,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 1024,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 1440,
+      "result": "PASS"
+    },
+    {
+      "variant": "horizon",
+      "width": 1920,
+      "result": "PASS"
+    }
+  ],
+  "external_requests": [],
+  "page_errors": [],
+  "http_errors": [],
+  "site_bytes": {
+    "orbit": 7833,
+    "fold": 8976,
+    "grid": 8999,
+    "horizon": 8868
+  },
+  "browser_version": "144.0.7559.96",
+  "result": "PASS"
+}
