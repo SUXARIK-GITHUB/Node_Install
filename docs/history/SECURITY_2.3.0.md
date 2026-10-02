@@ -1,4 +1,4 @@
-# 🔐 Безопасность VKarmani Node Install 2.4.0
+# 🔐 Безопасность VKarmani Node Install 2.3.0
 
 Этот файл описывает security-модель **установщика ноды**, а не всей Remnawave-инфраструктуры. Installer работает с root-правами на выделенной VPS и намеренно меняет SSH, UFW, GRUB, sysctl, Nginx, Docker и systemd. Безопасность зависит и от встроенных guard-проверок, и от внешних компонентов, которые установщик не контролирует: хостер, панель, DNS, Cloudflare, рабочая станция администратора и клиентские устройства.
 
@@ -183,18 +183,16 @@ NAT-only, IPv6-only, LXC/OpenVZ и неподдерживаемый boot layout 
 
 RemnaNode работает в `network_mode: host`. Это часть выбранной архитектуры и означает общий network namespace с хостом. Это **не** полноценная network isolation.
 
-Начиная с `2.4.0` по умолчанию:
+По умолчанию:
 
-- `NET_ADMIN` **выдаётся** контейнеру RemnaNode. Это сознательное изменение проекта для функций, которым нужен доступ к сетевому состоянию хоста, включая «Обозреватель сессий»;
-- `NET_RAW` по-прежнему сброшен;
+- `NET_ADMIN` не выдаётся;
+- `NET_RAW` сброшен;
 - включён `no-new-privileges`;
 - в контейнер read-only монтируется только dedicated Selfsteal socket directory;
 - private keys Let's Encrypt в Xray не монтируются;
 - после pull image фиксируется точным digest.
 
-При `network_mode: host` capability `NET_ADMIN` существенно расширяет влияние процессов контейнера на сеть VPS: код внутри контейнера потенциально может менять интерфейсы, маршрутизацию, qdisc и firewall/network namespace state, доступный этому namespace. Поэтому compromise RemnaNode/Xray или дефект upstream имеет больший blast radius, чем в 2.3.0 default без этой capability. Это принятый trade-off ради требуемой функции, а не дополнительная изоляция.
-
-`--allow-net-admin` сохранён только для совместимости старых команд и в `2.4.0` не является opt-in: новая установка и resume `2.4.0` сохраняют `allow_net_admin=true`, Compose содержит `cap_add: NET_ADMIN`, а checker требует соответствия state фактической capability. Существующие завершённые 2.3.0-ноды обычным повторным запуском installer автоматически не мигрируются.
+`--allow-net-admin` существует только для осознанно выбранных upstream-функций управления IP/network. При host networking `NET_ADMIN` может позволить контейнеру менять сеть хоста. Не включайте capability «про запас».
 
 Доступ к Docker socket остаётся root-equivalent. Container hardening не защищает от root/Docker-daemon compromise.
 
@@ -297,10 +295,10 @@ sudo dpkg --audit
 4. проверяет `--version`;
 5. запускает только после всех проверок.
 
-SHA256 `install.sh` для этого `2.4.0`:
+SHA256 `install.sh` для этого `2.3.0`:
 
 ```text
-38c614aa532b476101eacd874742fc60428da1b68e8cafc09051f296a5bd945d
+425e1541b23d97b0de8fd3f2ff72eb7566c8008be95b63a896baa47d561ded1c
 ```
 
 Если `install.sh` изменён, README и release manifest должны обновляться согласованно после review. Никогда не вычисляйте новый хеш из недоверенного изменившегося файла и не называйте его после этого «проверенным».
@@ -475,7 +473,6 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 - [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md) — сохранение поддерживаемого time provider.
 - [docs/UBUNTU_26_04.md](docs/UBUNTU_26_04.md) — статус 26.04 и требования canary.
 - [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — failure modes и остаточные риски.
-- [docs/NET_ADMIN_2.4.0.md](docs/NET_ADMIN_2.4.0.md) — default `NET_ADMIN`, существующие ноды и rollback-границы.
 
 
 ## 18. Selfsteal 2.3.0: HTTP-поверхность и ограничения
@@ -504,12 +501,3 @@ UFW остаётся единственным управляемым firewall; �
 Проверка IPv6 и dpkg учитывает return code команды, а не только пустоту вывода. Resource helper читает только comm, `/proc/.../limits` и число FD: не cmdline, environ, fd targets и клиентские адреса. Очередь Selfsteal — моментный снимок локального socket, не тест пропускной способности.
 
 В новый generated profile добавлен общий Vision; DNS/routing предыдущего generator сохранены, включая запрет IP панели. Это не универсальная политика для любых публичных сервисов TECH. Live-профили панели и другие VPS автоматически не меняются.
-
-## 20. Default NET_ADMIN в 2.4.0
-
-Изменение ограничено capability/state/Compose и проверками версии. Новых портов, контейнеров, systemd units, Docker socket mounts, сетевых namespace, iptables/nftables правил или runtime-пакетов не добавлено. `NET_RAW` не возвращён.
-
-Локальная проверка подтверждает только, что контейнер запущен с ожидаемой capability. Она **не** доказывает корректность «Обозревателя сессий» на конкретной версии панели/Xray и не доказывает отсутствие побочных сетевых эффектов. После canary-обновления проверьте сам интерфейс сессий, обычный клиентский трафик, доступ панели к Node API и host firewall/routes/qdisc.
-
-Для уже завершённых нод изменение применяется отдельной узкой операцией с backup Compose/config, `docker compose config --quiet`, recreate только RemnaNode с `--pull never`, проверкой неизменности image и rollback при apply-failure. Полный VPS snapshot остаётся предпочтительным rollback перед массовой раскаткой. Подробный регламент: [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md) и [OPERATIONS](docs/OPERATIONS.md).
-

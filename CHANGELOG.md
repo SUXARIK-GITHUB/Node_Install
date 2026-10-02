@@ -1,5 +1,22 @@
 # Изменения
 
+## 2.4.0 — 2026-10-02
+
+Изменена default capability-политика RemnaNode по прямому требованию эксплуатации: функционал «Обозреватель сессий» должен работать без отдельного opt-in на каждой новой ноде.
+
+- Generated Compose теперь всегда содержит `cap_add: NET_ADMIN`; новая конфигурация и resume 2.4.0 сохраняют `allow_net_admin=true`.
+- `--allow-net-admin` оставлен как совместимый CLI-флаг старых команд, но в 2.4.0 capability уже включена по умолчанию.
+- Checker больше не выдаёт штатный `NET_ADMIN` как warning: при `allow_net_admin=true` + фактическом capability это PASS; mismatch state/container остаётся FAIL.
+- `NET_RAW` drop, `no-new-privileges`, read-only Selfsteal mount, host Nginx, UFW/Fail2ban, SSH password-only, IPv4-only, image digest pin и три обязательных поля не ослаблялись/не менялись.
+- Reviewed-version allowlists profile-check/maintenance/cover дополнены 2.4.0 без удаления 2.3.0 и предыдущих поддерживаемых версий.
+- Для уже завершённых нод обычный повтор installer по-прежнему не является миграцией. Добавлен отдельный backup/validate/recreate/rollback runbook с `--pull never` и проверкой неизменности image.
+- Security-документация теперь явно фиксирует повышенный blast radius `NET_ADMIN` при `network_mode: host`; массовая раскатка требует canary.
+- История семи актуальных документов 2.3.0 сохранена побайтово в `docs/history` до их обновления.
+- Локальный набор увеличен до 555 тестов: все 554 прежних сохранены, добавлена проверка того, что новый install state действительно фиксирует `allow_net_admin=true`.
+
+[Изменение NET_ADMIN и rollout](docs/NET_ADMIN_2.4.0.md) · [проверки](docs/TEST_REPORT.md) · [безопасность](SECURITY.md).
+
+
 ## 2.3.0 — 2026-10-02
 
 Локально проверенный release-candidate на базе 2.2.0. Полная VPS/клиентская приёмка не заявляется; TECH и рабочие ноды не изменялись.

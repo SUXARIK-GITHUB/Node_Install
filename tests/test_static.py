@@ -33,7 +33,7 @@ class StaticTests(unittest.TestCase):
         for arg in ('--version', '--help'):
             result = subprocess.run(['bash', str(ROOT / 'install.sh'), arg], text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('2.3.0', result.stdout)
+            self.assertIn('2.4.0', result.stdout)
         result = subprocess.run(['bash', str(ROOT / 'install.sh'), '--invalid'], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 2)
 
@@ -59,18 +59,18 @@ class StaticTests(unittest.TestCase):
         self.assertIn('NO_REBOOT=0', SCRIPT)
         self.assertIn('WEEKLY_REBOOT=0', SCRIPT)
 
-    def test_default_compose_has_no_net_admin_or_published_ports(self):
+    def test_default_compose_has_net_admin_and_no_published_ports(self):
         import yaml
         text = template('"$OPT/compose.yaml"')
         text = text.replace('$DIGEST', 'remnawave/node@sha256:' + 'a' * 64)
-        text = text.replace('$ETC', '/etc/vkarmani-node').replace('$NET_ADMIN_YAML', '')
+        text = text.replace('$ETC', '/etc/vkarmani-node')
         obj = yaml.safe_load(text)
         self.assertEqual(set(obj['services']), {'remnanode'})
         node = obj['services']['remnanode']
         self.assertEqual(node['network_mode'], 'host')
         self.assertEqual(node['restart'], 'always')
         self.assertNotIn('ports', node)
-        self.assertNotIn('cap_add', node)
+        self.assertEqual(node['cap_add'], ['NET_ADMIN'])
         self.assertEqual(node['cap_drop'], ['NET_RAW'])
         self.assertIn('no-new-privileges:true', node['security_opt'])
         mount = node['volumes'][0]
@@ -80,11 +80,13 @@ class StaticTests(unittest.TestCase):
         self.assertEqual(node['env_file'], ['/etc/vkarmani-node/remnanode.env'])
         self.assertNotIn('SECRET_KEY', text)
 
-    def test_explicit_net_admin_compose(self):
-        import yaml
-        text = template('"$OPT/compose.yaml"').replace('$DIGEST', 'remnawave/node@sha256:' + 'a' * 64)
-        text = text.replace('$ETC', '/etc/vkarmani-node').replace('$NET_ADMIN_YAML', '    cap_add:\n      - NET_ADMIN')
-        self.assertEqual(yaml.safe_load(text)['services']['remnanode']['cap_add'], ['NET_ADMIN'])
+    def test_net_admin_is_new_install_default_and_runtime_policy(self):
+        self.assertIn('ALLOW_NET_ADMIN=1', SCRIPT)
+        self.assertIn("'allow_net_admin': True", SCRIPT)
+        self.assertIn('      - NET_ADMIN', template('"$OPT/compose.yaml"'))
+        checker = payload('VK_PAYLOAD_VK_WRITE_ACCEPTANCE')
+        self.assertIn('pass NODE_NET_ADMIN', checker)
+        self.assertNotIn("warn NODE_NET_ADMIN 'explicit opt-in", checker)
 
     def test_fail2ban_action_is_always_ssh_port_scoped(self):
         config = configparser.ConfigParser(interpolation=None)

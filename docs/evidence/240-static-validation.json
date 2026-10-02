@@ -1,0 +1,28 @@
+{
+  "shell_files": {
+    "count": 2,
+    "syntax": "PASS",
+    "files": [
+      "install.sh",
+      "tests/run.sh"
+    ]
+  },
+  "python_files": {
+    "count": 40,
+    "ast": "PASS"
+  },
+  "json_files": {
+    "count": 22,
+    "parse": "PASS"
+  },
+  "workflow_yaml": "PASS",
+  "embedded": {
+    "shell_payloads": 5,
+    "python_payloads": 23,
+    "syntax": "PASS"
+  },
+  "net_admin_existing_node_command_bash_syntax": "PASS",
+  "installer_version": "2.4.0",
+  "net_admin_default_contract": "PASS",
+  "shellcheck": "NOT_INSTALLED"
+}

@@ -1,26 +1,6 @@
 # Эксплуатация, диагностика и восстановление
 
-## Текущий выпуск 2.4.0 — `NET_ADMIN` по умолчанию
-
-В 2.4.0 новая нода получает `cap_add: NET_ADMIN` без отдельного opt-in. Это нужно для RemnaNode-функций, использующих сетевое состояние хоста, включая «Обозреватель сессий». `NET_RAW` drop, `no-new-privileges`, read-only Selfsteal mount, host Nginx, UFW/Fail2ban, SSH password-only, IPv4-only и image digest pin сохранены.
-
-На уже завершённой ноде обычный повтор installer **не переписывает Compose**, поэтому не используйте `bash install.sh --allow-net-admin` как миграцию: completion guard переведёт запуск в диагностику. Для существующих нод используйте только узкую backup/validate/recreate процедуру из [NET_ADMIN_2.4.0](NET_ADMIN_2.4.0.md). Она не делает pull image и не перезапускает Docker daemon.
-
-Порядок rollout: provider snapshot → одна canary-нода → включение capability → проверка `docker inspect`, стабильности container/image → проверка Node API/панели → реальный клиент → «Обозреватель сессий» → контроль host UFW/routes/qdisc → остальные ноды. Локальный PASS capability не доказывает работу UI панели.
-
-После новой установки 2.4.0 ожидается:
-
-```bash
-docker inspect remnanode --format '{{json .HostConfig.CapAdd}}'
-sudo vkarmani-node-check --local
-```
-
-На новой установке 2.4.0 в CapAdd должен присутствовать `NET_ADMIN`, а установленный checker 2.4.0 должен давать `PASS NODE_NET_ADMIN`. На существующей завершённой 2.3.0 ноде после узкой команды из NET_ADMIN-runbook сам старый checker 2.3.0 **может по-прежнему вывести `WARN NODE_NET_ADMIN`**, потому что в 2.3.0 это был explicit opt-in. Это ожидаемая семантика старого checker, а не отсутствие capability; runbook отдельно проверяет фактический `HostConfig.CapAdd`. Не заменяйте checker одиночным файлом ради смены WARN на PASS. Если state и container расходятся, не исправляйте marker вручную — разберите Compose/config и последнюю операцию.
-
-Полное описание изменения и готовая команда для существующих нод: [NET_ADMIN_2.4.0](NET_ADMIN_2.4.0.md). Ограничения 2.3.0 по SSH/Selfsteal сохраняются ниже как действующая база.
-
-
-## База 2.3.0 — парольный SSH и раздельная Selfsteal-приёмка
+## Текущий выпуск 2.3.0 — парольный SSH и раздельная Selfsteal-приёмка
 
 База 2.2.0; host Nginx, собственный Selfsteal, RAW/REALITY, IPv4 и три входных значения сохранены. Новая установка отключает SSH publickey; accounts/passwords/authorized_keys не изменяются. До запуска парольный вход уже должен работать. Новые helpers на работающих старых нодах **не обновляются автоматически**. Обычный повтор вызывает установленный checker; `--refresh-image`/`--update-cover` — не миграция всей установки. Не подменять markers и отдельные helpers вручную.
 

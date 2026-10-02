@@ -19,7 +19,7 @@
 - [Dockerfile](https://github.com/remnawave/node/blob/main/docker/Dockerfile), [init-env.sh](https://github.com/remnawave/node/blob/main/docker/rootfs/etc/s6-overlay/scripts/init-env.sh): актуальная структура образа/init, внутренние сокеты и окружение. Изучение исходников не заменяет запуск конкретного digest.
 - [Issue #41: egressFilter and host egress](https://github.com/remnawave/node/issues/41): конкретный отчёт пользователя upstream о влиянии сетевой функции на host egress. Это сигнал о возможном blast radius, не доказательство дефекта всех версий или всех инсталляций.
 
-Применено: не отправлять ключ/клиентский сертификат ради локального probe; проверить CA+leaf и derived SNI; отдельно подтвердить, что probe не аутентифицирует панель. NET_ADMIN — явный opt-in, без обещания работоспособности зависимых от неё plugins в default-конфигурации.
+Применено: не отправлять ключ/клиентский сертификат ради локального probe; проверить CA+leaf и derived SNI; отдельно подтвердить, что probe не аутентифицирует панель. Начиная с 2.4.0 `NET_ADMIN` является default по эксплуатационному требованию функций, использующих сетевое состояние хоста; повышенный blast radius host networking зафиксирован в SECURITY и требует canary.
 
 ## R3. Docker
 

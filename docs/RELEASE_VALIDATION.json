@@ -1,27 +1,27 @@
 {
-  "version": "2.3.0",
+  "version": "2.4.0",
   "date": "2026-10-02",
-  "status": "LOCAL_TESTS_PASSED_VPS_PILOT_REQUIRED",
+  "status": "LOCAL_TESTS_PASSED_CANARY_REQUIRED",
   "base": {
-    "archive": "Node_Install_2.2.0.zip",
-    "sha256": "464ebf0c03a5cd9221fb2e8845f697f23ffcb9c9b54af55f6f3aef1eec4465a1",
-    "original_files": 157,
+    "archive": "Node_Install_2.3.0.zip",
+    "sha256": "9c83d08603939b7f34994130d696dd3e83d9d3d10a6b22fbc3feb75417d2ff57",
+    "original_files": 175,
+    "original_manifest_entries": 174,
     "removed_paths": []
   },
-  "installer_sha256": "425e1541b23d97b0de8fd3f2ff72eb7566c8008be95b63a896baa47d561ded1c",
+  "installer_sha256": "38c614aa532b476101eacd874742fc60428da1b68e8cafc09051f296a5bd945d",
+  "change_scope": [
+    "INSTALLER_VERSION bumped to 2.4.0",
+    "new install config persists allow_net_admin=true",
+    "generated RemnaNode Compose always includes cap_add NET_ADMIN",
+    "runtime checker accepts matching allow_net_admin=true plus NET_ADMIN as PASS and still fails policy drift",
+    "reviewed version gates include 2.4.0 while previous reviewed versions remain supported",
+    "standalone guarded migration procedure supplied for completed existing nodes",
+    "security, operations, audit, failure audit, README and changelog updated"
+  ],
   "tests": [
     {
-      "stage": "baseline_2.2.0",
-      "uid": 0,
-      "count": 465,
-      "seconds": 19.038,
-      "errors": 0,
-      "failures": 0,
-      "skips": 0,
-      "log": "evidence/230-baseline-220-tests.txt"
-    },
-    {
-      "stage": "release_2.3.0",
+      "stage": "release_2.3.0_reference",
       "uid": 0,
       "count": 554,
       "seconds": 20.653,
@@ -31,22 +31,28 @@
       "log": "evidence/230-root-tests.txt"
     },
     {
-      "stage": "release_2.3.0",
-      "uid": 1000,
-      "count": 554,
-      "seconds": 19.547,
+      "stage": "release_2.4.0",
+      "uid": 0,
+      "count": 555,
+      "seconds": 21.868,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "evidence/230-uid1000-tests.txt"
+      "log": "evidence/240-root-tests.txt"
+    },
+    {
+      "stage": "release_2.4.0",
+      "uid": 1000,
+      "count": 555,
+      "seconds": 22.311,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/240-uid1000-tests.txt"
     }
   ],
-  "new_test_modules": {
-    "test_230_certdeploy.py": 22,
-    "test_230_listener.py": 11,
-    "test_230_resources.py": 9,
-    "test_230_selfsteal.py": 15,
-    "test_230_ssh.py": 32
+  "new_behavioral_tests": {
+    "test_validation.py::ValidationTests::test_new_install_persists_net_admin_enabled": 1
   },
   "environment": {
     "os": "Debian GNU/Linux 13 (trixie)",
@@ -55,69 +61,51 @@
     "node": "22.16.0",
     "nginx": "1.26.3",
     "git": "2.47.3",
-    "openssl": "3.5.5",
-    "chromium": "144.0.7559.96"
+    "openssl": "3.5.5"
   },
   "static_checks": {
     "shell_files": 2,
     "python_modules": 40,
+    "json_files": 22,
+    "workflow_yaml": "PASS",
     "embedded_python": 23,
     "embedded_shell": 5,
-    "documentation_bash_blocks": 56,
-    "details": "evidence/230-static-validation.json"
+    "existing_node_net_admin_command_bash_syntax": "PASS",
+    "net_admin_default_contract": "PASS",
+    "shellcheck": "NOT_RUN_NOT_INSTALLED",
+    "details": "evidence/240-static-validation.json"
   },
   "browser": {
-    "cases": 36,
-    "variants": 4,
-    "widths": [
-      320,
-      375,
-      390,
-      620,
-      768,
-      900,
-      1024,
-      1440,
-      1920
-    ],
-    "report": "evidence/230-browser-report.json",
-    "new_page_design": false,
-    "domain": "node.example.com",
-    "public_REALITY_path": false
+    "rerun_for_2_4_0": false,
+    "reason": "preview/site rendering code was not changed by this capability-policy release",
+    "inherited_report": "evidence/230-browser-report.json",
+    "previous_cases": 36,
+    "new_page_design": false
   },
   "actual_local_components": [
-    "Nginx isolated master/workers",
-    "temporary CA/TLS/HTTP1.1/HTTP2",
-    "certificate rotation/reload in private Nginx prefix",
-    "OpenSSL",
-    "IPv4 and Unix sockets",
-    "filesystem locks/atomic writes",
-    "terminal input fixtures",
-    "APT solver with synthetic local metadata",
-    "Git workspaces"
-  ],
-  "simulated_or_injected": [
-    "systemctl deploy call redirected to private nginx -s reload in certificate integration tests",
-    "systemd and Docker service state",
-    "SSH daemon command results",
-    "local shadow/account policy fixtures",
-    "firewall output and mutations",
-    "public ACME replies"
+    "full offline unittest suite under root and UID 1000",
+    "Bash syntax validation",
+    "Python AST/embedded payload compile",
+    "JSON and workflow YAML parsing",
+    "existing-node NET_ADMIN command syntax validation",
+    "filesystem/hash comparison against the supplied 2.3.0 base"
   ],
   "not_executed": [
-    "full VPS install",
-    "real OpenSSH password login and key rejection",
-    "real Xray authenticated VLESS transport",
-    "live RemnaNode/panel API",
+    "full production VPS install",
+    "real Docker recreate of RemnaNode with NET_ADMIN on a user VPS",
+    "live Session Browser verification",
+    "real authenticated VLESS client after NET_ADMIN rollout",
+    "live panel-to-node API path",
+    "host UFW/routes/qdisc before-after verification on a VPS",
     "public CA issuance/renewal",
     "VPS reboot/restore",
-    "Ubuntu OS and arm64 full matrix",
-    "long load/soak/performance/carrier-DPI tests",
+    "full supported OS and arm64 matrix",
+    "long load/soak/performance tests",
     "remote GitHub Actions",
-    "old installed helper migration"
+    "ShellCheck"
   ],
   "additional_packages_installed": false,
   "user_servers_changed": false,
   "github_changed": false,
-  "git_package_attestation": "Final exact-tree Git/manifest/archive checks are recorded externally in Node_Install_2.3.0_PACKAGE_VALIDATION.json; no self-referential manifest entry."
+  "git_package_attestation": "Final exact-tree manifest/archive checks are recorded externally in Node_Install_2.4.0_PACKAGE_VALIDATION.json to avoid a self-referential archive hash."
 }

@@ -1,67 +1,54 @@
-# TEST_REPORT — Node_Install 2.3.0
+# TEST_REPORT — Node_Install 2.4.0
 
-Дата: **2026-10-02**. Статус: **LOCAL_TESTS_PASSED_VPS_PILOT_REQUIRED**.
+Дата: **2026-10-02**. Статус: **LOCAL_TESTS_PASSED_CANARY_REQUIRED**.
 
 ## Проверенная база и границы
 
-Исходный полный архив `Node_Install_2.2.0.zip`, SHA256 `464ebf0c03a5cd9221fb2e8845f697f23ffcb9c9b54af55f6f3aef1eec4465a1`, проверен по ZIP CRC, путям и 156 записям manifest. Все 157 исходных путей сохранены. Оригинальный архив не менялся. Разработка и тесты выполнялись в отдельном локальном рабочем дереве, не на пользовательских серверах.
+Исходная база этого изменения — полный пользовательский архив `Node_Install_2.3.0.zip`, SHA256 `9c83d08603939b7f34994130d696dd3e83d9d3d10a6b22fbc3feb75417d2ff57`. ZIP прошёл CRC-проверку; исходный `SHA256SUMS` проверил 174/174 перечисленных файлов; все **175 исходных файлов** сохранены. Оригинальный архив не изменялся. Семь прежних актуальных документов 2.3.0 сохранены побайтово в `docs/history/` до их актуализации.
 
-Установщик теперь реализует явное требование **password-only SSH**, не удаляя `authorized_keys`, не создавая и не меняя пароли. Три обязательных параметра сохранены: SECRET_KEY, домен, исходящий IPv4 панели. Новых пакетов, контейнеров, прокси, постоянных служб и транспортов не добавлено.
+Область 2.4.0 намеренно узкая: `NET_ADMIN` стал default capability RemnaNode для новых установок; новая конфигурация сохраняет `allow_net_admin=true`; generated Compose всегда содержит `cap_add: NET_ADMIN`; checker считает совпадающее state/runtime состояние штатным PASS; reviewed-version gates дополнены 2.4.0. Новые runtime-пакеты, порты, контейнеры, сервисы, transport, firewall rules, proxy, БД и зависимости не добавлялись. `NET_RAW` drop, `no-new-privileges`, read-only Selfsteal mount, host Nginx, UFW/Fail2ban, SSH policy, IPv4-only и image digest pinning сохранены.
+
+Обычный повтор installer на уже завершённой 2.3.0 ноде не является скрытой миграцией Compose. Для существующих нод подготовлена отдельная backup/validate/recreate/rollback процедура: [NET_ADMIN_2.4.0.md](NET_ADMIN_2.4.0.md). Эта узкая процедура не заменяет старый 2.3.0 checker: после включения capability он может продолжить показывать исторический `WARN NODE_NET_ADMIN`; фактический CapAdd проверяется самой процедурой.
 
 ## Выполненные полные прогоны
 
 | Прогон | Число тестов | Время unittest | Errors / failures / skips |
 |---|---:|---:|---|
-| Исходная 2.2.0, root | 465 | 19.038 s | 0 / 0 / 0 |
-| Итоговая 2.3.0, root | 554 | 20.653 s | 0 / 0 / 0 |
-| Итоговая 2.3.0, UID 1000 | 554 | 19.547 s | 0 / 0 / 0 |
+| Зафиксированный релиз 2.3.0, root | 554 | 20.653 s | 0 / 0 / 0 |
+| 2.4.0, root | 555 | 21.868 s | 0 / 0 / 0 |
+| 2.4.0, UID 1000 | 555 | 22.311 s | 0 / 0 / 0 |
 
-Журналы: [база 2.2.0](evidence/230-baseline-220-tests.txt), [root 2.3.0](evidence/230-root-tests.txt), [UID 1000 2.3.0](evidence/230-uid1000-tests.txt). Это отдельные прогоны одного набора, а не 1108 разных тестов. Тесты не отключались ради успешного результата.
+Журналы: [2.3.0 root](evidence/230-root-tests.txt), [2.4.0 root](evidence/240-root-tests.txt), [2.4.0 UID 1000](evidence/240-uid1000-tests.txt). Два прогона 2.4.0 — повтор одного и того же набора под разными UID, а не 1110 разных тестов. Тесты не отключались ради успешного результата.
 
-Финальная проверка уже упакованного Git-дерева и архивный manifest выполняются после фиксации отчётов. Их самостоятельная аттестация поставляется рядом с ZIP (`Node_Install_2.3.0_PACKAGE_VALIDATION.json` и `Node_Install_2.3.0_GIT_TESTS.txt`), чтобы исключить циклический self-hash. GitHub push/Actions не выполнялись.
+Новый поведенческий тест `test_new_install_persists_net_admin_enabled` реально запускает извлечённый helper `init_config` во временном дереве и проверяет, что новый state получает `allow_net_admin=true`. Существующие static/version tests актуализированы под 2.4.0 и новый generated Compose. Старые проверки SSH, UFW/firewall, DNS, REALITY/Profile, TLS/Selfsteal, HTTP/2, Certbot lifecycle, APT/time, network, Docker/image transactions, ENOSPC, timeout/signals, symlink/FIFO/races/tamper и resource diagnostics сохранены.
 
-## 89 новых регрессий
+## Статический контроль
 
-| Файл | Тесты | Проверяемые сценарии |
-|---|---:|---|
-| `test_230_ssh.py` | 32 | Password-only, locked/expired/change-required account, небезопасные файлы, Match/Include policy, кандидат конфигурации, отсутствие перезаписи при отказе, сохранение authorized_keys и трёх полей |
-| `test_230_certdeploy.py` | 22 | Lineage, lock, phases/receipts, смена сертификата во время проверки, команды/таймауты/сигналы, отличие нового PASS от старого |
-| `test_230_selfsteal.py` | 15 | TLS-only отдельно от webroot, полная строгая проверка сайта, bounded config parsing, фактический Nginx reload и выдача нового leaf, отказ неправильной пары сертификат/ключ |
-| `test_230_resources.py` | 9 | FD/limits, PID reuse, ошибки proc/ss, очередь собственного Unix socket, отсутствие чужих адресов в выводе |
-| `test_230_listener.py` | 11 | Владение публичным TCP/443 процессом core нужного контейнера, чужой listener, неполные данные, смена контейнера/PID |
+Фактически выполнено:
 
-Три существующих тестовых модуля скорректированы под новую версию и согласованный общий Vision. Старые проверки Nginx, сайта, профилей, UFW, Chrony, APT, input terminal, backup и image transactions не удалены.
+- `bash -n` для двух shell-файлов (`install.sh`, `tests/run.sh`) — PASS;
+- AST/compile для 40 Python-файлов — PASS;
+- JSON parse для 22 JSON-файлов — PASS;
+- YAML parse workflow — PASS;
+- синтаксис 5 встроенных shell payloads — PASS;
+- compile 23 встроенных Python payloads — PASS;
+- Bash-синтаксис standalone-команды включения `NET_ADMIN` на существующей ноде — PASS;
+- контракт `INSTALLER_VERSION=2.4.0` и default `NET_ADMIN` — PASS.
 
-## Что было реальным, а что имитацией
+Машиночитаемый результат: [evidence/240-static-validation.json](evidence/240-static-validation.json).
 
-Временный **Nginx 1.26.3 действительно запускается** с private prefix, CA и сертификатами теста. Прямые Unix socket/PROXY v1/TLS 1.3/HTTP/1.1/HTTP/2 запросы и ответы проходят в локальном окружении. В тесте смены сертификата используется master/worker-модель; проверяются неизменность master PID, выдача нового leaf и отказ некорректной пары до reload.
+`ShellCheck` в локальной среде отсутствует и **не запускался**. `bash -n`/unit tests не выдаются за ShellCheck.
 
-В этой интеграции вызов `systemctl reload nginx` адаптирован тестовым runner к `nginx -s reload` **временного префикса**. Реальный host systemd не переключается. Публичный Certbot/CA не вызывался: контекст hook и коды ошибок моделируются. Успешные тесты не являются доказательством внешнего ACME-продления.
+## Preview/browser и неизменённые части
 
-OpenSSH server, Docker daemon и Xray executable в среде отсутствуют. Их вызовы проверяются через фиксируемые имитации/fixtures; полный набор НЕ содержит подтверждённого реального VLESS-подключения или новой парольной SSH-сессии. Попытка получить официальный Xray-артефакт по сети не удалась; бинарник в архив не включён и запуск не заявляется. Проверки locked/expired account используют синтетические локальные записи, а не изменяют `/etc/shadow` системы.
+HTML/CSS/preview/site rendering в рамках 2.4.0 не изменялись. Поэтому браузерный прогон не повторялся только ради изменения Docker capability. Сохранён предыдущий зафиксированный отчёт 2.3.0: **36 PASS** (4 варианта × 9 ширин) в [evidence/230-browser-report.json](evidence/230-browser-report.json). Это наследуемое evidence неизменённой части, а не новый browser-run 2.4.0.
 
-APT solver работает с искусственными локальными метаданными пакетов; Git-проверки создают временные репозитории. Установка реальных пакетов на пользовательскую VPS не выполнялась.
+## Что не доказано локальными тестами
 
-## Статический контроль и сохранность
+Локальная среда не выполняла реальный production-recreate RemnaNode с `NET_ADMIN`, не проверяла «Обозреватель сессий» в живой панели, реальный VLESS-клиент, влияние upstream RemnaNode/Xray с новой capability на UFW/routes/qdisc конкретной VPS, внешний panel→node путь, публичный ACME, reboot/restore, все поддерживаемые Ubuntu/Debian и arm64, длительную нагрузку или remote GitHub Actions.
 
-- Bash-синтаксис двух `.sh` файлов и пяти встроенных shell payloads.
-- AST 40 Python-модулей и 23 встроенных Python payloads.
-- Синтаксис 56 Bash-блоков текущего набора верхнеуровневой документации.
-- Внешние HTTP/TLS server templates Nginx сохранены побайтово относительно 2.2.0; менялись проверки и Certbot activation lifecycle, не схема ingress.
-- Генератор профиля проверен структурно: единственное изменение функции генерации — общий `settings.flow=xtls-rprx-vision`. DNS/routing не заменены; `minClientVer=0.0.0` сохранён. Profile-validator AST не изменён.
-- Site tool менялся только для допуска версии 2.3.0; рендеринг четырёх вариантов сохранён. Network/Chrony/APT-clean/socket payloads и package plan сохранены.
-- `.github/workflows/check.yml`, `.gitignore`, `.gitattributes` сохранены. Семь прежних актуальных документов дополнительно сохранены побайтово в `docs/history`.
+Поэтому выпуск требует **canary на одной ноде** до массового rollout: provider snapshot/console → изменение → проверка container/state → панель/Session Browser → обычный клиент → host firewall/routes/qdisc → только затем остальные ноды. `NET_ADMIN` при `network_mode: host` увеличивает blast radius; это сознательный эксплуатационный trade-off, а не усиление изоляции.
 
-Детали: [статическая проверка](evidence/230-static-validation.json), [машиночитаемый отчёт](RELEASE_VALIDATION.json).
+## Итог
 
-## Браузер
-
-**36 случаев PASS**: четыре существующие темы × девять ширин 320, 375, 390, 620, 768, 900, 1024, 1440, 1920. Проверены переполнение, позиционирование, keyboard focus, переход по якорю, reduced motion, отсутствие JS, внешних запросов и browser errors. Chromium 144.0.7559.96. Два свежих снимка дополнительно просмотрены визуально: Orbit desktop, Fold mobile.
-
-[Новый браузерный отчёт](evidence/230-browser-report.json). Рендеринг выполнен в памяти с HTML/CSS из генератора, не через публичный Xray. HTTPS/MIME/cache/security headers проверяются отдельными Nginx-тестами. Старые preview и снимки 2.2.0 сохранены; оформление не менялось.
-
-## Ограничения приёмки
-
-Не выполнялись полная установка на VPS, реальная парольная авторизация/отказ SSH-ключа, фактический Xray/RemnaNode и пользовательский клиент, публичный ACME, reboot/restore, все поддерживаемые ОС/arm64, длительная нагрузка, измерение скорости или блокировок. Не было обновления существующих VPS или автоматической миграции их helpers.
-
-Состояние релиза — локально проверенная поставка для отдельного пилота. До пилота нужны snapshot с проверкой восстановления, независимая консоль, заранее проверенный пароль. Для ручного окна приёмки используется `--no-reboot`; default одноразовой перезагрузки сохранён. После установки проверить второй парольный SSH-вход, `sshd -t/-T`, Nginx, target-only, полный сайт, назначения панели, реальный клиент и затем согласованный reboot. Полный rollback установки — проверенный snapshot, не запуск старого installer поверх нового.
+Локальный кодовый/тестовый контракт 2.4.0 подтверждён. Пользовательские серверы, панель, DNS, Cloudflare, Docker daemon, Nginx, UFW и SSH при подготовке релиза не изменялись. Финальный manifest и ZIP проверяются после фиксации всех файлов; внешняя package-attestation поставляется рядом с архивом, чтобы не создавать self-referential hash внутри самого ZIP.

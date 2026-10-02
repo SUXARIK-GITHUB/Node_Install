@@ -1,13 +1,6 @@
 # Технический аудит 2.0.3
 
-## Текущая доработка 2.4.0
-
-По прямому эксплуатационному требованию изменена capability-политика RemnaNode: `NET_ADMIN` теперь default и жёстко присутствует в generated Compose, чтобы функции типа «Обозреватель сессий» не зависели от забываемого install-флага. State новой установки фиксирует `allow_net_admin=true`; checker требует совпадения state/runtime и выдаёт PASS для ожидаемого capability.
-
-Изменение намеренно узкое: новые пакеты, порты, контейнеры, proxies, systemd units, Docker socket mounts, firewall rules и transport не добавлены; `NET_RAW` остаётся dropped. Цена — повышенный blast radius при host networking. Поэтому для существующих нод нет скрытой cross-version миграции: используется отдельная backup/validate/recreate/rollback процедура и canary-rollout. [Подробности 2.4.0](NET_ADMIN_2.4.0.md), [фактические проверки](TEST_REPORT.md).
-
-
-## База 2.3.0
+## Текущая доработка 2.3.0
 
 Новый authoritative разбор — [RELIABILITY_2.3.0](RELIABILITY_2.3.0.md), фактические прогоны — [TEST_REPORT](TEST_REPORT.md). SSH publickey теперь выключен по прямому требованию; три вопроса сохранены. Исправлены связность web/TLS-проверок, подтверждение deploy hook, ложный Xray PASS по чужому 443 и игнорирование rc dpkg/IPv6. Добавлены реальные локальные Nginx certificate-rotation/failure tests и безопасная FD/queue-диагностика. Перечисленные ниже старые проверки/цифры — исторические; существующие ноды автоматически не мигрируются, закрытые ранее проблемы не становятся текущими.
 

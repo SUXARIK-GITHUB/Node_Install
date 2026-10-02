@@ -80,11 +80,26 @@ class ValidationTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(self.h.Failure):
                 self.h.normalize_config(dict(base, **change))
 
-    def test_config_schema_defaults_keep_legacy_auto_reboot_false(self):
+    def test_config_schema_defaults_keep_legacy_omitted_net_admin_false(self):
         config = self.h.normalize_config(self.config())
         for flag in ('auto_reboot', 'weekly_reboot', 'allow_net_admin'):
             self.assertIs(config[flag], False)
         self.assertIs(config['certbot_dry_run'], True)
+        self.assertIs(self.h.normalize_config(dict(self.config(), allow_net_admin=True))['allow_net_admin'], True)
+
+    def test_new_install_persists_net_admin_enabled(self):
+        with tempfile.TemporaryDirectory(prefix='vk-net-admin-default-') as folder:
+            old_etc = self.h.ETC
+            self.h.ETC = Path(folder)
+            try:
+                with patch.object(self.h, 'select_public_ipv4_for_domain', return_value='8.8.8.8'), \
+                     patch.object(self.h, 'detect_local_public_ipv4s', return_value={'8.8.8.8'}), \
+                     patch.object(self.h, 'dns_check', return_value=None):
+                    self.h.init_config('2222', [self.secret, '1.1.1.1', 'node.example.test'])
+                config = json.loads((Path(folder) / 'config.json').read_text())
+                self.assertIs(config['allow_net_admin'], True)
+            finally:
+                self.h.ETC = old_etc
 
     def test_official_image_validation(self):
         for image in ('remnawave/node:latest', 'ghcr.io/remnawave/node:2',
