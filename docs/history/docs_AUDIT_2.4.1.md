@@ -1,9 +1,5 @@
 # Технический аудит 2.0.3
 
-## Дополнение 2.4.2: CI выявил ложное предположение о fragmentation PROXY v1
-
-Все три опубликованных CI-окружения 2.4.1 дошли до одного и того же единственного отказа: synthetic test разрезал строку PROXY v1 на 7-байтовые записи, а Nginx успевал прочитать только `PROXY T` и закрывал сокет как malformed header. Локальный PASS зависел от случайного coalescing UNIX-stream. Production-код Nginx/Xray не менялся: исправлен тестовый контракт. Теперь PROXY header передаётся целиком, после чего большой TLS ClientHello реально фрагментируется по 37 байт с задержками. Фактические CI-журналы и локальное воспроизведение сохранены в `docs/evidence`; подробности — [CI_PROXY_FRAGMENTATION_2.4.2](CI_PROXY_FRAGMENTATION_2.4.2.md).
-
 ## Дополнение 2.4.1: cert reload convergence
 
 GitHub Actions Ubuntu 24.04 выявил переходное окно graceful reload Nginx. Production cert-deploy acceptance усилен: четыре последовательных target-only TLS PASS вместо одного, с reset серии при любом промежуточном отказе и тем же bounded deadline. Runtime topology, NET_ADMIN, firewall, SSH, Docker и transport не менялись.

@@ -1,0 +1,4 @@
+LOCAL_REPRODUCTION=fragmented PROXY v1 header is rejected by nginx
+nginx version: nginx/1.26.3
+CLIENT_RESULT=BrokenPipeError: [Errno 32] Broken pipe
+NGINX_RESULT=2026/10/03 15:08:35 [error] 6003#6003: *1 broken header: "PROXY T" while reading PROXY protocol, client: unix:, server: unix:/tmp/vk-ngx-ijpg7vsw/selfsteal.sock

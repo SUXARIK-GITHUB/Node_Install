@@ -1,4 +1,4 @@
-# 🔐 Безопасность VKarmani Node Install 2.4.2
+# 🔐 Безопасность VKarmani Node Install 2.4.1
 
 Этот файл описывает security-модель **установщика ноды**, а не всей Remnawave-инфраструктуры. Installer работает с root-правами на выделенной VPS и намеренно меняет SSH, UFW, GRUB, sysctl, Nginx, Docker и systemd. Безопасность зависит и от встроенных guard-проверок, и от внешних компонентов, которые установщик не контролирует: хостер, панель, DNS, Cloudflare, рабочая станция администратора и клиентские устройства.
 
@@ -297,10 +297,10 @@ sudo dpkg --audit
 4. проверяет `--version`;
 5. запускает только после всех проверок.
 
-SHA256 `install.sh` для этого `2.4.2`:
+SHA256 `install.sh` для этого `2.4.1`:
 
 ```text
-f82ee13fa48771e0493ecbabbe4b264a544e7c0e302d7b57accf2dd4e58573a5
+8bb55a5f035978580f21c1eab78daeb6cf0476495e370ca2c442c6662ab52677
 ```
 
 Если `install.sh` изменён, README и release manifest должны обновляться согласованно после review. Никогда не вычисляйте новый хеш из недоверенного изменившегося файла и не называйте его после этого «проверенным».
@@ -510,12 +510,6 @@ UFW остаётся единственным управляемым firewall; �
 `systemctl reload nginx` выполняет graceful reload: новый worker может появиться до полного ухода старого. Поэтому одиночный успешный TLS probe не считается достаточным доказательством того, что новые соединения устойчиво обслуживаются новым сертификатом. В 2.4.1 deploy-hook требует четыре последовательных успешных `--target-only` проверки ожидаемого leaf fingerprint; любой промежуточный отказ сбрасывает серию. Общий deadline остаётся bounded, VPN/Xray не перезапускаются, сертификаты helper не переписывает.
 
 Это исправляет fail-open по доказательству активации, не меняя доверенную CA-модель, hostname/SNI/leaf pinning и не добавляя сетевых разрешений.
-
-## 19.2. CI fragmentation fix 2.4.2 не ослабляет production TLS/PROXY
-
-2.4.2 меняет только test harness и version metadata. Тест больше не режет строку PROXY v1 на искусственные 7-байтовые writes, потому что Nginx может прочитать неполный header и корректно завершить соединение как malformed. После полного PROXY header тест делает отдельную паузу и продолжает **реально фрагментировать большой TLS ClientHello** по 37 байт; ошибки TLS не подавляются и `BrokenPipeError` не игнорируется.
-
-Production `proxy_protocol` listener, REALITY `xver=1`, cert-deploy checks, CA/hostname/leaf verification, NET_ADMIN/firewall/SSH и secret-handling не ослаблены. На работающих 2.4.1 нодах нет security-причины применять серверный repair только ради 2.4.2.
 
 ## 20. Default NET_ADMIN в 2.4.0
 

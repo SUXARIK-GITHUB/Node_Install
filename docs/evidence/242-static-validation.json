@@ -1,0 +1,37 @@
+{
+  "shell_files": {
+    "count": 2,
+    "status": "PASS"
+  },
+  "python_files": {
+    "count": 40,
+    "status": "PASS"
+  },
+  "json_files": {
+    "count": 26,
+    "status": "PASS"
+  },
+  "workflow_yaml": {
+    "count": 1,
+    "status": "PASS"
+  },
+  "installer_version": {
+    "value": "2.4.2",
+    "status": "PASS"
+  },
+  "fragmented_tls_contract": {
+    "complete_proxy_v1_header": true,
+    "proxy_header_pause_seconds": 0.01,
+    "tls_chunk_bytes": 37,
+    "inter_chunk_sleep_seconds": 0.001,
+    "status": "PASS"
+  },
+  "net_admin_default_contract": {
+    "status": "PASS"
+  },
+  "cert_reload_convergence_contract": {
+    "required_consecutive_successes": 4,
+    "status": "PASS"
+  },
+  "shellcheck": "NOT_RUN_NOT_INSTALLED"
+}

@@ -1,35 +1,36 @@
 {
-  "version": "2.4.1",
+  "version": "2.4.2",
   "date": "2026-10-03",
   "status": "LOCAL_TESTS_PASSED_REMOTE_CI_RERUN_REQUIRED",
   "base": {
-    "archive": "Node_Install_2.3.0.zip",
-    "sha256": "9c83d08603939b7f34994130d696dd3e83d9d3d10a6b22fbc3feb75417d2ff57",
-    "original_files": 175,
-    "original_manifest_entries": 174,
+    "archive": "Node_Install_2.4.1.zip",
+    "sha256": "a0831dc65a479f7f2b28261fbfaf8fd6d9ce6bc38cd805629b877c87854086c5",
+    "original_files": 196,
     "removed_paths": []
   },
-  "installer_sha256": "8bb55a5f035978580f21c1eab78daeb6cf0476495e370ca2c442c6662ab52677",
+  "installer_sha256": "f82ee13fa48771e0493ecbabbe4b264a544e7c0e302d7b57accf2dd4e58573a5",
   "change_scope": [
-    "INSTALLER_VERSION bumped to 2.4.1 while reviewed 2.4.0 remains supported",
-    "cert deploy requires four consecutive target-only TLS successes after nginx graceful reload and resets the streak on any transient failure",
-    "integration cleanup waits for four consecutive observations of the restored certificate and handles ssl.SSLError to prevent cross-test contamination",
-    "added regression test_single_target_success_is_not_enough_after_graceful_reload",
-    "2.4.0 NET_ADMIN default, Docker/network/firewall/SSH/profile/runtime dependency policy unchanged"
+    "INSTALLER_VERSION bumped to 2.4.2 while reviewed 2.4.1 and earlier supported versions remain accepted",
+    "fixed the offline integration test boundary: complete PROXY v1 header first, then deterministic fragmentation of the large TLS ClientHello",
+    "the test no longer fragments PROXY v1 into 7-byte writes; BrokenPipeError is not suppressed and the TLS handshake remains real",
+    "preserved the 2.4.1 four-consecutive-success certificate reload convergence contract",
+    "preserved 2.4.0 NET_ADMIN default, Docker/Nginx runtime topology, network/firewall/SSH/profile policy and runtime dependencies"
   ],
+  "github_actions_evidence": {
+    "2.4.1_ubuntu_22_04": "FAILED: 555 passed, 1 error; BrokenPipeError in test_large_fragmented_clienthello_and_proxy_header; Python 3.10.12; nginx 1.18.0",
+    "2.4.1_ubuntu_24_04": "FAILED: 555 passed, 1 error; BrokenPipeError in test_large_fragmented_clienthello_and_proxy_header; Python 3.12.3; nginx 1.24.0",
+    "2.4.1_ubuntu_26_userspace": "FAILED: 555 passed, 1 error; BrokenPipeError in test_large_fragmented_clienthello_and_proxy_header; Python 3.14.4; nginx 1.28.3",
+    "2.4.2_remote_rerun": "NOT_RUN; requires publication/push"
+  },
+  "root_cause_evidence": {
+    "local_nginx": "1.26.3",
+    "forced_fragmented_proxy_result": "BrokenPipeError",
+    "nginx_error": "broken header: PROXY T while reading PROXY protocol",
+    "log": "evidence/242-proxy-fragment-reproduction.txt"
+  },
   "tests": [
     {
-      "stage": "release_2.4.0_reference",
-      "uid": 0,
-      "count": 555,
-      "seconds": 21.868,
-      "errors": 0,
-      "failures": 0,
-      "skips": 0,
-      "log": "evidence/240-root-tests.txt"
-    },
-    {
-      "stage": "release_2.4.1",
+      "stage": "release_2.4.1_reference",
       "uid": 0,
       "count": 556,
       "seconds": 27.198,
@@ -39,19 +40,30 @@
       "log": "evidence/241-root-tests.txt"
     },
     {
-      "stage": "release_2.4.1",
-      "uid": 1000,
+      "stage": "release_2.4.2",
+      "uid": 0,
       "count": 556,
-      "seconds": 27.363,
+      "seconds": 26.995,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "evidence/241-uid1000-tests.txt"
+      "log": "evidence/242-root-tests.txt"
+    },
+    {
+      "stage": "release_2.4.2",
+      "uid": 1000,
+      "count": 556,
+      "seconds": 27.193,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/242-uid1000-tests.txt"
     }
   ],
-  "new_behavioral_tests": {
-    "test_230_certdeploy.py::CertDeploy230Tests::test_single_target_success_is_not_enough_after_graceful_reload": 1,
-    "test_validation.py::ValidationTests::test_new_install_persists_net_admin_enabled": "preserved_from_2.4.0"
+  "targeted_regression": {
+    "test": "test_220_selfsteal.py::FragmentedSelfsteal220Tests::test_large_fragmented_clienthello_after_complete_proxy_header",
+    "consecutive_passes": 10,
+    "log": "evidence/242-targeted-fragmented-tls-10x.txt"
   },
   "environment": {
     "os": "Debian GNU/Linux 13 (trixie)",
@@ -65,40 +77,33 @@
   "static_checks": {
     "shell_files": 2,
     "python_modules": 40,
-    "json_files": 23,
+    "json_files": 26,
     "workflow_yaml": "PASS",
-    "installer_version": "2.4.1",
+    "installer_version": "2.4.2",
+    "fragmented_tls_contract": "PASS",
     "cert_reload_convergence": "PASS",
     "net_admin_default_contract": "PASS",
     "shellcheck": "NOT_RUN_NOT_INSTALLED",
-    "details": "evidence/241-static-validation.json"
+    "details": "evidence/242-static-validation.json"
   },
   "browser": {
-    "rerun_for_2_4_1": false,
-    "reason": "preview/site rendering code unchanged by TLS reload convergence bugfix",
+    "rerun_for_2_4_2": false,
+    "reason": "preview/site rendering code unchanged by the CI-only test-contract correction",
     "inherited_report": "evidence/230-browser-report.json",
     "previous_cases": 36,
     "new_page_design": false
   },
-  "actual_local_components": [
-    "full offline unittest suite under root and UID 1000",
-    "Bash syntax validation",
-    "Python AST/embedded payload compile",
-    "JSON and workflow YAML parsing",
-    "existing-node NET_ADMIN command syntax validation",
-    "filesystem/hash comparison against the supplied 2.3.0 base"
-  ],
   "not_executed": [
-    "remote GitHub Actions rerun on ubuntu-24.04 after the 2.4.1 fix",
+    "remote GitHub Actions matrix for 2.4.2 on ubuntu-22.04, ubuntu-24.04 and ubuntu-26-userspace",
     "full production VPS install",
-    "public CA issuance/renewal after this code change",
+    "public CA issuance/renewal after this test-only release correction",
     "VPS reboot/restore",
-    "full supported OS and arm64 matrix",
+    "full supported OS and arm64 matrix beyond the pending remote CI",
     "long load/soak/performance tests",
     "ShellCheck"
   ],
   "additional_packages_installed": false,
   "user_servers_changed": false,
   "github_changed": false,
-  "git_package_attestation": "Final exact-tree manifest/archive checks are recorded externally in Node_Install_2.4.1_PACKAGE_VALIDATION.json to avoid a self-referential archive hash."
+  "git_package_attestation": "Final exact-tree manifest/archive checks are recorded externally in Node_Install_2.4.2_PACKAGE_VALIDATION.json to avoid a self-referential archive hash."
 }

@@ -1,5 +1,18 @@
 # Изменения
 
+## 2.4.2 — 2026-10-03
+
+CI-only contract fix after the published 2.4.1 run failed identically on Ubuntu 22.04, Ubuntu 24.04 and Ubuntu 26 userspace. The only failing test was the synthetic fragmented-PROXY case; the 2.4.1 certificate-reload regressions passed.
+
+- `test_large_fragmented_clienthello_and_proxy_header` incorrectly split the PROXY v1 line into 7-byte writes. Nginx can read the first partial bytes before the rest arrives and rejects that as a malformed PROXY header; on a fast local machine the writes were sometimes coalesced and the test passed accidentally.
+- The integration test is renamed to `test_large_fragmented_clienthello_after_complete_proxy_header`. It now sends the complete PROXY v1 line first, waits briefly so Nginx can consume it, then fragments the large TLS ClientHello into 37-byte writes with short pauses. The intended fragmented-TLS coverage therefore remains real and becomes deterministic.
+- Local reproduction records Nginx `broken header: "PROXY T" while reading PROXY protocol` and the same client-side `BrokenPipeError` seen in all three CI jobs.
+- Upstream Xray fallback code builds PROXY v1 into a dedicated buffer and writes that buffer before copying the fallback payload; the corrected test matches that contract instead of inventing a fragmented PROXY header transport.
+- Production `install.sh` behavior is unchanged except the release/version allowlists and version markers: NET_ADMIN default, Selfsteal Nginx config, Xray/REALITY profile, firewall, SSH, cert-deploy convergence logic and runtime package set are unchanged.
+- Full local suite remains 556 tests; root and UID 1000 must both pass before packaging.
+
+[Проверки](docs/TEST_REPORT.md) · [CI-разбор](docs/CI_PROXY_FRAGMENTATION_2.4.2.md) · [безопасность](SECURITY.md).
+
 ## 2.4.1 — 2026-10-03
 
 Bugfix после реального GitHub Actions failure на Ubuntu 24.04 (`nginx 1.24.0`, Python 3.12): обнаружена гонка graceful reload при проверке нового TLS-сертификата Selfsteal.

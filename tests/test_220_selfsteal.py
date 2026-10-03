@@ -220,7 +220,7 @@ class FragmentedSelfsteal220Tests(unittest.TestCase):
     start = classmethod(Selfsteal220Tests.start.__func__)
     stop = classmethod(Selfsteal220Tests.stop.__func__)
 
-    def test_large_fragmented_clienthello_and_proxy_header(self):
+    def test_large_fragmented_clienthello_after_complete_proxy_header(self):
         # Nginx target only, not Xray or an external carrier. Every TLS byte is
         # actually exchanged with a private Nginx socket; no handshake mock.
         ctx=ssl.create_default_context(cafile=self.root/'ca.pem')
@@ -234,7 +234,11 @@ class FragmentedSelfsteal220Tests(unittest.TestCase):
         try:
             sock.connect(self.socket_path)
             proxy=b'PROXY TCP4 127.0.0.1 127.0.0.1 54321 443\r\n'
-            for offset in range(0,len(proxy),7):sock.sendall(proxy[offset:offset+7])
+            # Nginx rejects an incomplete PROXY v1 line if it reads the stream
+            # before the rest of that header arrives. Keep the PROXY line complete
+            # and force fragmentation only on the following large TLS ClientHello.
+            sock.sendall(proxy)
+            time.sleep(0.01)
             for _ in range(100):
                 self.assertLess(time.monotonic(),deadline)
                 try:
@@ -243,7 +247,9 @@ class FragmentedSelfsteal220Tests(unittest.TestCase):
                 if outgoing.pending:
                     b=outgoing.read()
                     if not first:first=len(b)
-                    for offset in range(0,len(b),37):sock.sendall(b[offset:offset+37])
+                    for offset in range(0,len(b),37):
+                        sock.sendall(b[offset:offset+37])
+                        time.sleep(0.001)
                 if done:break
                 b=sock.recv(16384);self.assertTrue(b);incoming.write(b)
             else:self.fail('TLS handshake never completed')

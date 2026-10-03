@@ -1,5 +1,9 @@
 # Источники технических решений
 
+## 2.4.2 — Xray fallback и граница PROXY/TLS
+
+После одинакового CI-failure на Ubuntu 22.04/24.04/26 userspace отдельно проверена upstream fallback-реализация Xray: для `xver=1` она формирует всю строку PROXY v1 в отдельном buffer и вызывает `serverWriter.WriteMultiBuffer` до `buf.Copy` fallback payload. Это подтверждает, что старый test harness моделировал не тот boundary: он делил именно PROXY header, а не последующий TLS ClientHello. Локальный Nginx 1.26.3 с намеренной задержкой между кусками воспроизводит `broken header: "PROXY T"`; исправленный тест оставляет header целым и детерминированно фрагментирует ClientHello.
+
 ## 2.4.1 — вывод из CI Ubuntu 24.04
 
 Практический CI показал, что успешный единичный TLS handshake непосредственно после graceful reload не является достаточным convergence evidence. В production hook принят контракт последовательной серии успешных проверок вместо фиксированного sleep; bounded deadline и fail-closed поведение сохранены.
