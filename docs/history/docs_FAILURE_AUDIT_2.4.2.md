@@ -1,8 +1,5 @@
 # 🔎 Отказные сценарии — дополнение 2.0.3
 
-## Дополнение 2.4.3: checksum должен проверяться после Git normalization
-
-Отказ 2.4.2 был fail-fast и полезным: `sha256sum --check` обнаружил три изменённых байтовых представления до запуска тестов. Root cause — CRLF в evidence при `* text=auto`, а не повреждение production installer. Исправление не отключает checksum и не исключает файлы из manifest: наоборот, canonical LF и Git round-trip делают проверку сильнее.
 ## Дополнение 2.4.2: fragmented PROXY header не является допустимым ожиданием теста
 
 В 2.4.1 CI все три матрицы завершились одним `BrokenPipeError` в `test_large_fragmented_clienthello_and_proxy_header`. Детерминированное локальное воспроизведение с паузой между 7-байтовыми кусками PROXY v1 показало server-side причину: Nginx пишет `broken header: "PROXY T" while reading PROXY protocol` и закрывает соединение. Это не отказ TLS parser и не regression cert-deploy: соответствующие 2.4.1 TLS-регрессии проходят.

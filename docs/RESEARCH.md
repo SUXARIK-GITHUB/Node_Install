@@ -1,5 +1,8 @@
 # Источники технических решений
 
+## 2.4.3 — Git attributes и canonical release bytes
+
+Фактический CI 2.4.2 подтвердил, что ZIP-only attestation недостаточна для репозитория с text normalization. Для файлов, которые Git считает text, release manifest должен соответствовать байтам clean checkout. В 2.4.3 policy — LF canonical text + отдельная regression + временный Git commit/clone/checksum round-trip перед упаковкой.
 ## 2.4.2 — Xray fallback и граница PROXY/TLS
 
 После одинакового CI-failure на Ubuntu 22.04/24.04/26 userspace отдельно проверена upstream fallback-реализация Xray: для `xver=1` она формирует всю строку PROXY v1 в отдельном buffer и вызывает `serverWriter.WriteMultiBuffer` до `buf.Copy` fallback payload. Это подтверждает, что старый test harness моделировал не тот boundary: он делил именно PROXY header, а не последующий TLS ClientHello. Локальный Nginx 1.26.3 с намеренной задержкой между кусками воспроизводит `broken header: "PROXY T"`; исправленный тест оставляет header целым и детерминированно фрагментирует ClientHello.

@@ -54,6 +54,24 @@ class CIContractTests(unittest.TestCase):
                     self.assertRegex(step['uses'], r'@(?:[0-9a-f]{40})$')
                     self.assertIs(step['with']['persist-credentials'], False)
 
+    def test_manifest_text_files_are_git_canonical_lf(self):
+        manifest = (ROOT / 'SHA256SUMS').read_text().splitlines()
+        bad = []
+        for line in manifest:
+            if not line.strip():
+                continue
+            _, rel = line.split('  ', 1)
+            data = (ROOT / rel).read_bytes()
+            if b'\x00' in data:
+                continue
+            try:
+                data.decode('utf-8')
+            except UnicodeDecodeError:
+                continue
+            if b'\r' in data:
+                bad.append(rel)
+        self.assertEqual(bad, [], 'manifest text must be LF-canonical for Git checkout')
+
     def test_nginx_fixture_redirects_all_compiled_temp_defaults(self):
         text = (ROOT / 'tests/test_tls_integration.py').read_text()
         for directive in ('client_body', 'proxy', 'fastcgi', 'uwsgi', 'scgi'):

@@ -1,8 +1,8 @@
 # Эксплуатация, диагностика и восстановление
 
-## Текущий выпуск 2.4.3 — Git-canonical release manifest
+## Текущий выпуск 2.4.2 — deterministic fragmented-TLS CI fix
 
-2.4.3 не требует никаких действий на уже работающих нодах. Изменение касается release bytes/manifest и CI validation: три CRLF evidence-файла приведены к canonical LF, а release теперь проверяется через clean Git round-trip. Production Selfsteal socket/Nginx config, Xray REALITY `xver=1`, cert-deploy convergence logic, NET_ADMIN default, Docker/firewall/SSH/network policy не менялись. Если 2.4.2 уже установлен и работает, обновлять сервер только ради этого CI-fix не нужно.
+2.4.2 не требует никаких действий на уже работающих нодах. Изменение касается offline integration test и version metadata: production Selfsteal socket/Nginx config, Xray REALITY `xver=1`, cert-deploy 2.4.1 convergence logic, NET_ADMIN default, Docker/firewall/SSH/network policy не менялись. Если 2.4.1 уже установлен и работает, обновлять сервер только ради этого CI-fix не нужно.
 
 При разработке/CI не моделируйте PROXY v1 как произвольный набор отдельных коротких writes перед Nginx `proxy_protocol`: такой тест проверяет scheduler/coalescing, а не рабочий TLS contract. Для fragmented handshake сначала отправляйте полный PROXY header, затем фрагментируйте TLS bytes.
 
@@ -18,14 +18,14 @@
 
 Порядок rollout: provider snapshot → одна canary-нода → включение capability → проверка `docker inspect`, стабильности container/image → проверка Node API/панели → реальный клиент → «Обозреватель сессий» → контроль host UFW/routes/qdisc → остальные ноды. Локальный PASS capability не доказывает работу UI панели.
 
-После новой установки 2.4.0/2.4.1/2.4.2/2.4.3 ожидается:
+После новой установки 2.4.0/2.4.1/2.4.2 ожидается:
 
 ```bash
 docker inspect remnanode --format '{{json .HostConfig.CapAdd}}'
 sudo vkarmani-node-check --local
 ```
 
-На новой установке 2.4.0/2.4.1/2.4.2/2.4.3 в CapAdd должен присутствовать `NET_ADMIN`, а установленный checker соответствующей версии должен давать `PASS NODE_NET_ADMIN`. На существующей завершённой 2.3.0 ноде после узкой команды из NET_ADMIN-runbook сам старый checker 2.3.0 **может по-прежнему вывести `WARN NODE_NET_ADMIN`**, потому что в 2.3.0 это был explicit opt-in. Это ожидаемая семантика старого checker, а не отсутствие capability; runbook отдельно проверяет фактический `HostConfig.CapAdd`. Не заменяйте checker одиночным файлом ради смены WARN на PASS. Если state и container расходятся, не исправляйте marker вручную — разберите Compose/config и последнюю операцию.
+На новой установке 2.4.0/2.4.1/2.4.2 в CapAdd должен присутствовать `NET_ADMIN`, а установленный checker соответствующей версии должен давать `PASS NODE_NET_ADMIN`. На существующей завершённой 2.3.0 ноде после узкой команды из NET_ADMIN-runbook сам старый checker 2.3.0 **может по-прежнему вывести `WARN NODE_NET_ADMIN`**, потому что в 2.3.0 это был explicit opt-in. Это ожидаемая семантика старого checker, а не отсутствие capability; runbook отдельно проверяет фактический `HostConfig.CapAdd`. Не заменяйте checker одиночным файлом ради смены WARN на PASS. Если state и container расходятся, не исправляйте marker вручную — разберите Compose/config и последнюю операцию.
 
 Полное описание изменения и готовая команда для существующих нод: [NET_ADMIN_2.4.0](NET_ADMIN_2.4.0.md). Ограничения 2.3.0 по SSH/Selfsteal сохраняются ниже как действующая база.
 

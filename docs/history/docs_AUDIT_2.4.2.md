@@ -1,8 +1,5 @@
 # Технический аудит 2.0.3
 
-## Дополнение 2.4.3: ZIP PASS без Git round-trip был недостаточен
-
-Публикация 2.4.2 выявила release-validation gap: manifest совпадал с ZIP, но три evidence `.txt` имели CRLF и после Git normalization (`* text=auto`) становились LF. Поэтому CI останавливался на checksum step до тестов. 2.4.3 приводит эти файлы к canonical LF, добавляет regression на отсутствие CR в manifest text и обязательный clean Git round-trip перед выдачей релиза. Runtime-код ноды по этой причине не менялся. Подробности — [CI_GIT_NORMALIZATION_2.4.3](CI_GIT_NORMALIZATION_2.4.3.md).
 ## Дополнение 2.4.2: CI выявил ложное предположение о fragmentation PROXY v1
 
 Все три опубликованных CI-окружения 2.4.1 дошли до одного и того же единственного отказа: synthetic test разрезал строку PROXY v1 на 7-байтовые записи, а Nginx успевал прочитать только `PROXY T` и закрывал сокет как malformed header. Локальный PASS зависел от случайного coalescing UNIX-stream. Production-код Nginx/Xray не менялся: исправлен тестовый контракт. Теперь PROXY header передаётся целиком, после чего большой TLS ClientHello реально фрагментируется по 37 байт с задержками. Фактические CI-журналы и локальное воспроизведение сохранены в `docs/evidence`; подробности — [CI_PROXY_FRAGMENTATION_2.4.2](CI_PROXY_FRAGMENTATION_2.4.2.md).

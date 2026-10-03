@@ -1,5 +1,17 @@
 # Изменения
 
+## 2.4.3 — 2026-10-03
+
+Release/CI integrity fix after the published 2.4.2 tree failed before tests on every runner.
+
+- Root cause: three preserved CI evidence `.txt` files were packaged with CRLF while `.gitattributes` contains `* text=auto`; Git normalized those files to LF during commit/checkout, so the repository bytes no longer matched the CRLF hashes stored in `SHA256SUMS`.
+- Normalized `docs/evidence/241-ci-ubuntu22-failure.txt`, `241-ci-ubuntu24-failure.txt`, and `241-ci-ubuntu26-userspace-failure.txt` to canonical LF and rebuilt the release manifest.
+- Added `CIContractTests.test_manifest_text_files_are_git_canonical_lf`, which rejects CR/CRLF in UTF-8 text entries covered by `SHA256SUMS`.
+- Release validation now includes a real temporary Git repository round-trip (`git add`/commit/clean clone/checksum verification), so ZIP-only hash validation is no longer considered sufficient.
+- Production runtime behavior is unchanged from 2.4.2: NET_ADMIN default, Nginx/Selfsteal, certificate reload convergence, Docker, firewall, SSH, profile/network policy and runtime dependencies are unchanged.
+
+[Проверки](docs/TEST_REPORT.md) · [CI-разбор](docs/CI_GIT_NORMALIZATION_2.4.3.md) · [безопасность](SECURITY.md).
+
 ## 2.4.2 — 2026-10-03
 
 CI-only contract fix after the published 2.4.1 run failed identically on Ubuntu 22.04, Ubuntu 24.04 and Ubuntu 26 userspace. The only failing test was the synthetic fragmented-PROXY case; the 2.4.1 certificate-reload regressions passed.

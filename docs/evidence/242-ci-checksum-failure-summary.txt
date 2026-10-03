@@ -1,0 +1,17 @@
+User-provided GitHub Actions output for published 2.4.2 tree
+Observed: 2026-10-03
+Commit shown by CI: 13d4b6d3d2bcba9612b3458e660cb27a7643da2b
+
+All three required jobs stopped in "Verify Git checkout and release files" before tests/run.sh:
+- test (ubuntu-22.04)
+- test (ubuntu-24.04)
+- ubuntu-26-userspace
+
+The same three SHA256SUMS entries failed in each checkout:
+docs/evidence/241-ci-ubuntu22-failure.txt: FAILED
+docs/evidence/241-ci-ubuntu24-failure.txt: FAILED
+docs/evidence/241-ci-ubuntu26-userspace-failure.txt: FAILED
+sha256sum: WARNING: 3 computed checksums did NOT match
+Error: Process completed with exit code 1.
+
+Local inspection of the exact 2.4.2 release archive showed that these three files were the only UTF-8 text files containing CRLF. .gitattributes contains "* text=auto", so Git canonicalization changes these files to LF on repository commit/checkout. The 2.4.2 manifest hashes matched the CRLF ZIP bytes, not the Git-normalized LF bytes.
