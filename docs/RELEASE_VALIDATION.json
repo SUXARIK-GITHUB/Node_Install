@@ -1,7 +1,7 @@
 {
-  "version": "2.4.0",
-  "date": "2026-10-02",
-  "status": "LOCAL_TESTS_PASSED_CANARY_REQUIRED",
+  "version": "2.4.1",
+  "date": "2026-10-03",
+  "status": "LOCAL_TESTS_PASSED_REMOTE_CI_RERUN_REQUIRED",
   "base": {
     "archive": "Node_Install_2.3.0.zip",
     "sha256": "9c83d08603939b7f34994130d696dd3e83d9d3d10a6b22fbc3feb75417d2ff57",
@@ -9,29 +9,17 @@
     "original_manifest_entries": 174,
     "removed_paths": []
   },
-  "installer_sha256": "38c614aa532b476101eacd874742fc60428da1b68e8cafc09051f296a5bd945d",
+  "installer_sha256": "8bb55a5f035978580f21c1eab78daeb6cf0476495e370ca2c442c6662ab52677",
   "change_scope": [
-    "INSTALLER_VERSION bumped to 2.4.0",
-    "new install config persists allow_net_admin=true",
-    "generated RemnaNode Compose always includes cap_add NET_ADMIN",
-    "runtime checker accepts matching allow_net_admin=true plus NET_ADMIN as PASS and still fails policy drift",
-    "reviewed version gates include 2.4.0 while previous reviewed versions remain supported",
-    "standalone guarded migration procedure supplied for completed existing nodes",
-    "security, operations, audit, failure audit, README and changelog updated"
+    "INSTALLER_VERSION bumped to 2.4.1 while reviewed 2.4.0 remains supported",
+    "cert deploy requires four consecutive target-only TLS successes after nginx graceful reload and resets the streak on any transient failure",
+    "integration cleanup waits for four consecutive observations of the restored certificate and handles ssl.SSLError to prevent cross-test contamination",
+    "added regression test_single_target_success_is_not_enough_after_graceful_reload",
+    "2.4.0 NET_ADMIN default, Docker/network/firewall/SSH/profile/runtime dependency policy unchanged"
   ],
   "tests": [
     {
-      "stage": "release_2.3.0_reference",
-      "uid": 0,
-      "count": 554,
-      "seconds": 20.653,
-      "errors": 0,
-      "failures": 0,
-      "skips": 0,
-      "log": "evidence/230-root-tests.txt"
-    },
-    {
-      "stage": "release_2.4.0",
+      "stage": "release_2.4.0_reference",
       "uid": 0,
       "count": 555,
       "seconds": 21.868,
@@ -41,18 +29,29 @@
       "log": "evidence/240-root-tests.txt"
     },
     {
-      "stage": "release_2.4.0",
-      "uid": 1000,
-      "count": 555,
-      "seconds": 22.311,
+      "stage": "release_2.4.1",
+      "uid": 0,
+      "count": 556,
+      "seconds": 27.198,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "evidence/240-uid1000-tests.txt"
+      "log": "evidence/241-root-tests.txt"
+    },
+    {
+      "stage": "release_2.4.1",
+      "uid": 1000,
+      "count": 556,
+      "seconds": 27.363,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/241-uid1000-tests.txt"
     }
   ],
   "new_behavioral_tests": {
-    "test_validation.py::ValidationTests::test_new_install_persists_net_admin_enabled": 1
+    "test_230_certdeploy.py::CertDeploy230Tests::test_single_target_success_is_not_enough_after_graceful_reload": 1,
+    "test_validation.py::ValidationTests::test_new_install_persists_net_admin_enabled": "preserved_from_2.4.0"
   },
   "environment": {
     "os": "Debian GNU/Linux 13 (trixie)",
@@ -66,18 +65,17 @@
   "static_checks": {
     "shell_files": 2,
     "python_modules": 40,
-    "json_files": 22,
+    "json_files": 23,
     "workflow_yaml": "PASS",
-    "embedded_python": 23,
-    "embedded_shell": 5,
-    "existing_node_net_admin_command_bash_syntax": "PASS",
+    "installer_version": "2.4.1",
+    "cert_reload_convergence": "PASS",
     "net_admin_default_contract": "PASS",
     "shellcheck": "NOT_RUN_NOT_INSTALLED",
-    "details": "evidence/240-static-validation.json"
+    "details": "evidence/241-static-validation.json"
   },
   "browser": {
-    "rerun_for_2_4_0": false,
-    "reason": "preview/site rendering code was not changed by this capability-policy release",
+    "rerun_for_2_4_1": false,
+    "reason": "preview/site rendering code unchanged by TLS reload convergence bugfix",
     "inherited_report": "evidence/230-browser-report.json",
     "previous_cases": 36,
     "new_page_design": false
@@ -91,21 +89,16 @@
     "filesystem/hash comparison against the supplied 2.3.0 base"
   ],
   "not_executed": [
+    "remote GitHub Actions rerun on ubuntu-24.04 after the 2.4.1 fix",
     "full production VPS install",
-    "real Docker recreate of RemnaNode with NET_ADMIN on a user VPS",
-    "live Session Browser verification",
-    "real authenticated VLESS client after NET_ADMIN rollout",
-    "live panel-to-node API path",
-    "host UFW/routes/qdisc before-after verification on a VPS",
-    "public CA issuance/renewal",
+    "public CA issuance/renewal after this code change",
     "VPS reboot/restore",
     "full supported OS and arm64 matrix",
     "long load/soak/performance tests",
-    "remote GitHub Actions",
     "ShellCheck"
   ],
   "additional_packages_installed": false,
   "user_servers_changed": false,
   "github_changed": false,
-  "git_package_attestation": "Final exact-tree manifest/archive checks are recorded externally in Node_Install_2.4.0_PACKAGE_VALIDATION.json to avoid a self-referential archive hash."
+  "git_package_attestation": "Final exact-tree manifest/archive checks are recorded externally in Node_Install_2.4.1_PACKAGE_VALIDATION.json to avoid a self-referential archive hash."
 }

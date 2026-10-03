@@ -112,10 +112,16 @@ class Selfsteal230IntegrationTests(unittest.TestCase):
         finally:
             for name,data in saved.items():(self.root/name).write_bytes(data)
             subprocess.run([fixture.NGINX,'-s','reload','-p',str(self.root)+'/', '-c',str(self.root/'nginx.conf')],capture_output=True,check=True,timeout=5)
-            deadline=time.monotonic()+4
-            while True:
-                try:self.tls();break
-                except (OSError,ValueError):
+            # A graceful reload can briefly expose old and new workers. Restore
+            # test isolation only after the original certificate is observed
+            # repeatedly; one lucky connection is not a convergence proof.
+            deadline=time.monotonic()+4;stable=0
+            while stable < 4:
+                try:
+                    self.tls();stable+=1
+                    if stable < 4:time.sleep(0.05)
+                except (ssl.SSLError,OSError,ValueError):
+                    stable=0
                     if time.monotonic()>deadline:raise
                     time.sleep(0.05)
 

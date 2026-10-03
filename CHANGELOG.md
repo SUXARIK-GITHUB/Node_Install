@@ -1,5 +1,17 @@
 # Изменения
 
+## 2.4.1 — 2026-10-03
+
+Bugfix после реального GitHub Actions failure на Ubuntu 24.04 (`nginx 1.24.0`, Python 3.12): обнаружена гонка graceful reload при проверке нового TLS-сертификата Selfsteal.
+
+- Certbot deploy-hook больше не принимает один успешный `--target-only` probe как достаточное доказательство активации нового leaf-сертификата. Теперь требуются 4 последовательных успешных target-only TLS-проверки; любая промежуточная ошибка сбрасывает серию и проверка продолжается в общем bounded deadline.
+- Это не ослабляет acceptance gate и не маскирует ошибку: `CERTIFICATE_NOT_RELOADED`, CA/hostname/leaf failures и timeout по-прежнему являются отказом, если стабильная серия не достигнута.
+- Интеграционный Nginx test cleanup теперь также ждёт 4 последовательных подтверждения возврата исходного сертификата после обратного reload и учитывает `ssl.SSLError`, чтобы следующий тест не наследовал переходное состояние предыдущего.
+- Добавлена регрессия `test_single_target_success_is_not_enough_after_graceful_reload`. Полный локальный набор: 556 тестов; root и UID 1000 — PASS без errors/failures/skips.
+- `NET_ADMIN` default из 2.4.0, Docker Compose, network/firewall/SSH/profile/runtime dependencies не менялись. Reviewed-version allowlists дополнены 2.4.1, поддержка 2.4.0 сохранена.
+
+[Проверки](docs/TEST_REPORT.md) · [безопасность](SECURITY.md).
+
 ## 2.4.0 — 2026-10-02
 
 Изменена default capability-политика RemnaNode по прямому требованию эксплуатации: функционал «Обозреватель сессий» должен работать без отдельного opt-in на каждой новой ноде.

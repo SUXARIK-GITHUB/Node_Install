@@ -1,9 +1,5 @@
 # Технический аудит 2.0.3
 
-## Дополнение 2.4.1: cert reload convergence
-
-GitHub Actions Ubuntu 24.04 выявил переходное окно graceful reload Nginx. Production cert-deploy acceptance усилен: четыре последовательных target-only TLS PASS вместо одного, с reset серии при любом промежуточном отказе и тем же bounded deadline. Runtime topology, NET_ADMIN, firewall, SSH, Docker и transport не менялись.
-
 ## Текущая доработка 2.4.0
 
 По прямому эксплуатационному требованию изменена capability-политика RemnaNode: `NET_ADMIN` теперь default и жёстко присутствует в generated Compose, чтобы функции типа «Обозреватель сессий» не зависели от забываемого install-флага. State новой установки фиксирует `allow_net_admin=true`; checker требует совпадения state/runtime и выдаёт PASS для ожидаемого capability.

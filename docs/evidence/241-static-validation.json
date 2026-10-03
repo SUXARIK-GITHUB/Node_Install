@@ -1,0 +1,18 @@
+{
+  "cert_reload_convergence": "PASS",
+  "installer_version": "2.4.1",
+  "json_files": {
+    "count": 23,
+    "status": "PASS"
+  },
+  "net_admin_default": "PASS",
+  "python_modules": {
+    "count": 40,
+    "status": "PASS"
+  },
+  "shell_files": {
+    "count": 2,
+    "status": "PASS"
+  },
+  "workflow_yaml": "PASS"
+}

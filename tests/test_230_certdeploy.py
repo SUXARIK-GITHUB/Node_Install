@@ -45,7 +45,7 @@ class CertDeploy230Tests(unittest.TestCase):
         self.deploy(runner=self.runner)
         self.assertEqual(self.calls, [
             ['/usr/sbin/nginx','-t'], ['/usr/bin/systemctl','reload','nginx'],
-            ['/usr/local/sbin/vkarmani-selfsteal-check','--target-only']])
+            *([['/usr/local/sbin/vkarmani-selfsteal-check','--target-only']] * 4)])
         r=self.status();self.assertEqual((r['result'],r['phase']),('PASS','COMPLETE'))
         self.assertEqual(self.h.STATUS.stat().st_mode & 0o777,0o600)
         self.assertNotIn('PRIVATE KEY',self.h.STATUS.read_text())
@@ -82,8 +82,23 @@ class CertDeploy230Tests(unittest.TestCase):
                 return subprocess.CompletedProcess(args,int(n[0]==1),b'',b'')
             return subprocess.CompletedProcess(args,0,b'',b'')
         with patch.object(self.h.time,'sleep'): self.deploy(runner=retry)
-        self.assertEqual(n[0],2);self.assertEqual(self.status()['result'],'PASS')
+        self.assertEqual(n[0],5);self.assertEqual(self.status()['result'],'PASS')
         self.assertEqual(sum('reload' in a for a in self.calls),1)
+
+    def test_single_target_success_is_not_enough_after_graceful_reload(self):
+        n=[0]
+        def alternating(args, **kwargs):
+            if '--target-only' in args:
+                n[0]+=1
+                # First probe succeeds, then an overlapping old worker is seen;
+                # deploy must reset the stability streak and require four new successes.
+                fail = n[0] == 2
+                return subprocess.CompletedProcess(args,int(fail),b'',b'')
+            return subprocess.CompletedProcess(args,0,b'',b'')
+        with patch.object(self.h.time,'sleep'):
+            self.deploy(runner=alternating)
+        self.assertEqual(n[0],6)
+        self.assertEqual(self.status()['result'],'PASS')
 
     def test_timeout_precheck_is_explicit(self):
         def timeout(args, **kwargs): raise subprocess.TimeoutExpired(args,1)

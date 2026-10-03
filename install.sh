@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.4.0. Read README.md before running as root.
+# VKarmani Node 2.4.1. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1077,7 +1077,7 @@ vk_check_import_profile() {
         fail IMPORT_PROFILE_POLICY 'cannot read install-version'
     else
         case "$version" in
-            2.1.0|2.1.1|2.1.2|2.1.3|2.2.0|2.3.0|2.4.0)
+            2.1.0|2.1.1|2.1.2|2.1.3|2.2.0|2.3.0|2.4.0|2.4.1)
                 helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY ;;
             1.3.*|2.0.3)
                 warn IMPORT_PROFILE_POLICY 'NOT_VERIFIED: historical installation requires its matching policy' ;;
@@ -1919,7 +1919,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_COMPLETED_2_1_X_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -2113,7 +2113,7 @@ def saved_provider(etc=ETC, state=STATE):
         if value not in PROVIDERS:
             raise Failure('INVALID_TIME_PROVIDER')
         return value
-    # Explicit compatibility for existing legacy repair/check paths. A new 2.4.0
+    # Explicit compatibility for existing legacy repair/check paths. A new 2.4.x
     # installation must have its own marker; absence is NOT interpreted as success.
     version = (state / 'install-version').read_text().strip() if (state / 'install-version').is_file() else ''
     complete = (state / 'INSTALL_COMPLETE').read_text().splitlines() if (state / 'INSTALL_COMPLETE').is_file() else []
@@ -2977,8 +2977,8 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
-        raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.0 installation')
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+        raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
         if p.exists() or p.is_symlink():
@@ -3743,14 +3743,26 @@ def deploy(domain, runner=subprocess.run, budget=75):
         value['phase'] = 'RELOAD'; record(value)
         execute(['/usr/bin/systemctl', 'reload', 'nginx'], deadline, runner)
         value['phase'] = 'VERIFY_TARGET_TLS'; record(value)
-        while True:
+        # systemctl reload is graceful: for a brief interval an old worker can
+        # still overlap the new generation. One successful connection is not
+        # sufficient evidence that fresh handshakes consistently serve the new
+        # certificate. Require several consecutive target-only successes and
+        # reset the streak on any transient old-certificate/failure result.
+        stable = 0
+        while stable < 4:
             try:
                 execute(['/usr/local/sbin/vkarmani-selfsteal-check', '--target-only'], deadline, runner)
-                break
+                stable += 1
+                if stable < 4:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0.25:
+                        raise Failure('DEPLOY_DEADLINE_EXHAUSTED')
+                    time.sleep(0.25)
             except Failure as exc:
                 if str(exc).startswith('INTERRUPTED_') or deadline - time.monotonic() <= 1:
                     raise
-                time.sleep(1)
+                stable = 0
+                time.sleep(min(1, max(0, deadline - time.monotonic())))
         if leaf_fingerprint(domain) != value['certificate_sha256']:
             raise Failure('CERTIFICATE_CHANGED_DURING_DEPLOY')
         value.update(result='PASS', phase='COMPLETE', finished_at=dt.datetime.now(dt.timezone.utc).isoformat())
@@ -3818,7 +3830,7 @@ VK_CERT_DEPLOY_PY
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.4.0 — 2026-10-02
+# VKarmani Remnawave Node Installer 2.4.1 — 2026-10-03
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -3830,7 +3842,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.4.0
+INSTALLER_VERSION=2.4.1
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -3846,7 +3858,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.4.0
+VKarmani Remnawave Node Installer 2.4.1
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -4258,7 +4270,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.4.0: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.4.1: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -4818,7 +4830,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.4.0\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.4.1\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -4994,7 +5006,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.4.0 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.4.1 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -5116,7 +5128,7 @@ if [[ -n "$IMAGE_OVERRIDE" ]]; then
     python3 "$LIB/node_helper.py" image "$IMAGE_OVERRIDE"
 fi
 IMAGE=$(helper get image)
-# NET_ADMIN is a 2.4.0 default/requirement; persist it on new and resumed 2.4.0 installs.
+# NET_ADMIN is a 2.4.x default/requirement; persist it on new and resumed 2.4.x installs.
 if [[ $ALLOW_NET_ADMIN -eq 1 ]]; then helper allow-net-admin true; fi
 if [[ $WEEKLY_REBOOT -eq 1 ]]; then helper weekly-reboot true; fi
 [[ $(helper get allow_net_admin) != true ]] || ALLOW_NET_ADMIN=1
@@ -5972,7 +5984,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.4.0-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.4.1-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -6023,7 +6035,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.4.0 — исправление только на НОДЕ'
+    echo 'VKarmani 2.4.1 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -6088,7 +6100,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.4.0\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.4.1\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -6118,7 +6130,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.4.0-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.4.1-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -6129,7 +6141,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.4.0 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.4.1 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -6166,7 +6178,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.4.0\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.4.1\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true

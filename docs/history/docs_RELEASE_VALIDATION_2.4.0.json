@@ -1,0 +1,111 @@
+{
+  "version": "2.4.0",
+  "date": "2026-10-02",
+  "status": "LOCAL_TESTS_PASSED_CANARY_REQUIRED",
+  "base": {
+    "archive": "Node_Install_2.3.0.zip",
+    "sha256": "9c83d08603939b7f34994130d696dd3e83d9d3d10a6b22fbc3feb75417d2ff57",
+    "original_files": 175,
+    "original_manifest_entries": 174,
+    "removed_paths": []
+  },
+  "installer_sha256": "38c614aa532b476101eacd874742fc60428da1b68e8cafc09051f296a5bd945d",
+  "change_scope": [
+    "INSTALLER_VERSION bumped to 2.4.0",
+    "new install config persists allow_net_admin=true",
+    "generated RemnaNode Compose always includes cap_add NET_ADMIN",
+    "runtime checker accepts matching allow_net_admin=true plus NET_ADMIN as PASS and still fails policy drift",
+    "reviewed version gates include 2.4.0 while previous reviewed versions remain supported",
+    "standalone guarded migration procedure supplied for completed existing nodes",
+    "security, operations, audit, failure audit, README and changelog updated"
+  ],
+  "tests": [
+    {
+      "stage": "release_2.3.0_reference",
+      "uid": 0,
+      "count": 554,
+      "seconds": 20.653,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/230-root-tests.txt"
+    },
+    {
+      "stage": "release_2.4.0",
+      "uid": 0,
+      "count": 555,
+      "seconds": 21.868,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/240-root-tests.txt"
+    },
+    {
+      "stage": "release_2.4.0",
+      "uid": 1000,
+      "count": 555,
+      "seconds": 22.311,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "evidence/240-uid1000-tests.txt"
+    }
+  ],
+  "new_behavioral_tests": {
+    "test_validation.py::ValidationTests::test_new_install_persists_net_admin_enabled": 1
+  },
+  "environment": {
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "arch": "x86_64",
+    "python": "3.13.5",
+    "node": "22.16.0",
+    "nginx": "1.26.3",
+    "git": "2.47.3",
+    "openssl": "3.5.5"
+  },
+  "static_checks": {
+    "shell_files": 2,
+    "python_modules": 40,
+    "json_files": 22,
+    "workflow_yaml": "PASS",
+    "embedded_python": 23,
+    "embedded_shell": 5,
+    "existing_node_net_admin_command_bash_syntax": "PASS",
+    "net_admin_default_contract": "PASS",
+    "shellcheck": "NOT_RUN_NOT_INSTALLED",
+    "details": "evidence/240-static-validation.json"
+  },
+  "browser": {
+    "rerun_for_2_4_0": false,
+    "reason": "preview/site rendering code was not changed by this capability-policy release",
+    "inherited_report": "evidence/230-browser-report.json",
+    "previous_cases": 36,
+    "new_page_design": false
+  },
+  "actual_local_components": [
+    "full offline unittest suite under root and UID 1000",
+    "Bash syntax validation",
+    "Python AST/embedded payload compile",
+    "JSON and workflow YAML parsing",
+    "existing-node NET_ADMIN command syntax validation",
+    "filesystem/hash comparison against the supplied 2.3.0 base"
+  ],
+  "not_executed": [
+    "full production VPS install",
+    "real Docker recreate of RemnaNode with NET_ADMIN on a user VPS",
+    "live Session Browser verification",
+    "real authenticated VLESS client after NET_ADMIN rollout",
+    "live panel-to-node API path",
+    "host UFW/routes/qdisc before-after verification on a VPS",
+    "public CA issuance/renewal",
+    "VPS reboot/restore",
+    "full supported OS and arm64 matrix",
+    "long load/soak/performance tests",
+    "remote GitHub Actions",
+    "ShellCheck"
+  ],
+  "additional_packages_installed": false,
+  "user_servers_changed": false,
+  "github_changed": false,
+  "git_package_attestation": "Final exact-tree manifest/archive checks are recorded externally in Node_Install_2.4.0_PACKAGE_VALIDATION.json to avoid a self-referential archive hash."
+}
