@@ -1,5 +1,7 @@
-# 🚀 VKarmani Node Install 2.5.1
+# 🚀 VKarmani Node Install 2.5.2
 
+
+> **2.5.2: real-VPS acceptance hardening after Ubuntu 24.04 reboot canary.** Сохранены исправления 2.5.1 для Docker `CAP_` capability names и scoped IPv4 `ss`. Дополнительно исправлены ещё два false-negative, доказанные на реальной ноде: до первого reboot RemnaNode API может слушать `*:2222` как AF_INET6 dual-stack socket при `net.ipv6.bindv6only=0`, хотя IPv4 connect реально работает; после reboot `rw-core` штатно слушает `0.0.0.0:443`, что соответствует generated profile contract. Checker принимает эти состояния только с ownership/PID и IPv4-connect proof, не ослабляя public-port policy. Реальный Ubuntu 24.04 local reboot canary прошёл после этих fixes; Panel path и authenticated client остаются отдельными NOT_VERIFIED уровнями. Подробности: [HOTFIX_2.5.2](docs/HOTFIX_2.5.2.md).
 
 > **2.5.1: acceptance hotfix после реального Ubuntu 24.04 canary failure 2.5.0.** Docker Engine 29.8+ возвращает capability names из `docker inspect` в canonical форме `CAP_NET_ADMIN` / `CAP_NET_RAW`, тогда как checker 2.5.0 сравнивал строки только с `NET_ADMIN` / `NET_RAW`; effective policy при этом была правильной. Дополнительно `ss` на Ubuntu 24.04 может печатать loopback listener `systemd-resolved` как `127.0.0.53%lo:53`, а parser 2.5.0 ошибочно считал `%lo` частью IPv4 и выдавал `INVALID_LOCAL_DATA`. 2.5.1 нормализует только эти представления, не ослабляя capability/listener policy. Для **точно известного незавершённого 2.5.0 final-acceptance state** добавлен explicit `--repair-acceptance`: backup → atomic helper/checker replacement → preboot post-check → rollback при ошибке. APT, SSH, UFW, Nginx, Docker image/container lifecycle, GRUB и ключи repair не меняет; auto-reboot repair не запускает.
 >
@@ -18,12 +20,12 @@
 >
 > **2.4.0: `NET_ADMIN` включён по умолчанию для RemnaNode.** Это необходимо для функций, которым нужен доступ к сетевому состоянию хоста, включая используемый в панели «Обозреватель сессий». В генерируемом Compose теперь всегда есть `cap_add: [NET_ADMIN]`; состояние `allow_net_admin=true` сохраняется в конфигурации, а локальный checker требует совпадения state и фактической capability. `NET_RAW` по-прежнему сброшен, `no-new-privileges` и read-only Selfsteal mount сохранены. Изменение повышает blast radius контейнера при `network_mode: host`, поэтому оно отдельно задокументировано в [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md). Остальные контракты 2.3.0 — password-only SSH, Selfsteal/TLS checks, Vision, IPv4-only и ровно три поля — сохранены.
 >
-> GitHub этой поставкой автоматически не изменяется: `push/tag/release/PR` installer и эта работа не выполняют. Команда загрузки из `main` ниже должна останавливаться по SHA256, пока оператор отдельно не опубликует именно проверенный `install.sh` 2.5.1. Для локальной проверки используйте полный архив release candidate.
+> GitHub этой поставкой автоматически не изменяется: `push/tag/release/PR` installer и эта работа не выполняют. Команда загрузки из `main` ниже должна останавливаться по SHA256, пока оператор отдельно не опубликует именно проверенный `install.sh` 2.5.2. Для локальной проверки используйте полный архив release candidate.
 
 Production-установщик выделенной Remnawave-ноды: **VLESS + RAW + REALITY + Vision**, Selfsteal через **Nginx на хосте**, IPv4-only, UFW, Fail2ban, Docker Compose, Let's Encrypt, BBR/fq при поддержке ядром, диагностика, backup и контролируемое обновление образа.
 
 > **Запускать только на отдельной чистой VPS-нode, не на сервере Remnawave-панели или БД.**
-> До установки сделайте snapshot VPS, проверьте консоль/recovery хостера и убедитесь, что действующий пароль администратора действительно работает. Установщик меняет SSH, UFW, системные параметры и GRUB. После успешных локальных preboot-проверок `2.5.1` по умолчанию планирует **одну автоматическую перезагрузку через 30 секунд**. Для запрета используйте `--no-reboot`.
+> До установки сделайте snapshot VPS, проверьте консоль/recovery хостера и убедитесь, что действующий пароль администратора действительно работает. Установщик меняет SSH, UFW, системные параметры и GRUB. После успешных локальных preboot-проверок `2.5.2` по умолчанию планирует **одну автоматическую перезагрузку через 30 секунд**. Для запрета используйте `--no-reboot`.
 
 ---
 
@@ -31,7 +33,7 @@ Production-установщик выделенной Remnawave-ноды: **VLESS
 
 ### Рекомендуемый запуск с GitHub
 
-Блок ниже сначала скачивает **весь `install.sh`**, проверяет SHA256 именно выпуска `2.5.1`, затем Bash-синтаксис и номер версии — и только после этого запускает установку. Живой поток `curl | bash` не используется.
+Блок ниже сначала скачивает **весь `install.sh`**, проверяет SHA256 именно выпуска `2.5.2`, затем Bash-синтаксис и номер версии — и только после этого запускает установку. Живой поток `curl | bash` не используется.
 
 ```bash
 sudo bash <<'INSTALL'
@@ -47,13 +49,13 @@ curl --fail --show-error --silent --location \
   'https://raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/main/install.sh' \
   --output install.sh
 if ! printf '%s  install.sh\n' \
-  '905cef6d4b60b5fde4fc8799d540f60a77c12912c5a64f1cddc11f854ddf8e8b' \
+  '69177096f8d7142ee578a7bcd9f583b0e934ebe8990341d11a4ef07b24dd0523' \
   | sha256sum --check; then
-    echo 'STOP: файл GitHub не совпадает с выпуском 2.5.1. Не запускаю; нужен проверенный install.sh 2.5.1 в main либо файл из архива 2.5.1.' >&2
+    echo 'STOP: файл GitHub не совпадает с выпуском 2.5.2. Не запускаю; нужен проверенный install.sh 2.5.2 в main либо файл из архива 2.5.2.' >&2
     exit 1
 fi
 bash -n install.sh
-[[ $(bash install.sh --version) == 2.5.1 ]] || { echo 'STOP: неверная версия установщика.' >&2; exit 1; }
+[[ $(bash install.sh --version) == 2.5.2 ]] || { echo 'STOP: неверная версия установщика.' >&2; exit 1; }
 exec bash install.sh
 INSTALL
 ```
@@ -80,7 +82,7 @@ sudo bash install.sh
 
 IPv4 самой ноды установщик **не спрашивает**. Он проверяет DNS и выбирает тот публичный IPv4, который одновременно указан в A-записи домена и реально назначен интерфейсу VPS.
 
-После успешной preboot-приёмки `2.5.1`:
+После успешной preboot-приёмки `2.5.2`:
 
 - сохраняет ту же рабочую REALITY-пару и ShortID в `/root/reality-keys.txt` с правами `root:0600`;
 - выводит в терминал `PrivateKey`, `PublicKey` и `ShortID`;
@@ -239,7 +241,7 @@ sudo cat /etc/vkarmani-node/PANEL-SETUP.txt
 
 Это устраняет расхождение выпуска 2.1.2 с выбранной оператором политикой live-профилей. Значение снимает нижний version-gate, но не добавляет старому клиенту отсутствующую поддержку REALITY/RAW/Vision. Отсутствующее поле, число `0`, строка `"0"` и `"1.0.0"` не проходят новую локальную policy.
 
-Checker 2.5.1 централизованно классифицирует reviewed contracts. `2.3.0`, `2.4.0`, `2.4.1`, `2.4.2`, `2.4.3`, `2.5.0`, `2.5.1` используют modern SSH/Selfsteal contract; reviewed 2.1.x/2.2.0 сохраняют legacy profile validation, а 1.3.x/2.0.3 — исторический NOT_VERIFIED profile contract. Неизвестная будущая, malformed или отсутствующая `install-version` fail-closed и не получает silent PASS.
+Checker 2.5.2 централизованно классифицирует reviewed contracts. `2.3.0`, `2.4.0`, `2.4.1`, `2.4.2`, `2.4.3`, `2.5.0`, `2.5.1`, `2.5.2` используют modern SSH/Selfsteal contract; reviewed 2.1.x/2.2.0 сохраняют legacy profile validation, а 1.3.x/2.0.3 — исторический NOT_VERIFIED profile contract. Неизвестная будущая, malformed или отсутствующая `install-version` fail-closed и не получает silent PASS.
 
 `profile-check` теперь дополнительно проверяет форму DNS-полей, `UseIPv4`, ссылки routing/outbounds и запрещает ожидание входящего PROXY protocol на прямом RAW/REALITY listener. Допускается один служебный локальный API inbound RemnaNode с корректным `api.tag` и первым API routing-rule. Это не разрешение на второй VPN-протокол.
 
@@ -539,15 +541,15 @@ bash install.sh --help
 | Флаг / режим | Назначение | Важно |
 |---|---|---|
 | `--no-reboot` | отключить одноразовый reboot после успешной установки | удобно для ручной проверки второй SSH-сессии |
-| `--reboot` | явно оставить auto-reboot включённым | совместимый explicit-флаг; это и так default `2.5.1` |
+| `--reboot` | явно оставить auto-reboot включённым | совместимый explicit-флаг; это и так default `2.5.2` |
 | `--weekly-reboot` | включить регулярный reboot по понедельникам в `04:00` МСК | по умолчанию выключен |
-| `--allow-net-admin` | совместимый флаг старых команд | в `2.5.1` ничего дополнительно не включает: `NET_ADMIN` уже является default; риск host networking описан в SECURITY |
+| `--allow-net-admin` | совместимый флаг старых команд | в `2.5.2` ничего дополнительно не включает: `NET_ADMIN` уже является default; риск host networking описан в SECURITY |
 | `--image remnawave/node:TAG` или `@sha256:DIGEST` | задать допустимый официальный image для новой/незавершённой установки | это флаг, а не четвёртый вопрос |
 | `--check` | вызвать установленную локальную диагностику | завершённая нода не переустанавливается |
 | `--backup` | configuration backup | не заменяет provider snapshot |
 | `--refresh-image` | обновить только RemnaNode image | без APT/SSH/UFW/Nginx/kernel reconfigure |
 | `--rollback-image` | вернуть предыдущий image, если transaction state позволяет | не full VPS rollback |
-| `--update-cover` | обновить только статический cover-site | поддерживается для завершённых reviewed project-owned версий вплоть до `2.5.1`; system fixes этим не ставятся |
+| `--update-cover` | обновить только статический cover-site | поддерживается для завершённых reviewed project-owned версий вплоть до `2.5.2`; system fixes этим не ставятся |
 | `--rollback-cover` | откатить только cover-site | не откатывает ноду/OS/image |
 | `--diagnose-resources` | read-only срез CPU/RAM/PSI/swap/TCP/disk | не меняет sysctl/MTU/services |
 | `--repair-network` | узкий legacy-repair для поддерживаемого завершённого `1.3.x` state | не миграция на `2.5.1` |
@@ -556,8 +558,8 @@ bash install.sh --help
 
 ### Повторный запуск и resume
 
-- Незавершённую `2.5.1` продолжайте тем же `2.5.1`: сохранённые три значения, REALITY keys, `allow_net_admin=true` и выбранный image digest переиспользуются, а не генерируются заново.
-- **Единственное межверсионное исключение:** точный failed-state исходного `2.5.0`, остановившегося на final `--preboot` acceptance (`INSTALL_FAILED rc=1 line=6412`) и имеющего известные SHA checker/helper, можно исправить командой `sudo bash install.sh --repair-acceptance` из 2.5.1. Repair не переписывает `install-version=2.5.0`, но после успешного post-check создаёт `INSTALL_COMPLETE` для исходной установки и receipt `ACCEPTANCE_REPAIR_2_5_1`; reboot выполняется оператором отдельно.
+- Незавершённую `2.5.2` продолжайте тем же `2.5.2`: сохранённые три значения, REALITY keys, `allow_net_admin=true` и выбранный image digest переиспользуются, а не генерируются заново.
+- **Единственное межверсионное исключение:** точный failed-state исходного `2.5.0`, остановившегося на final `--preboot` acceptance (`INSTALL_FAILED rc=1 line=6412`) и имеющего известные SHA checker/helper, можно исправить командой `sudo bash install.sh --repair-acceptance` из 2.5.1. Repair не переписывает `install-version=2.5.0`, но после успешного post-check создаёт `INSTALL_COMPLETE` для исходной установки и receipt `ACCEPTANCE_REPAIR_2_5_2`; reboot выполняется оператором отдельно.
 - Любое другое незавершённое `2.1.0`/`2.1.1`/`2.1.2`/`2.1.3`/`2.2.0`/`2.3.0`/`2.4.0`/`2.4.1`/`2.4.2`/`2.4.3`/`2.5.0` не «превращайте» в `2.5.1` ручной заменой markers. Используйте исходный installer той же версии либо восстановите snapshot.
 - На завершённой project-owned установке обычный повторный запуск не должен заново выполнять APT/UFW/SSH/ACME/image pull; он переходит к установленной диагностике.
 - Cross-version resume по умолчанию запрещён. Историческое узкое исключение для конкретного раннего `2.0.2` package-stage описано отдельно в [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md); не обобщайте его на другие состояния.
@@ -640,7 +642,7 @@ Rollback image не равен полному rollback VPS. Он не возвр
 
 ## 🧪 Что проверено и что остаётся за оператором
 
-В release candidate `2.5.1` зафиксировано **597 regression/integration тестов**, локально пройденных от root и UID 1000 без failures/errors/skips. Все 557 baseline-тестов 2.4.3 сохранены; сверху добавлены regressions для centralized installer-contract classification, kernel/nft prerequisites, structured RemnaNode nft runtime, Xray functional/security floors, strict Torrent sniffing, effective container capability/security policy, public TCP listeners, conntrack/disk/inode/reboot facts, documentation contracts и запрета destructive firewall/RST/community-list/custom-Xray shortcuts. Исторические CI/evidence 2.4.x не удалены. Preview/site rendering не менялся, поэтому browser-run 2.3.0 (36 PASS) остаётся inherited evidence неизменённой части, а не новым 2.5.1 canary. Реальный post-fix VPS canary 2.5.1 в этой локальной среде **NOT_PERFORMED**; реальный Ubuntu 24.04 запуск 2.5.0 выявил два acceptance false-negative и завершился до `INSTALL_COMPLETE`.
+В release candidate `2.5.2` зафиксировано **599 regression/integration тестов**, локально пройденных от root и UID 1000 без failures/errors/skips. Все 557 baseline-тестов 2.4.3 сохранены; сверху добавлены regressions для centralized installer-contract classification, kernel/nft prerequisites, structured RemnaNode nft runtime, Xray functional/security floors, strict Torrent sniffing, effective container capability/security policy, public TCP listeners, conntrack/disk/inode/reboot facts, documentation contracts и запрета destructive firewall/RST/community-list/custom-Xray shortcuts. Исторические CI/evidence 2.4.x не удалены. Preview/site rendering не менялся, поэтому browser-run 2.3.0 (36 PASS) остаётся inherited evidence неизменённой части. Реальная Ubuntu 24.04 нода прошла local reboot-canary после доказанных fixes: kernel IPv6 disable, 22/80/443/2222 listeners, full local acceptance и postboot systemd service PASS. Panel→node и authenticated client остаются NOT_VERIFIED и не подменяются локальным PASS.
 
 Запуск test suite без установки ноды:
 

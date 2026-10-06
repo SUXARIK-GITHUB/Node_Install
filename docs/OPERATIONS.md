@@ -1,6 +1,11 @@
 # Эксплуатация, диагностика и восстановление
 
-## Текущий выпуск 2.5.1 — acceptance hotfix
+## Текущий выпуск 2.5.2 — real-VPS acceptance hardening
+
+2.5.2 сохраняет все исправления 2.5.1 и добавляет два контракта, подтверждённых реальной Ubuntu 24.04 нодой: preboot dual-stack `NODE_PORT` допускается только при verified `rw-node` ownership, `bindv6only=0` и успешном IPv4 connect к loopback/public IPv4; postboot `rw-core` на `0.0.0.0:443` считается корректным, если generated profile разрешает wildcard и PID принадлежит remnanode core. Nginx/80 по-прежнему обязан слушать конкретный public IPv4. Реальный локальный reboot-canary после fixes прошёл; Panel→node и authenticated client остаются отдельными проверками.
+
+
+## Предыдущий выпуск 2.5.1 — acceptance hotfix
 
 2.5.1 исправляет два false-negative, найденных реальной установкой 2.5.0 на Ubuntu 24.04 / Docker 29.8.2: canonical capability names `CAP_NET_ADMIN`/`CAP_NET_RAW` и iproute2 scope-notation `127.0.0.53%lo:53`. Политика не ослаблена: capability set остаётся exact, а public non-loopback listeners по-прежнему проверяются строго. Подробности: [HOTFIX_2.5.1](HOTFIX_2.5.1.md).
 

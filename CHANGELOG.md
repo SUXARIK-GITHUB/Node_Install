@@ -1,5 +1,12 @@
 # Изменения
 
+## 2.5.2 — 2026-10-06
+
+- Исправлен реальный preboot false-negative: RemnaNode `NODE_PORT` может временно быть AF_INET6 wildcard dual-stack socket до reboot; acceptance принимает его только при exact `rw-node` ownership/PID, `net.ipv6.bindv6only=0` и успешном IPv4 connect к loopback и public IPv4.
+- Исправлен postboot false-negative: generated RAW+REALITY profile штатно разрешает `0.0.0.0:443`; public-listener audit теперь разрешает Xray 443 на public IPv4 или IPv4 wildcard, сохраняя строгую проверку owner/PID. TCP/80 остаётся только на конкретном public IPv4.
+- Реальная Ubuntu 24.04 нода после reboot подтвердила IPv6 kernel disable, `2222` на IPv4, `rw-core` на `0.0.0.0:443`, `NODE_PLUGINS_PREREQS=PASS`, full local acceptance и успешный postboot systemd service. Panel path и authenticated client не объявляются проверенными.
+
+
 ## 2.5.1 — 2026-10-06
 
 - Исправлен реальный false-negative `NODE_CAPABILITY_POLICY` на Docker Engine 29.8.x: `docker inspect` может возвращать canonical `CAP_NET_ADMIN` / `CAP_NET_RAW`; checker теперь нормализует только допустимый `CAP_` prefix и по-прежнему требует exact `NET_ADMIN` add, exact `NET_RAW` drop и `no-new-privileges`. Дополнительные capabilities не разрешены.

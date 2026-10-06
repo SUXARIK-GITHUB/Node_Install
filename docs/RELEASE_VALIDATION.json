@@ -1,7 +1,7 @@
 {
-  "version": "2.5.1",
+  "version": "2.5.2",
   "date": "2026-10-06",
-  "status": "LOCAL_ROOT_AND_UID1000_TESTS_PASSED_POST_FIX_VPS_CANARY_NOT_PERFORMED_REMOTE_CI_NOT_RUN",
+  "status": "LOCAL_ROOT_AND_UID1000_TESTS_PASSED_REAL_VPS_LOCAL_REBOOT_CANARY_PASSED_PANEL_CLIENT_NOT_VERIFIED_REMOTE_CI_NOT_RUN",
   "baseline": {
     "commit": "817b283d813b79bbfa9bde8ced136fc792b48108",
     "archive_sha256": "6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04",
@@ -16,12 +16,16 @@
     "local_tests_uid1000": 590,
     "status": "SUPERSEDED_BY_2_5_1_ACCEPTANCE_HOTFIX"
   },
-  "installer_sha256": "905cef6d4b60b5fde4fc8799d540f60a77c12912c5a64f1cddc11f854ddf8e8b",
+  "installer_sha256": "69177096f8d7142ee578a7bcd9f583b0e934ebe8990341d11a4ef07b24dd0523",
   "root_cause": {
     "acceptance_2_4_x": "Generated acceptance in 2.4.x used duplicated ^2\\.(3\\.0|4\\.0)$ feature gates. 2.5.0 replaced them with one reviewed fail-closed contract classifier.",
     "hotfix_2_5_1": [
       "2.5.0 compared Docker inspect capability arrays literally as NET_ADMIN/NET_RAW. Docker 29.8 can expose the equivalent canonical CAP_NET_ADMIN/CAP_NET_RAW representation, causing NODE_CAPABILITY_POLICY false-negative.",
       "2.5.0 passed ss scoped IPv4 text such as 127.0.0.53%lo directly to IPv4Address, causing PUBLIC_TCP_LISTENERS_POLICY=NOT_VERIFIED INVALID_LOCAL_DATA instead of treating it as loopback."
+    ],
+    "hotfix_2_5_2": [
+      "Before the first reboot, rw-node can own one AF_INET6 wildcard NODE_PORT socket with bindv6only=0 while real IPv4 connects succeed; ss -4 alone therefore produced a false MISSING_EXPECTED_PORTS=2222.",
+      "After reboot/live profile activation, rw-core legitimately binds the reviewed generated VLESS listener as 0.0.0.0:443; 2.5.1 listener audit incorrectly required the concrete public IPv4 and produced BIND_ADDRESS_MISMATCH PORTS=443."
     ]
   },
   "hotfix_2_5_1": {
@@ -53,28 +57,30 @@
     "conntrack/disk/inode/reboot survivability facts in existing resource helper",
     "manual Panel Node Plugin reference policy and external/replacement/incident runbooks",
     "negative regressions for destructive firewall/RST/community-list/scanner/custom-core shortcuts",
-    "explicit narrowly gated 2.5.0 acceptance-only repair with backup, post-check and rollback"
+    "explicit narrowly gated 2.5.0 acceptance-only repair with backup, post-check and rollback",
+    "preboot proof-based AF_INET6 dual-stack NODE_PORT compatibility without hiding any other missing listener",
+    "reviewed Xray IPv4 wildcard 0.0.0.0:443 acceptance with container PID ownership proof"
   ],
   "tests": [
     {
-      "stage": "release_candidate_2.5.1",
+      "stage": "release_candidate_2.5.2",
       "uid": 0,
-      "count": 597,
-      "seconds": 33.233,
+      "count": 599,
+      "seconds": 33.437,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "docs/evidence/251-root-tests.txt"
+      "log": "docs/evidence/252-root-tests.txt"
     },
     {
-      "stage": "release_candidate_2.5.1",
+      "stage": "release_candidate_2.5.2",
       "uid": 1000,
-      "count": 597,
-      "seconds": 33.497,
+      "count": 599,
+      "seconds": 33.354,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "docs/evidence/251-uid1000-tests.txt"
+      "log": "docs/evidence/252-uid1000-tests.txt"
     }
   ],
   "static_checks": {
@@ -86,8 +92,8 @@
     "shellcheck": "NOT_RUN_NOT_INSTALLED",
     "installer_actual_install_on_build_host": "NOT_RUN_BY_DESIGN",
     "json_validation": "PASS_AFTER_THIS_METADATA_UPDATE",
-    "full_suite_root": "597_PASS_0_FAIL_0_ERROR_0_SKIP",
-    "full_suite_uid1000": "597_PASS_0_FAIL_0_ERROR_0_SKIP"
+    "full_suite_root": "599_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "full_suite_uid1000": "599_PASS_0_FAIL_0_ERROR_0_SKIP"
   },
   "real_vps_evidence_2_5_0": {
     "date": "2026-10-06",
@@ -112,23 +118,22 @@
     "note": "This is evidence that exposed the 2.5.0 regressions, not a successful 2.5.1 canary."
   },
   "upstream_review_2026_10_06": {
-    "latest_stable_remnawave_node": "3.4.1",
+    "latest_stable_remnawave_node": "3.4.2",
     "reviewed_xray_in_node_source": "26.7.28",
     "torrent_blocker_floor": "26.3.27",
     "xray_security_floor": "26.7.11",
-    "note": "dated review snapshot; re-check before future release changes"
+    "note": "Official GitHub releases page showed v3.4.2 as latest on 2026-10-06; functional/security Xray floors remain independently enforced by runtime version checks."
   },
   "canary": {
-    "status": "POST_FIX_2_5_1_NOT_PERFORMED",
+    "status": "LOCAL_UBUNTU_24_04_REBOOT_CANARY_PASSED_PANEL_AND_AUTHENTICATED_CLIENT_NOT_VERIFIED",
     "required_before_production_verified_claim": true,
-    "minimum": "fresh disposable Ubuntu 24.04 amd64 VPS or exact 2.5.0 repair canary with snapshot/console, post-reboot acceptance, manual Panel Plugin Config assignment and real client validation"
+    "minimum_remaining": "manual Panel assignment/path validation, Node Plugin Config sync and authenticated client traffic/canary"
   },
   "not_executed": [
-    "real post-fix 2.5.1 fresh VPS installation",
-    "real execution of 2.5.1 --repair-acceptance on the failed VPS",
-    "remote GitHub Actions matrix for the 2.5.1 tree",
-    "post-fix public ACME issuance/renewal",
+    "fresh end-to-end 2.5.2 install from an untouched VPS (the real VPS was repaired from the 2.5.1 candidate during diagnosis)",
+    "remote GitHub Actions matrix for the 2.5.2 tree",
     "Panel-side Plugin Config assignment or API mutation",
+    "authenticated client VPN traffic validation",
     "manual egress TCP/25 nft counter canary",
     "real RU fixed/mobile external-vantage validation",
     "real Ubuntu 26.04 VPS canary",
@@ -139,5 +144,31 @@
   "user_servers_changed": false,
   "panel_objects_changed": false,
   "github_changed": false,
-  "git_push_tag_release_pr": false
+  "git_push_tag_release_pr": false,
+  "hotfix_2_5_2": {
+    "preboot_node_port_dual_stack": "Accept only when NODE_PORT is the sole missing IPv4 listener, a single rw-node/node IPv6 wildcard socket belongs to remnanode, bindv6only=0, and IPv4 connects to loopback plus public IPv4 both pass.",
+    "xray_443_bind": "TCP/80 remains concrete-public-IPv4-only. TCP/443 accepts concrete public IPv4 or 0.0.0.0, while exact rw-core/xray process and remnanode PID ownership remain mandatory.",
+    "architecture_changed": false,
+    "firewall_changed": false,
+    "docker_capabilities_changed": false,
+    "panel_mutation_added": false
+  },
+  "real_vps_evidence_2_5_2": {
+    "date": "2026-10-06",
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-111-generic",
+    "docker_engine": "29.8.2",
+    "node_image_digest": "sha256:1f97485b4bc7e4944f1ae95cc57d176376813b0022e9567b705f384f1a2e909d",
+    "preboot_dual_stack_node_port_proof": "PASS",
+    "post_reboot_ipv6_kernel_disable": "PASS",
+    "post_reboot_node_port_ipv4_listener": "PASS",
+    "xray_ipv4_wildcard_443_owner_proof": "PASS",
+    "full_local_acceptance": "PASS",
+    "postboot_systemd_service": "PASS",
+    "systemd_failed_units": 0,
+    "panel_to_node": "NOT_VERIFIED",
+    "authenticated_client": "NOT_VERIFIED",
+    "torrent_detection": "NOT_VERIFIED",
+    "status": "LOCAL_REBOOT_CANARY_PASSED_EXTERNAL_LEVELS_NOT_VERIFIED"
+  }
 }

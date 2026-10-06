@@ -313,10 +313,10 @@ sudo dpkg --audit
 4. проверяет `--version`;
 5. запускает только после всех проверок.
 
-SHA256 `install.sh` для release candidate `2.5.1`:
+SHA256 `install.sh` для release candidate `2.5.2`:
 
 ```text
-905cef6d4b60b5fde4fc8799d540f60a77c12912c5a64f1cddc11f854ddf8e8b
+69177096f8d7142ee578a7bcd9f583b0e934ebe8990341d11a4ef07b24dd0523
 ```
 
 Если `install.sh` изменён, README и release manifest должны обновляться согласованно после review. Никогда не вычисляйте новый хеш из недоверенного изменившегося файла и не называйте его после этого «проверенным».
@@ -545,3 +545,7 @@ Production `proxy_protocol` listener, REALITY `xver=1`, cert-deploy checks, CA/h
 
 Для уже завершённых нод изменение применяется отдельной узкой операцией с backup Compose/config, `docker compose config --quiet`, recreate только RemnaNode с `--pull never`, проверкой неизменности image и rollback при apply-failure. Полный VPS snapshot остаётся предпочтительным rollback перед массовой раскаткой. Подробный регламент: [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md) и [OPERATIONS](docs/OPERATIONS.md).
 
+
+## 2.5.2 listener acceptance boundaries
+
+`0.0.0.0:443` разрешён только для reviewed Xray/VLESS listener и только при подтверждённом owner/PID `rw-core`/`xray` внутри `remnanode`; это не разрешение произвольных wildcard listeners. TCP/80 по-прежнему должен быть привязан к конкретному public IPv4. Preboot dual-stack `NODE_PORT` допускается только как узкое доказанное состояние `rw-node` при `bindv6only=0` и успешном IPv4 connect; любые дополнительные/неизвестные public listeners остаются FAIL.

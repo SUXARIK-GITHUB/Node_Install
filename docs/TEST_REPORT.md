@@ -1,49 +1,39 @@
-# TEST_REPORT — Node_Install 2.5.1
+# TEST_REPORT — Node_Install 2.5.2
 
-## 2.5.1 release-candidate hotfix validation — 2026-10-06
+## 2.5.2 release-candidate validation — 2026-10-06
 
-Baseline was verified before the 2.5.0 work against commit `817b283d813b79bbfa9bde8ced136fc792b48108`: uploaded archive SHA256 `6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04`, baseline `install.sh` SHA256 `13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c`, clean Git tree, `sha256sum --check SHA256SUMS`, `bash -n install.sh`, `bash -n tests/run.sh`, `git diff --check` and `git diff --exit-code` all PASS. Baseline full suite: **557/557 PASS**.
+Baseline remains commit `817b283d813b79bbfa9bde8ced136fc792b48108`; the original uploaded archive and baseline installer SHA256 remain the values recorded by the 2.5.0 specification. 2.5.2 preserves the complete 2.5.0/2.5.1 architecture and adds only listener-acceptance corrections proven on a real Ubuntu 24.04.4 amd64 VPS.
 
-2.5.1 keeps the 2.5.0 RAW+REALITY+Vision+Selfsteal, host-Nginx, IPv4-only, UFW, Node Plugins readiness and survivability scope. This patch changes only the acceptance interpretation/recovery path for two false-negative cases discovered by a real 2.5.0 Ubuntu 24.04 installation:
+### Real-VPS root causes now covered
 
-- Docker Engine 29.8 canonical `CAP_NET_ADMIN` / `CAP_NET_RAW` inspect values are normalized to the same exact capability policy as legacy textual `NET_ADMIN` / `NET_RAW`; extra capabilities still fail;
-- iproute2 scoped IPv4 text such as `127.0.0.53%lo:53` is normalized before loopback/public listener classification; non-loopback unexpected listeners still fail;
-- explicit `--repair-acceptance` is restricted to the exact reviewed incomplete 2.5.0 final-preboot failure, exact old helper SHA256 and no pending network/image transaction; it backs up and atomically replaces only acceptance files, runs a post-check and rolls back on failure;
-- repair does not run APT, mutate SSH/UFW/Nginx/GRUB/sysctl/Panel, or restart/recreate Docker/RemnaNode; it does not rewrite the original `install-version=2.5.0` and does not auto-reboot.
+- Docker 29.8 canonical `CAP_NET_ADMIN` / `CAP_NET_RAW` inspect representation — fixed in 2.5.1 without widening the exact capability set.
+- iproute2 scoped IPv4 such as `127.0.0.53%lo:53` — fixed in 2.5.1.
+- preboot `rw-node` may own exactly one AF_INET6 wildcard `NODE_PORT` socket while `bindv6only=0`; IPv4 connectivity was proven to both loopback and public IPv4 even though `ss -4` omitted the socket. 2.5.2 accepts only this proof-based exact state.
+- postboot/live `rw-core` legitimately bound `0.0.0.0:443`, matching the generated VLESS profile. 2.5.2 permits public IPv4 or IPv4 wildcard for Xray 443 while retaining process/PID ownership checks; Nginx/80 remains concrete-public-IPv4-only.
 
-The complete 2.5.0 scope remains covered: centralized reviewed installer-contract classification, kernel `>=5.7` preflight, distro `nftables` CLI without service/config ownership, strict sniffing/profile invariants, Xray plugin/security floors, read-only RemnaNode nft runtime validation, public TCP surface audit, resource/conntrack facts and negative anti-regression tests.
+### Real Ubuntu 24.04 local reboot canary
+
+The diagnosed node completed install state, rebooted with `ipv6.disable=1`, returned with no IPv6 socket/address/route state, and exposed IPv4 listeners on 22/80/443/2222. After the two 2.5.2 acceptance fixes were applied, full local acceptance passed, `vkarmani-node-postboot.service` rerun completed with `Result=success` and `ExecMainStatus=0`, and `systemctl --failed` reported zero units. `NODE_PLUGINS_PREREQS`, Xray floors, nft runtime, Selfsteal, listener policy and local Node TLS all passed.
+
+This is a **local host/container/reboot canary**, not full production verification. Panel→node external path, Panel Plugin Config assignment, authenticated client traffic, Torrent Blocker detection and regional reachability were not proven by these steps.
 
 ### Full local suite
 
-| Run | Tests | unittest time | Errors / failures / skips | Result |
-|---|---:|---:|---:|---|
-| 2.5.1, root | 597 | 33.233 s | 0 / 0 / 0 | PASS |
-| 2.5.1, UID 1000 | 597 | 33.497 s | 0 / 0 / 0 | PASS |
-
-The two runs execute the same suite under different UIDs; they are not additive. No test was removed or weakened. New 2.5.1 regressions execute both capability representations, real-style `%lo` listener text, non-loopback scoped enforcement, explicit repair staging, exact failed-state gating and the repair no-mutation contract.
-
-Logs: [2.5.1 root](evidence/251-root-tests.txt), [2.5.1 UID 1000](evidence/251-uid1000-tests.txt). Existing 2.5.0 evidence is preserved as pre-hotfix evidence.
+Final suite: **599/599 PASS** as root (33.437 s) and **599/599 PASS** as UID 1000 (33.354 s), with 0 failures / 0 errors / 0 skips in both runs. No baseline test is removed or weakened. New 2.5.2 regressions execute the wildcard-443 rule and the preboot dual-stack NODE_PORT proof path, including negative cases that forbid hiding any other missing listener. Logs: `docs/evidence/252-root-tests.txt` and `docs/evidence/252-uid1000-tests.txt`.
 
 ### Static/release gates
 
 - `bash -n install.sh` — PASS;
 - `bash -n tests/run.sh` — PASS;
-- generated Bash/Python acceptance files can be staged into a disposable tree and compile — PASS;
-- `python3 -m json.tool docs/NODE_PLUGINS_REFERENCE_2.5.0.json` and `docs/RELEASE_VALIDATION.json` — PASS after final metadata update;
-- `git diff --check` — PASS before packaging;
-- `sha256sum --check SHA256SUMS` — required PASS after final manifest regeneration;
-- `ShellCheck` — **NOT_RUN_NOT_INSTALLED** in this environment; no new hard dependency was added;
-- installer was **not** executed as a real installation on the build host.
+- embedded Node Plugins helper compiles — PASS;
+- JSON release metadata validation — PASS;
+- `git diff --check` and final `sha256sum --check SHA256SUMS` are release gates before packaging;
+- ShellCheck — **NOT_RUN_NOT_INSTALLED**;
+- no real installation is executed on the build host.
 
-Current release-candidate `install.sh` SHA256 after final content lock: `905cef6d4b60b5fde4fc8799d540f60a77c12912c5a64f1cddc11f854ddf8e8b`.
+Current pre-manifest `install.sh` SHA256: `69177096f8d7142ee578a7bcd9f583b0e934ebe8990341d11a4ef07b24dd0523`.
 
-## Real canary evidence and remaining limits
-
-A real Ubuntu 24.04.4 VPS run of 2.5.0 did occur on 2026-10-06. It reached RemnaNode running/stable, local Node TLS PASS, Selfsteal PASS, Xray functional/security floors PASS and `NODE_PLUGIN_NFT_RUNTIME PASS`, then stopped at final `--preboot` acceptance before `INSTALL_COMPLETE` because `NODE_CAPABILITY_POLICY` and `PUBLIC_TCP_LISTENERS_POLICY` were false negatives. This incident is evidence for the two 2.5.1 fixes; it is **not** a successful production canary.
-
-`POST_FIX_2_5_1_CANARY=NOT_PERFORMED` in this build environment. The corrected code still requires a real VPS run/repair followed by reboot/postboot acceptance, Panel assignment, real panel→node path and authenticated client test before any `production verified` claim. Ubuntu 26.04 remains userspace-CI scope until a real 26.04 VPS canary; arm64 also needs a real canary before broad rollout. Remote GitHub Actions for the 2.5.1 tree were not run because no push/PR/tag/release was performed.
-
-These limitations are deliberate: local PASS is not proof of Panel configuration, torrent detection, censorship reachability, ban resistance or production verification.
+Detailed incident contract: [HOTFIX_2.5.2](HOTFIX_2.5.2.md).
 
 ---
 

@@ -41,12 +41,12 @@ vk_write_acceptance "$3" "$4" "$5"
 
     def test_repair_is_exact_failed_250_only_and_preserves_install_version(self):
         self.assertIn('local base_version=2.5.0', self.repair)
-        self.assertIn('local repair_version=2.5.1', self.repair)
+        self.assertIn('local repair_version=2.5.2', self.repair)
         self.assertIn("^rc=1 line=6412", self.repair)
         self.assertIn('affb9c5b282d09156ad8eaa304606870698eea12c6f1f54c9e7e36e1c71f789e', self.repair)
         self.assertIn('5e7b09208c07e1121370fd69d0c97d2ca37b2a8c86eb3a0ace0376eb63044fe6', self.repair)
         self.assertIn('2c4ee1fba63649d35f5e0ee164e8598eda05da725c95b7bbcfd7a91697971cbc', self.repair)
-        self.assertIn('ACCEPTANCE_REPAIR_2_5_1', self.repair)
+        self.assertIn('ACCEPTANCE_REPAIR_2_5_2', self.repair)
         self.assertIn('исходная install-version сохранена как 2.5.0', self.repair)
         self.assertNotRegex(self.repair, r'>\s*"\$state/install-version"')
         self.assertNotIn('install-version.tmp', self.repair)

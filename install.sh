@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.1. Read README.md before running as root.
+# VKarmani Node 2.5.2. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1034,6 +1034,7 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 
@@ -1228,9 +1229,18 @@ def public_listener_policy(raw, ssh_ports, node_port, core_pids=None, node_pids=
             unexpected.add(port)
             continue
         present.add(port)
-        if public_ipv4 is not None and port in (80, 443) and row['host'] != public_ipv4:
-            bad_bind.add(port)
-            continue
+        if public_ipv4 is not None:
+            # Nginx/ACME is intentionally bound to the concrete public IPv4.
+            if port == 80 and row['host'] != public_ipv4:
+                bad_bind.add(port)
+                continue
+            # The reviewed VLESS profile permits either the concrete public IPv4
+            # or the IPv4 wildcard. rw-core normally binds 0.0.0.0:443 after the
+            # IPv6-disabled reboot; ownership/PID checks below still prove that
+            # the listener belongs to the remnanode core.
+            if port == 443 and row['host'] not in (public_ipv4, '0.0.0.0'):
+                bad_bind.add(port)
+                continue
         if not row['processes'] or not row['pids']:
             ambiguous.add(port)
             continue
@@ -1272,13 +1282,97 @@ def docker_process_pids(runner=subprocess.run):
     return core, node
 
 
-def listener_runtime_status(config_path, ssh_ports_path, require_xray=False, runner=subprocess.run):
+def _dual_stack_node_listener(raw, node_port, node_pids):
+    if len(raw) > 2 * 1024 * 1024:
+        raise ValueError('SS_OUTPUT_OVERSIZED')
+    matches = []
+    for line in raw.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) < 5 or fields[0] != 'LISTEN':
+            raise ValueError('SS_SCHEMA_UNRECOGNIZED')
+        host, sep, port_text = fields[3].rpartition(':')
+        if not sep or not port_text.isdigit():
+            raise ValueError('SS_LOCAL_ADDRESS_INVALID')
+        if int(port_text) != node_port:
+            continue
+        if host not in ('*', '::', '[::]'):
+            continue
+        processes = set(re.findall(r'\(\("([^"\\]+)"', line))
+        pids = {int(x) for x in re.findall(r'\bpid=([0-9]+)', line)}
+        if not processes or not pids:
+            raise Unverified('DUAL_STACK_NODE_OWNER_NOT_VERIFIED')
+        if not processes.issubset({'rw-node', 'node'}):
+            raise Unverified('DUAL_STACK_NODE_OWNER_MISMATCH')
+        if not pids.issubset(node_pids):
+            raise Unverified('DUAL_STACK_NODE_PID_MISMATCH')
+        matches.append((processes, pids))
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise Unverified('DUAL_STACK_NODE_LISTENER_AMBIGUOUS')
+    return matches[0]
+
+
+def _ipv4_connect_ok(host, port, timeout=2.0):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def listener_runtime_status(config_path, ssh_ports_path, require_xray=False, runner=subprocess.run, connect_check=_ipv4_connect_ok):
     node_port, public_ipv4 = _config(config_path)
     ssh_ports = _read_ports(ssh_ports_path)
-    raw = _run(['ss', '-H', '-4', '-lntp'], runner)
+    raw4 = _run(['ss', '-H', '-4', '-lntp'], runner)
     core, node = docker_process_pids(runner)
-    return public_listener_policy(raw, ssh_ports, node_port, core, node,
-                                  require_xray=require_xray, public_ipv4=public_ipv4)
+    ok, reason = public_listener_policy(raw4, ssh_ports, node_port, core, node,
+                                        require_xray=require_xray, public_ipv4=public_ipv4)
+    if ok:
+        return ok, reason
+
+    # RemnaNode calls app.listen(NODE_PORT) without an explicit host. Before the
+    # first reboot fully removes IPv6, Node.js can own one AF_INET6 wildcard
+    # socket while net.ipv6.bindv6only=0. Linux then accepts IPv4 through that
+    # socket even though `ss -4` omits it. Accept only this exact NODE_PORT
+    # exception after ownership and real IPv4-connect proofs; no other missing
+    # listener can be hidden by this path.
+    prefix = 'MISSING_EXPECTED_PORTS='
+    if not reason.startswith(prefix):
+        return ok, reason
+    try:
+        missing = {int(value) for value in reason[len(prefix):].split(',') if value}
+    except ValueError as exc:
+        raise Unverified('LISTENER_MISSING_PORTS_INVALID') from exc
+    if missing != {node_port}:
+        return ok, reason
+
+    raw6 = _run(['ss', '-H', '-6', '-lntp'], runner)
+    proof = _dual_stack_node_listener(raw6, node_port, node)
+    if proof is None:
+        return ok, reason
+    bindv6only = _run(['sysctl', '-n', 'net.ipv6.bindv6only'], runner).strip()
+    if bindv6only != '0':
+        return False, 'NODE_PORT_DUAL_STACK_IPV4_DISABLED'
+    if not connect_check('127.0.0.1', node_port) or not connect_check(public_ipv4, node_port):
+        return False, 'NODE_PORT_DUAL_STACK_IPV4_CONNECT_FAILED'
+
+    processes, pids = proof
+    process = sorted(processes)[0]
+    pid = min(pids)
+    synthetic = f'LISTEN 0 511 *:{node_port} *:* users:(("{process}",pid={pid},fd=0))'
+    ok, reason = public_listener_policy(raw4 + ('\n' if raw4 else '') + synthetic + '\n',
+                                        ssh_ports, node_port, core, node,
+                                        require_xray=require_xray, public_ipv4=public_ipv4)
+    if ok:
+        return True, f'{reason} DUAL_STACK_NODE_PORT={node_port} IPV4_CONNECT=PASS'
+    return ok, reason
 
 
 def main():
@@ -1386,7 +1480,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -2382,7 +2476,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3448,7 +3542,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -4361,7 +4455,7 @@ VK_CERT_DEPLOY_PY
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.1 — 2026-10-06
+# VKarmani Remnawave Node Installer 2.5.2 — 2026-10-06
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -4373,7 +4467,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.1
+INSTALLER_VERSION=2.5.2
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -4389,7 +4483,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.1
+VKarmani Remnawave Node Installer 2.5.2
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -4403,7 +4497,7 @@ VKarmani Remnawave Node Installer 2.5.1
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
   sudo bash install.sh --repair-node           # узкое исправление нашей завершённой 1.3.x
-  sudo bash install.sh --repair-acceptance     # только известный final-acceptance failure 2.5.0 -> hotfix checker 2.5.1
+  sudo bash install.sh --repair-acceptance     # только известный final-acceptance failure 2.5.0 -> hotfix checker 2.5.2
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
@@ -4809,7 +4903,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.1: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.2: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -5376,7 +5470,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.1\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.2\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -5552,7 +5646,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.1 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.2 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -6539,7 +6633,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.5.1-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.5.2-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -6590,7 +6684,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.5.1 — исправление только на НОДЕ'
+    echo 'VKarmani 2.5.2 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -6655,7 +6749,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.5.1\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.5.2\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -6685,7 +6779,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.5.1-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.5.2-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -6696,7 +6790,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.5.1 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.5.2 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -6733,7 +6827,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.5.1\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.5.2\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true
@@ -6776,7 +6870,7 @@ vkarmani_repair_acceptance_main() {
     local plugin="$lib/node_plugins.py"
     local time_helper="$lib/time_helper.py"
     local base_version=2.5.0
-    local repair_version=2.5.1
+    local repair_version=2.5.2
     local old_checker_sha=affb9c5b282d09156ad8eaa304606870698eea12c6f1f54c9e7e36e1c71f789e
     local old_plugin_sha=5e7b09208c07e1121370fd69d0c97d2ca37b2a8c86eb3a0ace0376eb63044fe6
     local old_time_sha=2c4ee1fba63649d35f5e0ee164e8598eda05da725c95b7bbcfd7a91697971cbc
@@ -6822,15 +6916,15 @@ vkarmani_repair_acceptance_main() {
         echo 'STOP: remnanode не запущен; это уже не узкий acceptance-only случай.' >&2; return 1;
     }
 
-    local bk="$state/backups/acceptance-2.5.1-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/acceptance-2.5.2-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$checker" "$plugin" "$time_helper" "$bk/"
     (cd "$bk" && sha256sum vkarmani-node-check node_plugins.py time_helper.py > MANIFEST.sha256 && sha256sum --check --quiet MANIFEST.sha256)
 
     local tmp_checker tmp_plugin tmp_time
-    tmp_checker=$(mktemp /usr/local/sbin/.vkarmani-node-check.2.5.1.XXXXXXXX)
-    tmp_plugin=$(mktemp "$lib/.node_plugins.py.2.5.1.XXXXXXXX")
-    tmp_time=$(mktemp "$lib/.time_helper.py.2.5.1.XXXXXXXX")
+    tmp_checker=$(mktemp /usr/local/sbin/.vkarmani-node-check.2.5.2.XXXXXXXX)
+    tmp_plugin=$(mktemp "$lib/.node_plugins.py.2.5.2.XXXXXXXX")
+    tmp_time=$(mktemp "$lib/.time_helper.py.2.5.2.XXXXXXXX")
     local committed=0 receipt_committed=0
     vk_acceptance_repair_rollback() {
         local rc=${1:-1}
@@ -6841,7 +6935,7 @@ vkarmani_repair_acceptance_main() {
             cp -a "$bk/node_plugins.py" "$plugin"
             cp -a "$bk/time_helper.py" "$time_helper"
             rm -f /root/reality-keys.txt
-            [[ "$receipt_committed" -eq 0 ]] || rm -f "$state/ACCEPTANCE_REPAIR_2_5_1"
+            [[ "$receipt_committed" -eq 0 ]] || rm -f "$state/ACCEPTANCE_REPAIR_2_5_2"
         fi
         return "$rc"
     }
@@ -6877,13 +6971,13 @@ PY_REPAIR_COMPILE
         echo 'STOP: image-digest повреждён.' >&2; return 1;
     }
     local receipt_tmp complete_tmp
-    receipt_tmp=$(mktemp "$state/.ACCEPTANCE_REPAIR_2_5_1.XXXXXXXX")
+    receipt_tmp=$(mktemp "$state/.ACCEPTANCE_REPAIR_2_5_2.XXXXXXXX")
     complete_tmp=$(mktemp "$state/.INSTALL_COMPLETE.XXXXXXXX")
     printf 'source_version=%s\nrepair_version=%s\nat=%s\nbackup=%s\n' \
         "$base_version" "$repair_version" "$(date -Is)" "$bk" > "$receipt_tmp"
     printf 'version=%s\nat=%s\nimage=%s\n' "$base_version" "$(date -Is)" "$digest" > "$complete_tmp"
     chmod 0600 "$receipt_tmp" "$complete_tmp"
-    mv -f -- "$receipt_tmp" "$state/ACCEPTANCE_REPAIR_2_5_1"
+    mv -f -- "$receipt_tmp" "$state/ACCEPTANCE_REPAIR_2_5_2"
     receipt_committed=1
     mv -f -- "$complete_tmp" "$state/INSTALL_COMPLETE"
     committed=1
