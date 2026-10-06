@@ -1,0 +1,56 @@
+{
+  "pluginConfig": {
+    "ingressFilter": {
+      "enabled": true,
+      "blockedIps": [
+        "ext:vkarmani_ingress_blocklist"
+      ]
+    },
+    "egressFilter": {
+      "enabled": true,
+      "blockedIps": [],
+      "blockedPorts": [
+        25,
+        137,
+        138,
+        139,
+        445,
+        465,
+        587,
+        2525
+      ]
+    },
+    "torrentBlocker": {
+      "enabled": true,
+      "ignoreLists": {
+        "ip": []
+      },
+      "blockDuration": 3600
+    },
+    "connectionDrop": {
+      "enabled": true,
+      "whitelistIps": []
+    }
+  },
+  "sharedLists": {
+    "vkarmani_ingress_blocklist": {
+      "type": "ipList",
+      "items": []
+    },
+    "vkarmani_nonpublic_ipv4": {
+      "type": "ipList",
+      "items": [
+        "10.0.0.0/8",
+        "100.64.0.0/10",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.168.0.0/16"
+      ]
+    }
+  },
+  "notes": {
+    "scope": "REFERENCE_ONLY_MANUAL_PANEL_CONFIGURATION",
+    "nonpublicEgressDefault": "DO_NOT_WIRE_vkarmani_nonpublic_ipv4_INTO_egressFilter.blockedIps"
+  }
+}

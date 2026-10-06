@@ -1,4 +1,12 @@
-# 🔐 Безопасность VKarmani Node Install 2.4.3
+# 🔐 Безопасность VKarmani Node Install 2.5.0
+
+## 2.5.0: Node Plugins и диагностическая поверхность
+
+`NET_ADMIN` остаётся сознательной capability RemnaNode, но `NET_RAW` не возвращён, `no-new-privileges` и отсутствие Docker socket сохранены. Installer устанавливает только distro `nftables` CLI и не управляет `nftables.service`/`/etc/nftables.conf`, не flush-ит ruleset и не создаёт параллельный host firewall. Runtime plugin table читается JSON-командой с timeout.
+
+Диагностика не должна выводить `SECRET_KEY`, REALITY/TLS private key, container env, user UUID/email/subscription links, cookies/auth headers, remote/client IP inventory, raw FD targets или full PCAP. Новый public listener audit сообщает только локальные порты/ownership verdict. Resource snapshot содержит host-wide counters и не меняет sysctl/firewall/limits.
+
+Xray core из official Remnawave image проверяется по двум floor: `>=26.3.27` для plugin functionality и reviewed `>=26.7.11` для security advisory scope. Installer не скачивает custom core. Cover-site/REALITY не являются гарантией недетектируемости или отсутствия IP/prefix/provider block. Запрещены auto RST/community blocklists, random SNI/fingerprint/key rotation и provider hopping как «универсальное лечение».
 
 Этот файл описывает security-модель **установщика ноды**, а не всей Remnawave-инфраструктуры. Installer работает с root-правами на выделенной VPS и намеренно меняет SSH, UFW, GRUB, sysctl, Nginx, Docker и systemd. Безопасность зависит и от встроенных guard-проверок, и от внешних компонентов, которые установщик не контролирует: хостер, панель, DNS, Cloudflare, рабочая станция администратора и клиентские устройства.
 
@@ -297,10 +305,10 @@ sudo dpkg --audit
 4. проверяет `--version`;
 5. запускает только после всех проверок.
 
-SHA256 `install.sh` для этого `2.4.3`:
+SHA256 `install.sh` для release candidate `2.5.0`:
 
 ```text
-13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c
+e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4
 ```
 
 Если `install.sh` изменён, README и release manifest должны обновляться согласованно после review. Никогда не вычисляйте новый хеш из недоверенного изменившегося файла и не называйте его после этого «проверенным».

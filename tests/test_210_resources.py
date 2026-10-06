@@ -45,5 +45,5 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(r.returncode,0,r.stderr);data=json.loads(r.stdout)
         self.assertEqual(data['scope'],'HOST_LOCAL_ONLY_NOT_A_VPN_SPEED_TEST')
         self.assertIn('root_disk',data);self.assertGreaterEqual(data['sample_seconds'],1)
-        for command in ['systemctl','sysctl','apt-get','curl','reboot','ip route']:
+        for command in ['systemctl','sysctl','apt-get','curl','ip route']:
             self.assertNotIn(command,payload('VK_RESOURCES_PY'))

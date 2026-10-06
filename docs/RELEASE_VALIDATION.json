@@ -1,97 +1,89 @@
 {
-  "version": "2.4.3",
-  "date": "2026-10-03",
-  "status": "LOCAL_TESTS_AND_GIT_ROUNDTRIP_PASSED_REMOTE_CI_RERUN_REQUIRED",
-  "base": {
-    "archive": "Node_Install_2.4.2.zip",
-    "sha256": "e01feb11383dc45eeecadb3e23668cc5d855c7e92c78b5dacf5b2422a4917526",
-    "original_files": 212,
-    "removed_paths": []
+  "version": "2.5.0",
+  "date": "2026-10-06",
+  "status": "LOCAL_ROOT_AND_UID1000_TESTS_PASSED_CANARY_NOT_PERFORMED_REMOTE_CI_NOT_RUN",
+  "baseline": {
+    "commit": "817b283d813b79bbfa9bde8ced136fc792b48108",
+    "archive_sha256": "6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04",
+    "installer_sha256": "13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c",
+    "tests": 557,
+    "git_tree_before_changes": "CLEAN",
+    "sha256sums": "PASS"
   },
-  "installer_sha256": "13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c",
+  "installer_sha256": "e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4",
+  "root_cause": "Generated acceptance used duplicated ^2\\.(3\\.0|4\\.0)$ feature gates. Installer 2.4.1-2.4.3 therefore fell into the historical SSH branch and skipped the modern Selfsteal target check. 2.5.0 replaces those gates with one reviewed fail-closed contract classifier.",
   "change_scope": [
-    "INSTALLER_VERSION bumped to 2.4.3 while reviewed 2.4.2 and earlier supported versions remain accepted",
-    "normalized the three 2.4.1 CI evidence text files from CRLF to canonical LF so Git checkout bytes match SHA256SUMS",
-    "added a regression test that rejects CR or CRLF in UTF-8 text entries covered by the release manifest",
-    "release validation now requires a real temporary Git commit and clean clone before checksum attestation",
-    "preserved 2.4.2 fragmented-TLS test correction, 2.4.1 certificate reload convergence, 2.4.0 NET_ADMIN default and all production runtime policies"
+    "centralized modern/legacy/unreviewed installer contract classification",
+    "kernel >=5.7 preflight before host mutation",
+    "nftables CLI in signed distro package plan without nftables.service or /etc/nftables.conf management",
+    "strict Xray profile sniffing and preserved RAW+REALITY+Vision+Selfsteal invariants",
+    "read-only Node Plugins runtime nft JSON validation",
+    "Xray >=26.3.27 functional floor and >=26.7.11 reviewed security floor",
+    "effective NET_ADMIN/NET_RAW/no-new-privileges runtime acceptance",
+    "public IPv4 TCP listener/owner/bind audit",
+    "conntrack/disk/inode/reboot survivability facts in existing resource helper",
+    "manual Panel Node Plugin reference policy and external/replacement/incident runbooks",
+    "negative regressions for destructive firewall/RST/community-list/scanner/custom-core shortcuts"
   ],
-  "github_actions_evidence": {
-    "2.4.2_commit": "13d4b6d3d2bcba9612b3458e660cb27a7643da2b",
-    "2.4.2_ubuntu_22_04": "FAILED before tests: SHA256SUMS mismatch for exactly three CRLF evidence files",
-    "2.4.2_ubuntu_24_04": "FAILED before tests: SHA256SUMS mismatch for exactly three CRLF evidence files",
-    "2.4.2_ubuntu_26_userspace": "FAILED before tests: SHA256SUMS mismatch for exactly three CRLF evidence files",
-    "evidence": "evidence/242-ci-checksum-failure-summary.txt",
-    "2.4.3_remote_rerun": "NOT_RUN; requires publication/push"
-  },
-  "root_cause": {
-    "gitattributes": "* text=auto",
-    "affected_files": [
-      "docs/evidence/241-ci-ubuntu22-failure.txt",
-      "docs/evidence/241-ci-ubuntu24-failure.txt",
-      "docs/evidence/241-ci-ubuntu26-userspace-failure.txt"
-    ],
-    "2.4.2_archive_line_endings": "CRLF",
-    "git_checkout_line_endings": "LF",
-    "classification": "release packaging / supply-chain validation defect; not production runtime defect"
-  },
   "tests": [
     {
-      "stage": "release_2.4.3",
+      "stage": "release_candidate_2.5.0",
       "uid": 0,
-      "count": 557,
-      "seconds": 28.199,
+      "count": 590,
+      "seconds": 28.596,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "evidence/243-root-tests.txt"
+      "log": "docs/evidence/250-root-tests.txt"
     },
     {
-      "stage": "release_2.4.3",
+      "stage": "release_candidate_2.5.0",
       "uid": 1000,
-      "count": 557,
-      "seconds": 27.882,
+      "count": 590,
+      "seconds": 28.197,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "evidence/243-uid1000-tests.txt"
+      "log": "docs/evidence/250-uid1000-tests.txt"
     }
   ],
   "static_checks": {
-    "bash_n": "PASS",
-    "python_modules": 40,
-    "json_files": 28,
-    "workflow_yaml": "PASS",
-    "installer_version": "2.4.3",
-    "net_admin_default_contract": "PASS",
-    "git_canonical_lf_regression": "PASS",
-    "utf8_text_with_cr": [],
+    "bash_n_install": "PASS",
+    "bash_n_tests_run": "PASS",
+    "git_diff_check": "PASS",
+    "sha256sum_check": "PASS_AFTER_FINAL_MANIFEST_REGENERATION",
     "shellcheck": "NOT_RUN_NOT_INSTALLED",
-    "details": "evidence/243-static-validation.json"
+    "installer_actual_install_on_build_host": "NOT_RUN_BY_DESIGN",
+    "json_validation": "PASS",
+    "full_suite_root": "590_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "full_suite_uid1000": "590_PASS_0_FAIL_0_ERROR_0_SKIP"
   },
-  "git_roundtrip": {
-    "status": "PASS",
-    "flow": "exact release tree -> git init/add/commit -> clean clone -> sha256sum --check SHA256SUMS",
-    "note": "Validated only after final SHA256SUMS generation; external package attestation carries the exact result."
+  "upstream_review_2026_10_06": {
+    "latest_stable_remnawave_node": "3.4.1",
+    "reviewed_xray_in_node_source": "26.7.28",
+    "torrent_blocker_floor": "26.3.27",
+    "xray_security_floor": "26.7.11",
+    "note": "dated review snapshot; re-check before future release changes"
   },
-  "browser": {
-    "rerun_for_2_4_3": false,
-    "reason": "preview/site rendering code unchanged by the release-manifest correction",
-    "inherited_report": "evidence/230-browser-report.json",
-    "previous_cases": 36,
-    "new_page_design": false
+  "canary": {
+    "status": "NOT_PERFORMED",
+    "required_before_production_verified_claim": true,
+    "minimum": "fresh disposable Ubuntu 24.04 amd64 VPS with snapshot/console, manual Panel Plugin Config assignment, real client and post-reboot acceptance"
   },
   "not_executed": [
-    "remote GitHub Actions matrix for 2.4.3 on ubuntu-22.04, ubuntu-24.04 and ubuntu-26-userspace",
-    "full production VPS install",
-    "public CA issuance/renewal after this packaging-only release correction",
-    "VPS reboot/restore",
-    "full supported OS and arm64 matrix beyond the pending remote CI",
+    "real production/canary VPS installation",
+    "remote GitHub Actions matrix for the new 2.5.0 tree",
+    "public ACME issuance/renewal on a VPS",
+    "Panel-side Plugin Config assignment or API mutation",
+    "manual egress TCP/25 nft counter canary",
+    "real RU fixed/mobile external-vantage validation",
+    "real Ubuntu 26.04 VPS canary",
+    "real arm64 VPS canary",
     "long load/soak/performance tests",
     "ShellCheck"
   ],
-  "additional_packages_installed": false,
   "user_servers_changed": false,
+  "panel_objects_changed": false,
   "github_changed": false,
-  "git_package_attestation": "Final exact-tree Git round-trip and archive checks are recorded externally in Node_Install_2.4.3_PACKAGE_VALIDATION.json to avoid a self-referential archive hash."
+  "git_push_tag_release_pr": false
 }

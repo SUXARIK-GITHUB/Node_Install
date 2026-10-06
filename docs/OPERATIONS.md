@@ -1,5 +1,15 @@
 # Эксплуатация, диагностика и восстановление
 
+## Текущий выпуск 2.5.0 — Node Plugins readiness и survivability
+
+2.5.0 сохраняет RAW+REALITY+Vision+Selfsteal и node-only границу, но делает prerequisites и диагностику явным контрактом. Перед host mutation kernel должен быть `>=5.7`; signed package plan включает `nftables`, однако его systemd service/config installer не включает. После установки используйте `sudo vkarmani-node-check`; после ручного назначения Profile/Plugin Config — `sudo vkarmani-node-check --require-xray`. Только strict режим требует подтверждённую структуру `table ip remnanode`; до Panel sync это `NOT_VERIFIED`, не PASS.
+
+`--diagnose-resources` теперь также показывает conntrack, disk/inode percentages и reboot-required marker. WARN/CRITICAL thresholds не запускают tuning. Не увеличивайте conntrack, MTU/buffers, swap/limits и не меняйте firewall без отдельного evidence-driven change.
+
+Публичная TCP surface проверяется по фактическим IPv4 listeners и ownership: SSH, 80/Nginx, 443/Xray (когда live), NODE_PORT/RemnaNode. Неожиданный public listener — повод расследовать сервис/compromise, а не открыть UFW шире.
+
+Panel policy и ограничения: [NODE_PLUGINS_2.5.0](NODE_PLUGINS_2.5.0.md). Внешний path нельзя диагностировать с VPS одной командой: [EXTERNAL_PATH_DIAGNOSTICS_2.5.0](EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md). При подтверждённо непригодном IP/path или compromise: [NODE_REPLACEMENT_2.5.0](NODE_REPLACEMENT_2.5.0.md). Обычный повтор installer завершённой 2.4.x ноды остаётся диагностикой и не является скрытой миграцией checker/helpers.
+
 ## Текущий выпуск 2.4.3 — Git-canonical release manifest
 
 2.4.3 не требует никаких действий на уже работающих нодах. Изменение касается release bytes/manifest и CI validation: три CRLF evidence-файла приведены к canonical LF, а release теперь проверяется через clean Git round-trip. Production Selfsteal socket/Nginx config, Xray REALITY `xver=1`, cert-deploy convergence logic, NET_ADMIN default, Docker/firewall/SSH/network policy не менялись. Если 2.4.2 уже установлен и работает, обновлять сервер только ради этого CI-fix не нужно.

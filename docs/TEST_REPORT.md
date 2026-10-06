@@ -1,5 +1,53 @@
-# TEST_REPORT — Node_Install 2.4.3
+# TEST_REPORT — Node_Install 2.5.0
 
+## 2.5.0 release-candidate validation — 2026-10-06
+
+Baseline was verified before edits against commit `817b283d813b79bbfa9bde8ced136fc792b48108`: uploaded archive SHA256 `6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04`, baseline `install.sh` SHA256 `13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c`, clean Git tree, `sha256sum --check SHA256SUMS`, `bash -n install.sh`, `bash -n tests/run.sh`, `git diff --check` and `git diff --exit-code` all PASS. Baseline full suite: **557/557 PASS**.
+
+The 2.5.0 implementation keeps the existing RAW+REALITY+Vision+Selfsteal, host-Nginx, IPv4-only, UFW and Docker layout. The main release-candidate additions validated offline are:
+
+- centralized reviewed installer-contract classification (`modern` / `legacy` / `unreviewed`) with executable 2.4.1/2.4.2/2.4.3 SSH/Selfsteal regressions and fail-closed future versions;
+- kernel `>=5.7` preflight before host mutation, distro `nftables` CLI plan without `nftables.service` or `/etc/nftables.conf` management;
+- effective runtime container policy: exact `NET_ADMIN` add, exact `NET_RAW` drop and `no-new-privileges` for modern contracts;
+- strict Torrent sniffing profile contract and preserved TCP/443 + RAW/REALITY/Vision + own-domain/Selfsteal invariants;
+- Xray plugin floor `>=26.3.27` and separate reviewed security floor `>=26.7.11`;
+- bounded structured `nft -j list table ip remnanode` validation without active firewall tests;
+- public IPv4 TCP listener/owner/bind policy without printing client/peer addresses;
+- `--diagnose-resources` conntrack, root disk/inode percentages, reboot marker, FD/OOM status without auto-tuning;
+- documentation/runbooks for Panel-only Plugin Config, external-path taxonomy/control-vantage diagnosis, safe node replacement and provider-abuse incidents;
+- negative regressions against destructive firewall flushes, RST/community auto-lists, scanner services and custom Xray replacement.
+
+### Full local suite
+
+| Run | Tests | unittest time | Errors / failures / skips | Result |
+|---|---:|---:|---:|---|
+| 2.5.0, root | 590 | 28.596 s | 0 / 0 / 0 | PASS |
+| 2.5.0, UID 1000 | 590 | 28.197 s | 0 / 0 / 0 | PASS |
+
+The two runs execute the same suite under different UIDs; they are not additive. No test was removed or weakened to make the release green. The previously observed PTY/hidden-input timeout from the project history did not reproduce in these full runs.
+
+### Static/release gates
+
+- `bash -n install.sh` — PASS;
+- `bash -n tests/run.sh` — PASS;
+- all embedded Python payload compile tests — PASS as part of the 590-test suite;
+- `python3 -m json.tool docs/NODE_PLUGINS_REFERENCE_2.5.0.json` and `docs/RELEASE_VALIDATION.json` — PASS;
+- `git diff --check` — PASS, including new files via intent-to-add inspection;
+- `sha256sum --check SHA256SUMS` — PASS after final manifest regeneration;
+- `ShellCheck` — **NOT_RUN_NOT_INSTALLED** in this environment; no new hard dependency was added;
+- installer was **not** executed as a real installation on the build host.
+
+Current release-candidate `install.sh` SHA256 before final manifest packaging: `e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4`.
+
+## What local validation does not prove
+
+`PRODUCTION_CANARY=NOT_PERFORMED`. This environment did not perform a fresh Ubuntu 24.04 VPS install, public ACME issuance, Panel assignment/Plugin Config sync, real panel→node 2222 path, authenticated VLESS/REALITY client transfer, manual egress TCP/25 counter canary, reboot/postboot acceptance, or real ISP/RU-mobile external-vantage testing. Ubuntu 26.04 remains userspace-CI scope until a real 26.04 VPS canary is run; arm64 also needs a real canary before broad rollout. Remote GitHub Actions for the new 2.5.0 tree were not run because no push/PR/tag/release was performed.
+
+These limitations are deliberate: local `PASS` is not called proof of Panel configuration, torrent detection, censorship reachability, ban resistance or production verification.
+
+---
+
+## Historical 2.4.3 report (preserved)
 Дата: **2026-10-03**. Статус: **LOCAL_TESTS_PASSED_REMOTE_CI_RERUN_REQUIRED**.
 
 ## Исправление 2.4.3 по фактическому GitHub Actions failure 2.4.2

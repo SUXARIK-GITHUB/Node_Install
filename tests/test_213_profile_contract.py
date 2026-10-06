@@ -79,7 +79,7 @@ class Profile213Tests(unittest.TestCase):
         self.h.export_reality_keys_file(self.c)
         guide = (self.h.ETC / 'PANEL-SETUP.txt').read_text()
         self.assertIn('minClientVer=0.0.0', guide)
-        self.assertIn('RemnaNode 2.4.3', guide)
+        self.assertIn('RemnaNode 2.5.0', guide)
         self.assertIn('minClientVer: 0.0.0', self.h.REALITY_EXPORT.read_text())
         self.assertEqual((self.h.ETC / 'reality.json').read_bytes(), keys)
 
@@ -152,6 +152,21 @@ class Profile213Tests(unittest.TestCase):
         stream['sockopt'] = {'acceptProxyProtocol': False}
         self.assertTrue(self.h.validate_profile(self.p, self.c))
         self.assertEqual(self.r['xver'], 1)  # outbound header to Nginx is unchanged
+
+    def test_torrent_sniffing_contract_is_strict_and_generated_profile_passes(self):
+        self.assertTrue(self.h.validate_profile(self.p, self.c))
+        original = copy.deepcopy(self.i['sniffing'])
+        for value in (None, {}, [], {'enabled': False, 'routeOnly': True, 'destOverride': ['http','tls','quic']},
+                      {'enabled': True, 'routeOnly': False, 'destOverride': ['http','tls','quic']}):
+            with self.subTest(value=value):
+                self.i['sniffing'] = value
+                self.reject('PROFILE_TORRENT_SNIFFING_POLICY_INVALID')
+        for dest in (['http', 'tls'], ['http', 'tls', 'quic', 'fakedns'], 'http,tls,quic', [1, 'tls', 'quic']):
+            with self.subTest(dest=dest):
+                self.i['sniffing'] = {'enabled': True, 'routeOnly': True, 'destOverride': dest}
+                self.reject('PROFILE_TORRENT_SNIFFING_POLICY_INVALID')
+        self.i['sniffing'] = original
+        self.assertTrue(self.h.validate_profile(self.p, self.c))
 
     def test_public_listener_ipv4_only(self):
         for value in ('::', '127.0.0.1', None, 'unrelated.example.test'):
@@ -313,8 +328,8 @@ class Profile213Tests(unittest.TestCase):
 class AcceptanceGate213Tests(unittest.TestCase):
     def gate(self, version, helper_rc=0):
         text = payload('VK_PAYLOAD_VK_WRITE_ACCEPTANCE')
-        start = text.index('vk_check_import_profile() {')
-        end = text.index('\n[[ "$(timedatectl', start)
+        start = text.index('installed_contract_class() {')
+        end = text.index('\nif [[ "$INSTALLED_CONTRACT_CLASS" == modern ]]; then\n    if KERNEL_PLUGIN_STATUS=', start)
         snippet = text[start:end]
         with tempfile.TemporaryDirectory(prefix='vk-gate-213-') as tmp:
             if version is not None:
@@ -322,41 +337,52 @@ class AcceptanceGate213Tests(unittest.TestCase):
             prelude = '''set -uo pipefail
 STATE=$1
 F=0
-helper() { printf 'HELPER_CALLED=%s\\n' "$*"; return "$2"; }
+helper() { printf 'HELPER_CALLED=%s\\n' "$*"; return ''' + str(helper_rc) + '''; }
 pass() { printf 'PASS %s\\n' "$1"; }
 fail() { printf 'FAIL %s\\n' "$1"; F=1; }
 warn() { printf 'NOTE %s %s\\n' "$1" "$2"; }
 '''
-            # A stub returns only the requested exit code, never executes helper actions.
-            prelude = prelude.replace('return "$2"', 'return ' + str(helper_rc))
             return subprocess.run(['bash', '-c', prelude + snippet + '\nexit "$F"', '_', tmp],
                                   capture_output=True, text=True, timeout=5)
 
-    def test_all_reviewed_versions_execute_check(self):
-        for version in ('2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3'):
+    def test_all_reviewed_versions_execute_expected_profile_contract(self):
+        validated = ('2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0',
+                     '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0')
+        for version in validated:
             with self.subTest(version=version):
                 result = self.gate(version)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('HELPER_CALLED=profile-check', result.stdout)
                 self.assertIn('PASS IMPORT_PROFILE_POLICY', result.stdout)
-                self.assertIn('NOTE LIVE_PROFILE_POLICY NOT_VERIFIED', result.stdout)
+                if version.startswith(('2.3.', '2.4.', '2.5.')):
+                    self.assertIn('PASS INSTALLER_CONTRACT_MODERN', result.stdout)
+                else:
+                    self.assertIn('PASS INSTALLER_CONTRACT_LEGACY', result.stdout)
 
     def test_helper_failure_not_masked(self):
-        result = self.gate('2.1.3', 1)
+        result = self.gate('2.5.0', 1)
         self.assertEqual(result.returncode, 1)
         self.assertIn('FAIL IMPORT_PROFILE_POLICY', result.stdout)
         self.assertNotIn('PASS IMPORT_PROFILE_POLICY', result.stdout)
 
     def test_future_malformed_versions_do_not_silently_pass(self):
-        for version in ('2.1.4', '2.1.20', '2.1.3-extra', '2.2.1', '2.3.1', '2.4.4', 'broken', ''):
+        for version in ('2.1.4', '2.1.20', '2.1.3-extra', '2.2.1', '2.3.1',
+                        '2.4.4', '2.5.1', '2.6.0', '3.0.0', 'broken', ''):
             with self.subTest(version=version):
                 result = self.gate(version)
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertNotIn('HELPER_CALLED=', result.stdout)
+                self.assertIn('FAIL INSTALLER_CONTRACT', result.stdout)
                 self.assertIn('FAIL IMPORT_PROFILE_POLICY', result.stdout)
 
-    def test_missing_or_known_legacy_is_explicitly_not_verified(self):
-        for version in (None, '2.0.3', '1.3.0'):
+    def test_missing_install_version_is_fail_closed(self):
+        result = self.gate(None)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('FAIL INSTALLER_CONTRACT', result.stdout)
+        self.assertIn('FAIL IMPORT_PROFILE_POLICY', result.stdout)
+
+    def test_historical_legacy_is_explicitly_not_verified(self):
+        for version in ('2.0.3', '1.3.0'):
             with self.subTest(version=version):
                 result = self.gate(version)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -366,7 +392,8 @@ warn() { printf 'NOTE %s %s\\n' "$1" "$2"; }
     def test_maintenance_and_cover_keep_all_previous_supported_versions(self):
         maintenance = payload('VK_PAYLOAD_VK_WRITE_MAINTENANCE')
         site = payload('VK_SITE_TOOL_PY')
-        for version in ('2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3'):
+        for version in ('2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0',
+                        '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0'):
             self.assertIn("'version=" + version + "'", maintenance)
             self.assertIn("'" + version + "'", site)
 

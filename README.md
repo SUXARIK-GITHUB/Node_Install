@@ -1,6 +1,10 @@
-# 🚀 VKarmani Node Install 2.4.3
+# 🚀 VKarmani Node Install 2.5.0
 
 
+> **2.5.0: Node Plugins readiness + survivability.** Исправлена первопричина acceptance bug для 2.4.1–2.4.3 через единую fail-closed классификацию installer contract; добавлены kernel>=5.7 preflight, пакет `nftables` без включения `nftables.service`, строгий sniffing profile contract, read-only RemnaNode nft runtime check, раздельные Xray floors `26.3.27`/`26.7.11`, public TCP listener audit и conntrack/disk/inode/reboot facts в существующий `--diagnose-resources`. Installer остаётся node-only: Panel objects/config не меняются. RAW+REALITY+Vision+Selfsteal, TCP/443, host Nginx, IPv4-only, UFW и `NET_ADMIN`/`NET_RAW`/`no-new-privileges` contract сохранены.
+>
+> Подробности: [Node Plugins 2.5.0](docs/NODE_PLUGINS_2.5.0.md), [Survivability](docs/SURVIVABILITY_2.5.0.md), [External path diagnostics](docs/EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md), [Node replacement](docs/NODE_REPLACEMENT_2.5.0.md). Cover/REALITY **не гарантируют** отсутствие IP/prefix/provider-path block и релиз не называется ban-proof/undetectable.
+>
 > **2.4.3: исправлен release-manifest для Git checkout.** В архиве 2.4.2 три сохранённых CI evidence-файла имели CRLF, а `.gitattributes` с `* text=auto` при commit/checkout нормализовал их в LF. Из-за этого `sha256sum --check SHA256SUMS` закономерно падал до запуска тестов на всех runner-ах. В 2.4.3 эти три текстовых evidence-файла нормализованы в LF, manifest пересобран по canonical Git bytes и добавлена regression-проверка, запрещающая CR/CRLF в UTF-8 text entries из `SHA256SUMS`. Production installer logic, NET_ADMIN, Nginx/Selfsteal, cert-deploy, firewall, SSH и Docker policy не изменены.
 >
 > **2.4.2: исправлен CI-контракт fragmented TLS / PROXY v1 без изменения production transport.** После публикации 2.4.1 все три GitHub Actions runner-а (Ubuntu 22.04, 24.04 и Ubuntu 26 userspace) одинаково выявили ошибку только в `test_large_fragmented_clienthello_and_proxy_header`: тест искусственно разрезал саму строку PROXY v1 по 7 байт. Nginx при чтении неполной строки корректно закрывает соединение как `broken header`, поэтому результат зависел от того, успеет ли локальный UNIX-stream склеить куски до первого чтения. В 2.4.2 PROXY v1 header отправляется тестом целиком, затем делается короткая пауза, а **большой TLS ClientHello по-прежнему принудительно фрагментируется** по 37 байт с паузами между чанками. Это делает проверку детерминированной и соответствует фактической Xray fallback-логике: Xray формирует PROXY v1 в отдельном буфере и записывает его до копирования fallback payload. `install.sh` production transport, Nginx config, NET_ADMIN, firewall, SSH, сертификатный deploy и runtime dependencies не менялись.
@@ -10,12 +14,12 @@
 >
 > **2.4.0: `NET_ADMIN` включён по умолчанию для RemnaNode.** Это необходимо для функций, которым нужен доступ к сетевому состоянию хоста, включая используемый в панели «Обозреватель сессий». В генерируемом Compose теперь всегда есть `cap_add: [NET_ADMIN]`; состояние `allow_net_admin=true` сохраняется в конфигурации, а локальный checker требует совпадения state и фактической capability. `NET_RAW` по-прежнему сброшен, `no-new-privileges` и read-only Selfsteal mount сохранены. Изменение повышает blast radius контейнера при `network_mode: host`, поэтому оно отдельно задокументировано в [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md). Остальные контракты 2.3.0 — password-only SSH, Selfsteal/TLS checks, Vision, IPv4-only и ровно три поля — сохранены.
 >
-> GitHub этой поставкой не изменён. Команда загрузки из `main` ниже намеренно остановится по SHA256, пока проверенный `install.sh` 2.4.3 не опубликован. Для локальной проверки используйте файл из полного архива. Архив выпуска не содержит `.git`: при обновлении clone сохраняйте свою Git-историю; исторические актуальные документы 2.3.0, 2.4.0, 2.4.1 и 2.4.2 сохранены в `docs/history`; исходный архив 2.4.2 не изменяется.
+> GitHub этой поставкой автоматически не изменяется: `push/tag/release/PR` installer и эта работа не выполняют. Команда загрузки из `main` ниже должна останавливаться по SHA256, пока оператор отдельно не опубликует именно проверенный `install.sh` 2.5.0. Для локальной проверки используйте полный архив release candidate.
 
 Production-установщик выделенной Remnawave-ноды: **VLESS + RAW + REALITY + Vision**, Selfsteal через **Nginx на хосте**, IPv4-only, UFW, Fail2ban, Docker Compose, Let's Encrypt, BBR/fq при поддержке ядром, диагностика, backup и контролируемое обновление образа.
 
 > **Запускать только на отдельной чистой VPS-нode, не на сервере Remnawave-панели или БД.**
-> До установки сделайте snapshot VPS, проверьте консоль/recovery хостера и убедитесь, что действующий пароль администратора действительно работает. Установщик меняет SSH, UFW, системные параметры и GRUB. После успешных локальных preboot-проверок `2.4.3` по умолчанию планирует **одну автоматическую перезагрузку через 30 секунд**. Для запрета используйте `--no-reboot`.
+> До установки сделайте snapshot VPS, проверьте консоль/recovery хостера и убедитесь, что действующий пароль администратора действительно работает. Установщик меняет SSH, UFW, системные параметры и GRUB. После успешных локальных preboot-проверок `2.5.0` по умолчанию планирует **одну автоматическую перезагрузку через 30 секунд**. Для запрета используйте `--no-reboot`.
 
 ---
 
@@ -23,7 +27,7 @@ Production-установщик выделенной Remnawave-ноды: **VLESS
 
 ### Рекомендуемый запуск с GitHub
 
-Блок ниже сначала скачивает **весь `install.sh`**, проверяет SHA256 именно выпуска `2.4.3`, затем Bash-синтаксис и номер версии — и только после этого запускает установку. Живой поток `curl | bash` не используется.
+Блок ниже сначала скачивает **весь `install.sh`**, проверяет SHA256 именно выпуска `2.5.0`, затем Bash-синтаксис и номер версии — и только после этого запускает установку. Живой поток `curl | bash` не используется.
 
 ```bash
 sudo bash <<'INSTALL'
@@ -39,13 +43,13 @@ curl --fail --show-error --silent --location \
   'https://raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/main/install.sh' \
   --output install.sh
 if ! printf '%s  install.sh\n' \
-  '13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c' \
+  'e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4' \
   | sha256sum --check; then
-    echo 'STOP: файл GitHub не совпадает с выпуском 2.4.3. Не запускаю; нужен новый install.sh в main либо файл из архива 2.4.3.' >&2
+    echo 'STOP: файл GitHub не совпадает с выпуском 2.5.0. Не запускаю; нужен проверенный install.sh 2.5.0 в main либо файл из архива 2.5.0.' >&2
     exit 1
 fi
 bash -n install.sh
-[[ $(bash install.sh --version) == 2.4.3 ]] || { echo 'STOP: неверная версия установщика.' >&2; exit 1; }
+[[ $(bash install.sh --version) == 2.5.0 ]] || { echo 'STOP: неверная версия установщика.' >&2; exit 1; }
 exec bash install.sh
 INSTALL
 ```
@@ -72,7 +76,7 @@ sudo bash install.sh
 
 IPv4 самой ноды установщик **не спрашивает**. Он проверяет DNS и выбирает тот публичный IPv4, который одновременно указан в A-записи домена и реально назначен интерфейсу VPS.
 
-После успешной preboot-приёмки `2.4.3`:
+После успешной preboot-приёмки `2.5.0`:
 
 - сохраняет ту же рабочую REALITY-пару и ShortID в `/root/reality-keys.txt` с правами `root:0600`;
 - выводит в терминал `PrivateKey`, `PublicKey` и `ShortID`;
@@ -231,7 +235,7 @@ sudo cat /etc/vkarmani-node/PANEL-SETUP.txt
 
 Это устраняет расхождение выпуска 2.1.2 с выбранной оператором политикой live-профилей. Значение снимает нижний version-gate, но не добавляет старому клиенту отсутствующую поддержку REALITY/RAW/Vision. Отсутствующее поле, число `0`, строка `"0"` и `"1.0.0"` не проходят новую локальную policy.
 
-Новый checker не пропускает `profile-check` для 2.1.2/2.1.3/2.2.0/2.3.0/2.4.0/2.4.1/2.4.2/2.4.3. Неизвестная версия отмечается FAIL; историческая версия/отсутствие marker — явным NOT_VERIFIED, без выдуманной проверки.
+Checker 2.5.0 централизованно классифицирует reviewed contracts. `2.3.0`, `2.4.0`, `2.4.1`, `2.4.2`, `2.4.3`, `2.5.0` используют modern SSH/Selfsteal contract; reviewed 2.1.x/2.2.0 сохраняют legacy profile validation, а 1.3.x/2.0.3 — исторический NOT_VERIFIED profile contract. Неизвестная будущая, malformed или отсутствующая `install-version` fail-closed и не получает silent PASS.
 
 `profile-check` теперь дополнительно проверяет форму DNS-полей, `UseIPv4`, ссылки routing/outbounds и запрещает ожидание входящего PROXY protocol на прямом RAW/REALITY listener. Допускается один служебный локальный API inbound RemnaNode с корректным `api.tag` и первым API routing-rule. Это не разрешение на второй VPN-протокол.
 
@@ -531,24 +535,24 @@ bash install.sh --help
 | Флаг / режим | Назначение | Важно |
 |---|---|---|
 | `--no-reboot` | отключить одноразовый reboot после успешной установки | удобно для ручной проверки второй SSH-сессии |
-| `--reboot` | явно оставить auto-reboot включённым | совместимый explicit-флаг; это и так default `2.4.3` |
+| `--reboot` | явно оставить auto-reboot включённым | совместимый explicit-флаг; это и так default `2.5.0` |
 | `--weekly-reboot` | включить регулярный reboot по понедельникам в `04:00` МСК | по умолчанию выключен |
-| `--allow-net-admin` | совместимый флаг старых команд | в `2.4.3` ничего дополнительно не включает: `NET_ADMIN` уже является default; риск host networking описан в SECURITY |
+| `--allow-net-admin` | совместимый флаг старых команд | в `2.5.0` ничего дополнительно не включает: `NET_ADMIN` уже является default; риск host networking описан в SECURITY |
 | `--image remnawave/node:TAG` или `@sha256:DIGEST` | задать допустимый официальный image для новой/незавершённой установки | это флаг, а не четвёртый вопрос |
 | `--check` | вызвать установленную локальную диагностику | завершённая нода не переустанавливается |
 | `--backup` | configuration backup | не заменяет provider snapshot |
 | `--refresh-image` | обновить только RemnaNode image | без APT/SSH/UFW/Nginx/kernel reconfigure |
 | `--rollback-image` | вернуть предыдущий image, если transaction state позволяет | не full VPS rollback |
-| `--update-cover` | обновить только статический cover-site | поддерживается для завершённых reviewed project-owned версий вплоть до `2.4.3`; system fixes этим не ставятся |
+| `--update-cover` | обновить только статический cover-site | поддерживается для завершённых reviewed project-owned версий вплоть до `2.5.0`; system fixes этим не ставятся |
 | `--rollback-cover` | откатить только cover-site | не откатывает ноду/OS/image |
 | `--diagnose-resources` | read-only срез CPU/RAM/PSI/swap/TCP/disk | не меняет sysctl/MTU/services |
-| `--repair-network` | узкий legacy-repair для поддерживаемого завершённого `1.3.x` state | не миграция на `2.4.3` |
-| `--repair-node` | узкий legacy-repair для поддерживаемого завершённого `1.3.x` state | не миграция на `2.4.3` |
+| `--repair-network` | узкий legacy-repair для поддерживаемого завершённого `1.3.x` state | не миграция на `2.5.0` |
+| `--repair-node` | узкий legacy-repair для поддерживаемого завершённого `1.3.x` state | не миграция на `2.5.0` |
 
 ### Повторный запуск и resume
 
-- Незавершённую `2.4.3` продолжайте тем же `2.4.3`: сохранённые три значения, REALITY keys, `allow_net_admin=true` и выбранный image digest переиспользуются, а не генерируются заново.
-- Незавершённую `2.1.0`/`2.1.1`/`2.1.2`/`2.1.3`/`2.2.0`/`2.3.0`/`2.4.0`/`2.4.1`/`2.4.2` не «превращайте» в `2.4.3` ручной заменой markers. Используйте исходный installer той же версии либо восстановите snapshot.
+- Незавершённую `2.5.0` продолжайте тем же `2.5.0`: сохранённые три значения, REALITY keys, `allow_net_admin=true` и выбранный image digest переиспользуются, а не генерируются заново.
+- Незавершённую `2.1.0`/`2.1.1`/`2.1.2`/`2.1.3`/`2.2.0`/`2.3.0`/`2.4.0`/`2.4.1`/`2.4.2`/`2.4.3` не «превращайте» в `2.5.0` ручной заменой markers. Используйте исходный installer той же версии либо восстановите snapshot.
 - На завершённой project-owned установке обычный повторный запуск не должен заново выполнять APT/UFW/SSH/ACME/image pull; он переходит к установленной диагностике.
 - Cross-version resume по умолчанию запрещён. Историческое узкое исключение для конкретного раннего `2.0.2` package-stage описано отдельно в [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md); не обобщайте его на другие состояния.
 
@@ -630,7 +634,7 @@ Rollback image не равен полному rollback VPS. Он не возвр
 
 ## 🧪 Что проверено и что остаётся за оператором
 
-В release-архиве `2.4.3` зафиксировано **557 regression/integration тестов**, локально пройденных от root и UID 1000 без пропусков. CI-инцидент 2.4.1 не скрыт: сохранены журналы всех трёх runner-ов и отдельное воспроизведение Nginx `broken header` для искусственно фрагментированного PROXY v1. Исправленный интеграционный тест отправляет PROXY header целиком и затем детерминированно фрагментирует большой TLS ClientHello. В 2.4.3 дополнительно проверяется canonical LF для manifest text и выполняется release-validation через clean Git round-trip перед публикацией. Preview/site rendering в 2.4.3 не менялись, поэтому новый browser-run не выполнялся; сохранён предыдущий evidence 2.3.0 — 36 PASS (четыре варианта × девять ширин). Это не тест через production REALITY. Проверяются встроенные payload установщика, password-only SSH и его отказы, фазы cert-deploy и реальный локальный Nginx reload, владелец TCP/443, FD/очереди, профиль и Selfsteal HTTP-policy, REALITY key export, отказ от unsafe symlink, terminal-only вывод PrivateKey, default auto-reboot/`--no-reboot`, APT-lock coordination и более ранние сценарии отказов сети/Nginx/SSH/image maintenance.
+В release candidate `2.5.0` зафиксировано **590 regression/integration тестов**, локально пройденных от root и UID 1000 без failures/errors/skips. Все 557 baseline-тестов 2.4.3 сохранены; сверху добавлены regressions для centralized installer-contract classification, kernel/nft prerequisites, structured RemnaNode nft runtime, Xray functional/security floors, strict Torrent sniffing, effective container capability/security policy, public TCP listeners, conntrack/disk/inode/reboot facts, documentation contracts и запрета destructive firewall/RST/community-list/custom-Xray shortcuts. Исторические CI/evidence 2.4.x не удалены. Preview/site rendering не менялся, поэтому browser-run 2.3.0 (36 PASS) остаётся inherited evidence неизменённой части, а не новым 2.5.0 canary. Реальный VPS canary 2.5.0 в этой локальной среде **NOT_PERFORMED**.
 
 Запуск test suite без установки ноды:
 

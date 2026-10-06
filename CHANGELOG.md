@@ -1,5 +1,17 @@
 # Изменения
 
+## 2.5.0 — 2026-10-06
+
+- Исправлена первопричина acceptance-version bug: одна reviewed contract classification для modern/legacy/unreviewed; 2.4.1–2.4.3 снова используют `ssh_guard.py check` и strict Selfsteal target check, future/malformed versions fail closed.
+- До системных изменений добавлен kernel `>=5.7` preflight; `nftables` добавлен в signed distro package plan без запуска сервиса или управления `/etc/nftables.conf`.
+- Profile validator защищает sniffing `enabled/routeOnly/http+tls+quic` и существующие TCP/443 RAW+REALITY+Vision+Selfsteal invariants.
+- Acceptance проверяет Xray functional floor `26.3.27`, reviewed security floor `26.7.11`, effective `NET_ADMIN`, read-only `ip remnanode` structure и публичную TCP surface. Panel Plugin Config и реальный Torrent detection остаются честно `NOT_VERIFIED`.
+- `--diagnose-resources` расширен conntrack, disk/inode percentages, reboot marker и threshold hints без auto-tuning.
+- Добавлены reference-only Node Plugin policy, external-path taxonomy/control-vantage runbook, safe replacement и provider-abuse incident guidance. Никаких RST/community auto-blocklists, custom Xray, fingerprint/SNI rotation, нового daemon/container/cron или Panel API mutation.
+- Real VPS canary в локальном build environment не выполняется и не должен объявляться `production verified`.
+
+[Node Plugins](docs/NODE_PLUGINS_2.5.0.md) · [Survivability](docs/SURVIVABILITY_2.5.0.md) · [External diagnostics](docs/EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md) · [Replacement](docs/NODE_REPLACEMENT_2.5.0.md).
+
 ## 2.4.3 — 2026-10-03
 
 Release/CI integrity fix after the published 2.4.2 tree failed before tests on every runner.

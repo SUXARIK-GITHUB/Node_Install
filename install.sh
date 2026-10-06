@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.4.3. Read README.md before running as root.
+# VKarmani Node 2.5.0. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1019,8 +1019,309 @@ VK_PAYLOAD_VK_WRITE_NGINX_DROPIN
     chmod 0644 '/etc/systemd/system/nginx.service.d/90-vkarmani-resilience.conf'
 }
 
+vk_write_node_plugins_helper() {
+    local destination=${1:-"$LIB/node_plugins.py"}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_NODE_PLUGINS_PY'
+#!/usr/bin/env python3
+"""Read-only Node Plugins/runtime/public-listener acceptance helpers.
+
+No Panel API, firewall mutation, packet capture, client address inventory or secret output.
+"""
+import argparse
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}
+DOCKER = ['docker', '--host', 'unix:///var/run/docker.sock']
+PLUGIN_FLOOR = (26, 3, 27)
+SECURITY_FLOOR = (26, 7, 11)
+REQUIRED_SETS = {'ingress-filter-ip', 'torrent-blocker', 'egress-filter-ip', 'egress-filter-port'}
+REQUIRED_CHAINS = {'input', 'forward', 'output'}
+
+
+class Unverified(Exception):
+    pass
+
+
+def parse_kernel_version(raw):
+    match = re.fullmatch(r'([0-9]+)\.([0-9]+)(?:[.-].*)?', raw.strip())
+    if not match:
+        raise ValueError('KERNEL_VERSION_MALFORMED')
+    return tuple(int(x) for x in match.groups())
+
+
+def kernel_supported(raw):
+    return parse_kernel_version(raw) >= (5, 7)
+
+
+def parse_xray_version(raw):
+    if len(raw) > 65536:
+        raise ValueError('XRAY_VERSION_OUTPUT_OVERSIZED')
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    matches = []
+    for line in lines:
+        match = re.match(r'^Xray\s+v?([0-9]+)\.([0-9]+)\.([0-9]+)(?:\s|$)', line, re.I)
+        if match:
+            matches.append(tuple(int(x) for x in match.groups()))
+    if len(matches) != 1:
+        raise ValueError('XRAY_VERSION_NOT_UNAMBIGUOUS')
+    return matches[0]
+
+
+def xray_floor_status(raw):
+    version = parse_xray_version(raw)
+    return {
+        'version': '.'.join(str(x) for x in version),
+        'plugin': version >= PLUGIN_FLOOR,
+        'security': version >= SECURITY_FLOOR,
+    }
+
+
+def _run(args, runner=subprocess.run, timeout=8):
+    try:
+        p = runner(args, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                   timeout=timeout, env=ENV)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise Unverified('COMMAND_TIMEOUT_OR_EXEC_ERROR') from exc
+    if p.returncode:
+        raise Unverified('COMMAND_NONZERO')
+    if len(p.stdout) > 1048576 or len(p.stderr) > 1048576:
+        raise Unverified('COMMAND_OUTPUT_OVERSIZED')
+    return p.stdout
+
+
+def xray_runtime_status(runner=subprocess.run):
+    raw = _run(DOCKER + ['exec', 'remnanode', 'rw-core', 'version'], runner)
+    try:
+        return xray_floor_status(raw)
+    except ValueError as exc:
+        raise Unverified('XRAY_VERSION_INVALID') from exc
+
+
+def parse_nft_contract(raw):
+    if len(raw) > 4 * 1024 * 1024:
+        raise ValueError('NFT_JSON_OVERSIZED')
+    data = json.loads(raw)
+    rows = data.get('nftables') if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise ValueError('NFT_JSON_SCHEMA_INVALID')
+    tables, sets, chains = set(), set(), set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError('NFT_JSON_ROW_INVALID')
+        table = row.get('table')
+        if isinstance(table, dict) and table.get('family') == 'ip' and table.get('name') == 'remnanode':
+            tables.add(('ip', 'remnanode'))
+        item = row.get('set')
+        if isinstance(item, dict) and item.get('family') == 'ip' and item.get('table') == 'remnanode':
+            name = item.get('name')
+            if isinstance(name, str):
+                sets.add(name)
+        chain = row.get('chain')
+        if isinstance(chain, dict) and chain.get('family') == 'ip' and chain.get('table') == 'remnanode':
+            name = chain.get('name')
+            if isinstance(name, str):
+                chains.add(name)
+    if ('ip', 'remnanode') not in tables:
+        return False, 'MISSING_TABLE'
+    missing_sets = sorted(REQUIRED_SETS - sets)
+    if missing_sets:
+        return False, 'MISSING_SETS=' + ','.join(missing_sets)
+    missing_chains = sorted(REQUIRED_CHAINS - chains)
+    if missing_chains:
+        return False, 'MISSING_CHAINS=' + ','.join(missing_chains)
+    return True, 'STRUCTURE_OK'
+
+
+def nft_runtime_status(runner=subprocess.run):
+    raw = _run(['nft', '-j', 'list', 'table', 'ip', 'remnanode'], runner)
+    try:
+        return parse_nft_contract(raw)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise Unverified('NFT_JSON_INVALID') from exc
+
+
+def parse_ss_listeners(raw):
+    rows = []
+    if len(raw) > 2 * 1024 * 1024:
+        raise ValueError('SS_OUTPUT_OVERSIZED')
+    for line in raw.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) < 5 or fields[0] != 'LISTEN':
+            raise ValueError('SS_SCHEMA_UNRECOGNIZED')
+        host, sep, port_text = fields[3].rpartition(':')
+        if not sep or not port_text.isdigit():
+            raise ValueError('SS_LOCAL_ADDRESS_INVALID')
+        port = int(port_text)
+        if host not in ('*', '0.0.0.0'):
+            try:
+                addr = ipaddress.IPv4Address(host)
+            except ipaddress.AddressValueError as exc:
+                raise ValueError('SS_LOCAL_ADDRESS_INVALID') from exc
+            if addr.is_loopback:
+                continue
+        processes = set(re.findall(r'\(\("([^"\\]+)"', line))
+        pids = {int(x) for x in re.findall(r'\bpid=([0-9]+)', line)}
+        rows.append({'host': host, 'port': port, 'processes': processes, 'pids': pids})
+    return rows
+
+
+def _read_ports(path):
+    values = []
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError as exc:
+        raise Unverified('SSH_PORTS_UNREADABLE') from exc
+    for line in lines:
+        if not re.fullmatch(r'[0-9]+', line) or not 1 <= int(line) <= 65535:
+            raise Unverified('SSH_PORTS_INVALID')
+        values.append(int(line))
+    if not values or len(values) != len(set(values)):
+        raise Unverified('SSH_PORTS_INVALID')
+    return values
+
+
+def _config(path):
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, ValueError) as exc:
+        raise Unverified('CONFIG_UNREADABLE') from exc
+    port = data.get('node_port')
+    public = data.get('public_ipv4')
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise Unverified('NODE_PORT_INVALID')
+    try:
+        public = str(ipaddress.IPv4Address(public))
+    except (ipaddress.AddressValueError, TypeError) as exc:
+        raise Unverified('PUBLIC_IPV4_INVALID') from exc
+    return port, public
+
+
+def public_listener_policy(raw, ssh_ports, node_port, core_pids=None, node_pids=None, require_xray=False, public_ipv4=None):
+    rows = parse_ss_listeners(raw)
+    expected = {p: {'sshd'} for p in ssh_ports}
+    expected[80] = {'nginx'}
+    expected[443] = {'rw-core', 'xray'}
+    expected[node_port] = {'rw-node', 'node'}
+    required = set(ssh_ports) | {80, node_port}
+    if require_xray:
+        required.add(443)
+    present, unexpected, ambiguous, bad_owner, bad_bind = set(), set(), set(), set(), set()
+    for row in rows:
+        port = row['port']
+        if port not in expected:
+            unexpected.add(port)
+            continue
+        present.add(port)
+        if public_ipv4 is not None and port in (80, 443) and row['host'] != public_ipv4:
+            bad_bind.add(port)
+            continue
+        if not row['processes'] or not row['pids']:
+            ambiguous.add(port)
+            continue
+        if not row['processes'].issubset(expected[port]):
+            bad_owner.add(port)
+            continue
+        if port == 443 and core_pids is not None and not row['pids'].issubset(core_pids):
+            bad_owner.add(port)
+        if port == node_port and node_pids is not None and not row['pids'].issubset(node_pids):
+            bad_owner.add(port)
+    missing = sorted(required - present)
+    if unexpected:
+        return False, 'UNEXPECTED_PUBLIC_PORTS=' + ','.join(map(str, sorted(unexpected)))
+    if ambiguous:
+        return False, 'OWNER_NOT_VERIFIED PORTS=' + ','.join(map(str, sorted(ambiguous)))
+    if bad_bind:
+        return False, 'BIND_ADDRESS_MISMATCH PORTS=' + ','.join(map(str, sorted(bad_bind)))
+    if bad_owner:
+        return False, 'OWNER_MISMATCH PORTS=' + ','.join(map(str, sorted(bad_owner)))
+    if missing:
+        return False, 'MISSING_EXPECTED_PORTS=' + ','.join(map(str, missing))
+    return True, 'EXPECTED_ONLY'
+
+
+def docker_process_pids(runner=subprocess.run):
+    raw = _run(DOCKER + ['top', 'remnanode', '-eo', 'pid,comm'], runner)
+    core, node = set(), set()
+    for line in raw.splitlines():
+        fields = line.split()
+        if len(fields) != 2 or not fields[0].isdigit():
+            continue
+        pid, comm = int(fields[0]), fields[1]
+        if comm in ('rw-core', 'xray'):
+            core.add(pid)
+        if comm in ('rw-node', 'node'):
+            node.add(pid)
+    if not node:
+        raise Unverified('REMNANODE_PROCESS_NOT_VERIFIED')
+    return core, node
+
+
+def listener_runtime_status(config_path, ssh_ports_path, require_xray=False, runner=subprocess.run):
+    node_port, public_ipv4 = _config(config_path)
+    ssh_ports = _read_ports(ssh_ports_path)
+    raw = _run(['ss', '-H', '-4', '-lntp'], runner)
+    core, node = docker_process_pids(runner)
+    return public_listener_policy(raw, ssh_ports, node_port, core, node,
+                                  require_xray=require_xray, public_ipv4=public_ipv4)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='action', required=True)
+    k = sub.add_parser('kernel')
+    k.add_argument('release', nargs='?', default='')
+    sub.add_parser('xray')
+    sub.add_parser('nft')
+    l = sub.add_parser('listeners')
+    l.add_argument('--config', default='/etc/vkarmani-node/config.json')
+    l.add_argument('--ssh-ports', default='/etc/vkarmani-node/ssh-ports')
+    l.add_argument('--require-xray', action='store_true')
+    args = parser.parse_args()
+    try:
+        if args.action == 'kernel':
+            raw = args.release or os.uname().release
+            ok = kernel_supported(raw)
+            print(('PASS' if ok else 'FAIL') + ' VERSION=' + raw.split()[0])
+            return 0 if ok else 1
+        if args.action == 'xray':
+            status = xray_runtime_status()
+            print('PLUGIN={} SECURITY={} VERSION={}'.format(
+                'PASS' if status['plugin'] else 'FAIL',
+                'PASS' if status['security'] else 'FAIL', status['version']))
+            return 0 if status['plugin'] and status['security'] else 1
+        if args.action == 'nft':
+            ok, reason = nft_runtime_status()
+            print(('PASS ' if ok else 'FAIL ') + reason)
+            return 0 if ok else 1
+        ok, reason = listener_runtime_status(args.config, args.ssh_ports, args.require_xray)
+        print(('PASS ' if ok else 'FAIL ') + reason)
+        return 0 if ok else 1
+    except Unverified:
+        print('NOT_VERIFIED LOCAL_STATE_OR_COMMAND_ERROR')
+        return 2
+    except (ValueError, json.JSONDecodeError):
+        print('NOT_VERIFIED INVALID_LOCAL_DATA')
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+VK_NODE_PLUGINS_PY
+    chmod 0700 "$destination"
+}
+
 vk_write_acceptance() {
     vk_write_time_helper
+    vk_write_node_plugins_helper
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-check')"
     cat > '/usr/local/sbin/vkarmani-node-check' <<'VK_PAYLOAD_VK_WRITE_ACCEPTANCE'
 #!/usr/bin/env bash
@@ -1042,10 +1343,13 @@ fi
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 HELPER=/usr/local/lib/vkarmani-node/node_helper.py
+PLUGIN_HELPER=/usr/local/lib/vkarmani-node/node_plugins.py
 F=0
 TIME_HELPER=/usr/local/lib/vkarmani-node/time_helper.py
 XRAY_PRESENT=0
 XRAY_COVER_OK=0
+NODE_PLUGIN_PREREQ_FAIL=0
+NET_ADMIN_OK=0
 pass(){ printf '%-33s PASS\n' "$1"; }
 fail(){ printf '%-33s FAIL %s\n' "$1" "${2:-}"; F=1; }
 warn(){ printf '%-33s NOTE %s\n' "$1" "${2:-}"; }
@@ -1068,25 +1372,68 @@ if [[ "$MODE" == --postboot ]]; then
     done
 fi
 helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
-# Reviewed installer versions only. Never silently skip a current patch release.
-vk_check_import_profile() {
-    local version
-    if [[ ! -f "$STATE/install-version" ]]; then
-        warn IMPORT_PROFILE_POLICY 'NOT_VERIFIED: install-version is absent; legacy check only'
-    elif ! version=$(cat "$STATE/install-version"); then
-        fail IMPORT_PROFILE_POLICY 'cannot read install-version'
+# Centralized reviewed installer contract classification. Future versions stay fail-closed
+# until this table and its regression matrix are explicitly reviewed.
+installed_contract_class() {
+    case "$1" in
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0) printf 'modern\n' ;;
+        1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
+        *) printf 'unreviewed\n' ;;
+    esac
+}
+INSTALL_VERSION=''
+INSTALLED_CONTRACT_CLASS=unreviewed
+if [[ ! -s "$STATE/install-version" ]]; then
+    fail INSTALLER_CONTRACT 'install-version missing or empty'
+elif ! INSTALL_VERSION=$(cat "$STATE/install-version"); then
+    fail INSTALLER_CONTRACT 'install-version unreadable'
+elif [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    fail INSTALLER_CONTRACT 'install-version malformed'
+else
+    INSTALLED_CONTRACT_CLASS=$(installed_contract_class "$INSTALL_VERSION")
+    if [[ "$INSTALLED_CONTRACT_CLASS" == unreviewed ]]; then
+        fail INSTALLER_CONTRACT 'unreviewed install-version; no automatic compatibility assumption'
     else
-        case "$version" in
-            2.1.0|2.1.1|2.1.2|2.1.3|2.2.0|2.3.0|2.4.0|2.4.1|2.4.2|2.4.3)
-                helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY ;;
-            1.3.*|2.0.3)
-                warn IMPORT_PROFILE_POLICY 'NOT_VERIFIED: historical installation requires its matching policy' ;;
-            *) fail IMPORT_PROFILE_POLICY 'unreviewed install-version; no automatic migration' ;;
-        esac
+        pass "INSTALLER_CONTRACT_${INSTALLED_CONTRACT_CLASS^^}"
     fi
+fi
+
+vk_check_import_profile() {
+    case "$INSTALLED_CONTRACT_CLASS" in
+        modern)
+            if helper profile-check; then
+                pass IMPORT_PROFILE_POLICY
+                pass PROFILE_TORRENT_SNIFFING_POLICY
+            else
+                fail IMPORT_PROFILE_POLICY
+                fail PROFILE_TORRENT_SNIFFING_POLICY 'profile contract validation failed'
+            fi ;;
+        legacy)
+            case "$INSTALL_VERSION" in
+                1.3.*|2.0.3)
+                    warn IMPORT_PROFILE_POLICY 'NOT_VERIFIED: historical installation requires its matching policy' ;;
+                *) helper profile-check && pass IMPORT_PROFILE_POLICY || fail IMPORT_PROFILE_POLICY ;;
+            esac ;;
+        *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
+    esac
     warn LIVE_PROFILE_POLICY 'NOT_VERIFIED: local JSON is not the live node config or Host SNI override'
 }
 vk_check_import_profile
+if [[ "$INSTALLED_CONTRACT_CLASS" == modern ]]; then
+    if KERNEL_PLUGIN_STATUS=$(python3 "$PLUGIN_HELPER" kernel 2>/dev/null); then
+        pass NODE_PLUGIN_KERNEL
+    else
+        fail NODE_PLUGIN_KERNEL "${KERNEL_PLUGIN_STATUS:-NOT_VERIFIED}"; NODE_PLUGIN_PREREQ_FAIL=1
+    fi
+    if command -v nft >/dev/null 2>&1 && timeout --foreground 5s nft --version >/dev/null 2>&1; then
+        pass NFTABLES_CLI
+    else
+        fail NFTABLES_CLI 'nft command unavailable or unusable'; NODE_PLUGIN_PREREQ_FAIL=1
+    fi
+else
+    warn NODE_PLUGIN_KERNEL 'NOT_VERIFIED: historical installer contract'
+    warn NFTABLES_CLI 'NOT_VERIFIED: historical installer contract'
+fi
 [[ "$(timedatectl show -p Timezone --value)" == Europe/Moscow ]] && pass TIMEZONE_MOSCOW || fail TIMEZONE_MOSCOW
 if [[ "$MODE" == --preboot ]]; then
     if [[ ! -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ]] || [[ $(cat /proc/sys/net/ipv6/conf/all/disable_ipv6) == 1 ]]; then
@@ -1251,17 +1598,21 @@ for note in c.get('notes', []):
     print('NETWORK_ACCELERATION=DEGRADED ' + note)
 PY_NETWORK_CHECK
 then pass NETWORK_EFFECTIVE; else fail NETWORK_EFFECTIVE; fi
-if [[ -f "$STATE/install-version" ]]; then
+vk_check_ssh_contract() {
+    [[ -n "$INSTALL_VERSION" ]] || { fail SSH_PASSWORD_ONLY 'install-version unavailable'; return; }
     [[ $(sysctl -n net.ipv4.tcp_mtu_probing 2>/dev/null) == 1 ]] && pass TCP_MTU_PROBING || fail TCP_MTU_PROBING
-    if [[ $(cat "$STATE/install-version") =~ ^2\.(3\.0|4\.0)$ ]]; then
+    if [[ "$INSTALLED_CONTRACT_CLASS" == modern ]]; then
         python3 -I -B -S /usr/local/lib/vkarmani-node/ssh_guard.py check && pass SSH_PASSWORD_ONLY || fail SSH_PASSWORD_ONLY
-    else
+    elif [[ "$INSTALLED_CONTRACT_CLASS" == legacy ]]; then
         # Historical installed policy: no implicit SSH migration in diagnostics.
         for expected in 'passwordauthentication yes' 'permitrootlogin yes' 'permitemptypasswords no' 'authenticationmethods any'; do
             /usr/sbin/sshd -T 2>/dev/null | _contains -Fx "$expected" && pass "SSH_${expected// /_}" || fail "SSH_${expected// /_}"
         done
+    else
+        fail SSH_PASSWORD_ONLY 'unreviewed installer contract'
     fi
-fi
+}
+vk_check_ssh_contract
 warn INTERFACE_QDISC 'сохранена текущая структура очередей; root qdisc не перезаписывается'
 if [[ "$MODE" == --postboot ]]; then
     python3 "$TIME_HELPER" wait --seconds 35 >/dev/null 2>&1 || true
@@ -1285,18 +1636,98 @@ else
 fi
 warn EXTERNAL_API_REACHABILITY 'NOT_VERIFIED: локальные обращения не проходят путь от панели'
 if [[ "$SELFSTEAL_SOCKET" == /run/vkarmani-selfsteal/nginx.sock ]]; then
-    CAPS=$(docker inspect remnanode --format '{{json .HostConfig.CapAdd}}') || CAPS='INVALID'
+    CAP_ADD_JSON=$(docker inspect remnanode --format '{{json .HostConfig.CapAdd}}' 2>/dev/null) || CAP_ADD_JSON='INVALID'
+    CAP_DROP_JSON=$(docker inspect remnanode --format '{{json .HostConfig.CapDrop}}' 2>/dev/null) || CAP_DROP_JSON='INVALID'
+    SECURITY_OPT_JSON=$(docker inspect remnanode --format '{{json .HostConfig.SecurityOpt}}' 2>/dev/null) || SECURITY_OPT_JSON='INVALID'
     ALLOWED=$(helper get allow_net_admin) || ALLOWED='INVALID'
-    if [[ "$CAPS" != INVALID && "$ALLOWED" == false && "$CAPS" != *NET_ADMIN* ]]; then
-        pass NODE_NO_NET_ADMIN
-    elif [[ "$ALLOWED" == true && "$CAPS" == *NET_ADMIN* ]]; then
-        pass NODE_NET_ADMIN
-    else fail NODE_CAPABILITY_POLICY; fi
+    if [[ "$INSTALLED_CONTRACT_CLASS" == modern ]]; then
+        if [[ "$ALLOWED" == true ]] && python3 - "$CAP_ADD_JSON" "$CAP_DROP_JSON" "$SECURITY_OPT_JSON" <<'PY_CAPS'
+import json
+import sys
+try:
+    cap_add, cap_drop, security = (json.loads(x) for x in sys.argv[1:4])
+except Exception:
+    raise SystemExit(1)
+if cap_add != ['NET_ADMIN']:
+    raise SystemExit(1)
+if cap_drop != ['NET_RAW']:
+    raise SystemExit(1)
+if not isinstance(security, list) or not any(isinstance(x, str) and x.startswith('no-new-privileges') for x in security):
+    raise SystemExit(1)
+PY_CAPS
+        then
+            pass NODE_NET_ADMIN
+            pass NODE_NET_RAW_DROPPED
+            pass NODE_NO_NEW_PRIVILEGES
+            NET_ADMIN_OK=1
+        else
+            fail NODE_CAPABILITY_POLICY 'expected exact NET_ADMIN add, NET_RAW drop and no-new-privileges'
+            NODE_PLUGIN_PREREQ_FAIL=1
+        fi
+    elif [[ "$INSTALLED_CONTRACT_CLASS" == legacy ]]; then
+        if [[ "$CAP_ADD_JSON" != INVALID && "$ALLOWED" == false && "$CAP_ADD_JSON" != *NET_ADMIN* ]]; then
+            pass NODE_NO_NET_ADMIN
+        elif [[ "$ALLOWED" == true && "$CAP_ADD_JSON" == *NET_ADMIN* ]]; then
+            pass NODE_NET_ADMIN
+        else
+            fail NODE_CAPABILITY_POLICY 'legacy state/capability mismatch'
+        fi
+    else
+        fail NODE_CAPABILITY_POLICY 'unreviewed installer contract'
+    fi
     if docker inspect remnanode --format '{{json .Mounts}}' | python3 -c 'import json,sys; a=[x for x in json.load(sys.stdin) if x["Destination"]=="/dev/shm"]; sys.exit(0 if len(a)==1 and a[0]["Source"]=="/run/vkarmani-selfsteal" and not a[0]["RW"] else 1)'; then
         pass NODE_ISOLATED_SELFSTEAL_MOUNT
     else fail NODE_ISOLATED_SELFSTEAL_MOUNT; fi
 fi
 
+if [[ "$INSTALLED_CONTRACT_CLASS" == modern ]]; then
+    XRAY_PLUGIN_RESULT=$(python3 "$PLUGIN_HELPER" xray 2>/dev/null)
+    XRAY_PLUGIN_RC=$?
+    if [[ "$XRAY_PLUGIN_RESULT" =~ ^PLUGIN=(PASS|FAIL)[[:space:]]SECURITY=(PASS|FAIL)[[:space:]]VERSION=([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+        if [[ "${BASH_REMATCH[1]}" == PASS ]]; then pass XRAY_CORE_PLUGIN_MIN; else fail XRAY_CORE_PLUGIN_MIN "version=${BASH_REMATCH[3]} floor=26.3.27"; NODE_PLUGIN_PREREQ_FAIL=1; fi
+        if [[ "${BASH_REMATCH[2]}" == PASS ]]; then pass XRAY_CORE_SECURITY_FLOOR; else fail XRAY_CORE_SECURITY_FLOOR "version=${BASH_REMATCH[3]} floor=26.7.11"; NODE_PLUGIN_PREREQ_FAIL=1; fi
+    else
+        fail XRAY_CORE_PLUGIN_MIN "${XRAY_PLUGIN_RESULT:-NOT_VERIFIED}"
+        fail XRAY_CORE_SECURITY_FLOOR "${XRAY_PLUGIN_RESULT:-NOT_VERIFIED}"
+        NODE_PLUGIN_PREREQ_FAIL=1
+    fi
+    : "$XRAY_PLUGIN_RC"
+
+    NFT_RUNTIME_RESULT=$(python3 "$PLUGIN_HELPER" nft 2>/dev/null)
+    NFT_RUNTIME_RC=$?
+    if [[ "$NFT_RUNTIME_RC" -eq 0 && "$NFT_RUNTIME_RESULT" == PASS* ]]; then
+        pass NODE_PLUGIN_NFT_RUNTIME
+    elif [[ "$MODE" == --require-xray ]]; then
+        fail NODE_PLUGIN_NFT_RUNTIME "${NFT_RUNTIME_RESULT:-NOT_VERIFIED}"
+    else
+        warn NODE_PLUGIN_NFT_RUNTIME "NOT_VERIFIED: ${NFT_RUNTIME_RESULT:-runtime table may not exist before Panel Plugin Config sync}"
+    fi
+    if [[ "$NET_ADMIN_OK" -eq 1 && "$NODE_PLUGIN_PREREQ_FAIL" -eq 0 ]]; then
+        pass NODE_PLUGINS_PREREQS
+    else
+        fail NODE_PLUGINS_PREREQS 'one or more local prerequisites are not verified'
+    fi
+    warn NODE_PLUGINS_PANEL_CONFIG 'NOT_VERIFIED: installer is node-only and does not read or mutate Panel Plugin Config'
+    warn TORRENT_DETECTION 'NOT_VERIFIED: local prerequisites do not prove live BitTorrent detection'
+
+    LISTENER_ARGS=(listeners --config "$ETC/config.json" --ssh-ports "$ETC/ssh-ports")
+    [[ "$MODE" == --require-xray ]] && LISTENER_ARGS+=(--require-xray)
+    PUBLIC_LISTENER_RESULT=$(python3 "$PLUGIN_HELPER" "${LISTENER_ARGS[@]}" 2>/dev/null)
+    PUBLIC_LISTENER_RC=$?
+    if [[ "$PUBLIC_LISTENER_RC" -eq 0 && "$PUBLIC_LISTENER_RESULT" == PASS* ]]; then
+        pass PUBLIC_TCP_LISTENERS_POLICY
+    else
+        fail PUBLIC_TCP_LISTENERS_POLICY "${PUBLIC_LISTENER_RESULT:-NOT_VERIFIED}"
+    fi
+else
+    warn XRAY_CORE_PLUGIN_MIN 'NOT_VERIFIED: historical installer contract'
+    warn XRAY_CORE_SECURITY_FLOOR 'NOT_VERIFIED: historical installer contract'
+    warn NODE_PLUGIN_NFT_RUNTIME 'NOT_VERIFIED: historical installer contract'
+    warn NODE_PLUGINS_PREREQS 'NOT_VERIFIED: historical installer contract'
+    warn NODE_PLUGINS_PANEL_CONFIG 'NOT_VERIFIED: installer is node-only'
+    warn TORRENT_DETECTION 'NOT_VERIFIED: historical installer contract'
+    warn PUBLIC_TCP_LISTENERS_POLICY 'NOT_VERIFIED: historical installer contract'
+fi
 
 # A listening port and a normal HTTPS page alone do not prove Xray ownership.
 if python3 -I -B -S - <<'PY_XRAY_LISTENER_OWNER'
@@ -1408,9 +1839,14 @@ fi
 [[ -S "$SELFSTEAL_SOCKET" ]] && pass SELFSTEAL_SOCKET || fail SELFSTEAL_SOCKET
 nginx -t >/dev/null 2>&1 && pass NGINX_CONFIG || fail NGINX_CONFIG
 openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -checkend 604800 >/dev/null 2>&1 && pass TLS_VALID_7DAYS || fail TLS_VALID_7DAYS
-if [[ $(cat "$STATE/install-version" 2>/dev/null) =~ ^2\.(3\.0|4\.0)$ ]]; then
-    timeout 20 /usr/local/sbin/vkarmani-selfsteal-check --target-only && pass SELFSTEAL_TARGET_TLS || fail SELFSTEAL_TARGET_TLS
-fi
+vk_check_selfsteal_target_contract() {
+    if [[ "$INSTALLED_CONTRACT_CLASS" == modern ]]; then
+        timeout 20 /usr/local/sbin/vkarmani-selfsteal-check --target-only && pass SELFSTEAL_TARGET_TLS || fail SELFSTEAL_TARGET_TLS
+    elif [[ "$INSTALLED_CONTRACT_CLASS" == unreviewed ]]; then
+        fail SELFSTEAL_TARGET_TLS 'unreviewed installer contract'
+    fi
+}
+vk_check_selfsteal_target_contract
 timeout 25 /usr/local/sbin/vkarmani-selfsteal-check && pass SELFSTEAL_WEB_CONTENT || fail SELFSTEAL_WEB_CONTENT
 if docker exec remnanode test -S /dev/shm/nginx.sock >/dev/null 2>&1; then pass NODE_SELFSTEAL_SOCKET; else fail NODE_SELFSTEAL_SOCKET; fi
 if [[ "$XRAY_PRESENT" -eq 1 ]]; then
@@ -1919,8 +2355,8 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
-        raise Failure('ONLY_COMPLETED_2_1_X_SUPPORTED; legacy installation is not migrated')
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+        raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -2113,8 +2549,8 @@ def saved_provider(etc=ETC, state=STATE):
         if value not in PROVIDERS:
             raise Failure('INVALID_TIME_PROVIDER')
         return value
-    # Explicit compatibility for existing legacy repair/check paths. A new 2.4.x
-    # installation must have its own marker; absence is NOT interpreted as success.
+    # Explicit compatibility for existing legacy repair/check paths. A reviewed modern installation
+    # must have its own marker; absence is NOT interpreted as success.
     version = (state / 'install-version').read_text().strip() if (state / 'install-version').is_file() else ''
     complete = (state / 'INSTALL_COMPLETE').read_text().splitlines() if (state / 'INSTALL_COMPLETE').is_file() else []
     if (version in ('2.0.0', '2.0.1', '2.0.2') or re.fullmatch(r'1\.3\.\d+', version)
@@ -2435,6 +2871,13 @@ vk_platform_settings() {
     if [[ "$id:$version" == ubuntu:26.04 ]]; then
         MIN_MEMORY_MB=1536
     fi
+}
+
+vk_kernel_plugins_supported() {
+    local raw=${1:-}
+    [[ "$raw" =~ ^([0-9]+)\.([0-9]+)([.-].*)?$ ]] || return 1
+    local major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]}
+    (( major > 5 || (major == 5 && minor >= 7) ))
 }
 
 vk_base_tools_smoke() (
@@ -2977,8 +3420,8 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
-        raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x installation')
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+        raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.0 installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
         if p.exists() or p.is_symlink():
@@ -3272,7 +3715,8 @@ def container_state():
                 or any(type(data.get(k)) is not bool for k in ('running', 'restarting', 'oom_killed'))
                 or type(data.get('restarts')) is not int or data['restarts'] < 0):
             raise ValueError()
-        return {'verified': True, **data}
+        return {'verified': True, **data,
+                'status': 'CRITICAL' if data['oom_killed'] else ('WARN' if data['restarting'] else 'OK')}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {'verified': False, 'reason': 'timeout_or_invalid_response'}
 
@@ -3313,9 +3757,12 @@ def fd_snapshot(proc=Path('/proc'), limit=64):
                 count = sum(1 for _ in fds)
             if process_identity(path) != identity:
                 raise ValueError('process changed')
+            percent = round(100 * count / bounds[0], 2) if bounds[0] else None
+            status = ('NOT_APPLICABLE' if percent is None else
+                      'CRITICAL' if percent >= 85 else 'WARN' if percent >= 70 else 'OK')
             result.append({'process': comm, 'pid': int(path.name), 'open_fds': count,
                            'soft_limit': bounds[0], 'hard_limit': bounds[1],
-                           'soft_limit_percent': round(100 * count / bounds[0], 2) if bounds[0] else None})
+                           'soft_limit_percent': percent, 'status': status})
         except (OSError, ValueError, IndexError):
             errors += 1
     return {'verified': not errors and not truncated, 'processes': result,
@@ -3352,6 +3799,66 @@ def socket_queue(runner=subprocess.run):
         return {'verified': False, 'reason': 'listener_snapshot_unavailable'}
 
 
+def conntrack_snapshot(proc=Path('/proc')):
+    count_path = proc / 'sys/net/netfilter/nf_conntrack_count'
+    max_path = proc / 'sys/net/netfilter/nf_conntrack_max'
+    try:
+        count_raw, max_raw = count_path.read_text().strip(), max_path.read_text().strip()
+    except OSError:
+        return {'verified': False, 'reason': 'conntrack_subsystem_unavailable',
+                'scope': 'HOST_WIDE_NOT_VPN_ONLY'}
+    if not count_raw.isdigit() or not max_raw.isdigit():
+        return {'verified': False, 'reason': 'conntrack_counters_invalid',
+                'scope': 'HOST_WIDE_NOT_VPN_ONLY'}
+    count, maximum = int(count_raw), int(max_raw)
+    if maximum <= 0:
+        return {'verified': False, 'reason': 'conntrack_max_invalid',
+                'scope': 'HOST_WIDE_NOT_VPN_ONLY'}
+    percent = round(100 * count / maximum, 2)
+    status = 'CRITICAL' if percent >= 85 else 'WARN' if percent >= 70 else 'OK'
+    return {'verified': True, 'count': count, 'max': maximum, 'percent': percent,
+            'status': status, 'scope': 'HOST_WIDE_NOT_VPN_ONLY'}
+
+
+def disk_snapshot(path='/', statvfs=os.statvfs):
+    try:
+        v = statvfs(path)
+        total_mib = v.f_blocks * v.f_frsize / 1048576
+        available_mib = v.f_bavail * v.f_frsize / 1048576
+        available_percent = 100 * v.f_bavail / v.f_blocks if v.f_blocks else None
+        inode_percent = 100 * v.f_favail / v.f_files if v.f_files else None
+        if available_percent is None:
+            disk_status = 'NOT_VERIFIED'
+        elif available_percent < 5 or available_mib < 512:
+            disk_status = 'CRITICAL'
+        elif available_percent < 10 or available_mib < 1024:
+            disk_status = 'WARN'
+        else:
+            disk_status = 'OK'
+        if inode_percent is None:
+            inode_status = 'NOT_VERIFIED'
+        elif inode_percent < 5:
+            inode_status = 'CRITICAL'
+        elif inode_percent < 10:
+            inode_status = 'WARN'
+        else:
+            inode_status = 'OK'
+        return {'total_MiB': round(total_mib, 1), 'available_MiB': round(available_mib, 1),
+                'available_percent': round(available_percent, 2) if available_percent is not None else None,
+                'status': disk_status, 'total_inodes': v.f_files, 'available_inodes': v.f_favail,
+                'available_inodes_percent': round(inode_percent, 2) if inode_percent is not None else None,
+                'inode_status': inode_status, 'basis': 'statvfs_f_bavail_and_f_favail'}
+    except (OSError, ValueError, ZeroDivisionError):
+        return None
+
+
+def reboot_required(root=Path('/')):
+    try:
+        return (root / 'var/run/reboot-required').exists()
+    except OSError:
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seconds', type=int, default=3, choices=range(1, 31), metavar='1..30')
@@ -3366,15 +3873,11 @@ def main():
               'memory': memory_info(text(proc / 'meminfo')),
               'pressure': {kind: pressure(text(proc / 'pressure' / kind)) for kind in ('cpu', 'memory', 'io')},
               'container': container_state(), 'daemon_fds': fd_snapshot(proc),
-              'selfsteal_socket_queue': socket_queue()}
-    try:
-        v = os.statvfs('/')
-        result['root_disk'] = {'available_MiB': round(v.f_bavail * v.f_frsize / 1048576, 1),
-                               'available_inodes': v.f_favail}
-    except OSError:
-        result['root_disk'] = None
+              'selfsteal_socket_queue': socket_queue(), 'conntrack': conntrack_snapshot(proc),
+              'root_disk': disk_snapshot('/'), 'reboot_required': reboot_required()}
     result['interpretation'] = ('Counters are host-wide observations, not a diagnosis of censorship or proof of provider overselling. '
-                                'Compare idle/load samples and client-side throughput before changing MTU, queues, buffers or CPU settings.')
+                                'Compare idle/load samples and client-side throughput before changing MTU, queues, buffers or CPU settings. '
+                                'Threshold statuses are diagnostic only; this command never tunes conntrack, limits, swap, MTU or firewall state.')
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
@@ -3830,7 +4333,7 @@ VK_CERT_DEPLOY_PY
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.4.3 — 2026-10-03
+# VKarmani Remnawave Node Installer 2.5.0 — 2026-10-06
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -3842,7 +4345,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.4.3
+INSTALLER_VERSION=2.5.0
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -3858,7 +4361,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.4.3
+VKarmani Remnawave Node Installer 2.5.0
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -4068,6 +4571,13 @@ if [[ "$OS_ID:$OS_CODENAME" == ubuntu:resolute && ! -f /sys/fs/cgroup/cgroup.con
     echo 'STOP: Ubuntu 26.04 requires cgroup v2. No boot/kernel conversion is attempted.' >&2; exit 1
 fi
 vk_base_tools_smoke
+KERNEL_RELEASE=$(uname -r 2>/dev/null) || { echo 'STOP: kernel version cannot be read.' >&2; exit 1; }
+if vk_kernel_plugins_supported "$KERNEL_RELEASE"; then
+    printf 'NODE_PLUGIN_KERNEL_PREFLIGHT=PASS version=%s\n' "$KERNEL_RELEASE"
+else
+    printf 'STOP: Node Plugins require a reviewed Linux kernel >= 5.7; current/unparseable kernel=%s. No APT/firewall/GRUB/SSH changes were made.\n' "$KERNEL_RELEASE" >&2
+    exit 1
+fi
 [[ -f /boot/grub/grub.cfg && -f /etc/default/grub ]] && command -v update-grub >/dev/null || {
     echo 'Нужна загрузка через GRUB: update-grub, /boot/grub/grub.cfg, /etc/default/grub.' >&2; exit 1;
 }
@@ -4270,7 +4780,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.4.3: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.0: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -4715,6 +5225,13 @@ def validate_profile(profile, c):
         raise Failure('PROFILE_REQUIRES_VLESS_TCP443')
     if inbound.get('listen') not in ('0.0.0.0', c['public_ipv4']):
         raise Failure('PROFILE_REQUIRES_NODE_IPV4_LISTENER')
+    sniffing = inbound.get('sniffing')
+    if not isinstance(sniffing, dict) or sniffing.get('enabled') is not True or sniffing.get('routeOnly') is not True:
+        raise Failure('PROFILE_TORRENT_SNIFFING_POLICY_INVALID')
+    dest_override = sniffing.get('destOverride')
+    if (not isinstance(dest_override, list) or any(not isinstance(x, str) for x in dest_override)
+            or len(dest_override) != 3 or set(dest_override) != {'http', 'tls', 'quic'}):
+        raise Failure('PROFILE_TORRENT_SNIFFING_POLICY_INVALID')
     stream = inbound.get('streamSettings')
     if not isinstance(stream, dict) or stream.get('security') != 'reality':
         raise Failure('PROFILE_REQUIRES_RAW_REALITY_NO_OTHER_TRANSPORTS')
@@ -4830,7 +5347,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.4.3\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.0\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -5006,7 +5523,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.4.3 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.0 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -5028,6 +5545,13 @@ def write_panel_guide(c):
    Если SNI переопределяется вручную — укажите {c['domain']}.
 4. Internal Squads: разрешите inbound {tag} нужной группе пользователей.
    Обновите подписку в клиенте и проверьте соединение извне.
+5. Node Plugins настраиваются вручную в Panel; installer не использует Panel API.
+   Рекомендуемый baseline: Ingress Filter=enabled, blockedIps=[ext:vkarmani_ingress_blocklist];
+   Egress Filter=enabled, blockedIps=[], blockedPorts=[25,137,138,139,445,465,587,2525];
+   Torrent Blocker=enabled, ignoreLists.ip=[], blockDuration=3600;
+   Connection Drop=enabled, whitelistIps=[].
+   Shared List vkarmani_ingress_blocklist: type=ipList, items=[].
+   vkarmani_nonpublic_ipv4 — только reference; НЕ подключайте её в Egress blockedIps по умолчанию.
 
 Шаблон: VLESS + RAW + REALITY + Vision (settings.flow=xtls-rprx-vision).
 REALITY target: /dev/shm/nginx.sock; xver=1 (PROXY protocol v1); minClientVer={PROFILE_MIN_CLIENT_VERSION}.
@@ -5128,7 +5652,7 @@ if [[ -n "$IMAGE_OVERRIDE" ]]; then
     python3 "$LIB/node_helper.py" image "$IMAGE_OVERRIDE"
 fi
 IMAGE=$(helper get image)
-# NET_ADMIN is a 2.4.x default/requirement; persist it on new and resumed 2.4.x installs.
+# NET_ADMIN is a reviewed modern default/requirement; persist it on new/resumed current installs.
 if [[ $ALLOW_NET_ADMIN -eq 1 ]]; then helper allow-net-admin true; fi
 if [[ $WEEKLY_REBOOT -eq 1 ]]; then helper weekly-reboot true; fi
 [[ $(helper get allow_net_admin) != true ]] || ALLOW_NET_ADMIN=1
@@ -5164,13 +5688,15 @@ TIME_SERVICE=$(python3 "$TIME_HELPER" select)
 # Preserve an installed supported NTP provider. --no-remove remains active for
 # BOTH the simulation and actual transaction; no whitelist/removal exception.
 NODE_PACKAGES=(openssh-server ufw fail2ban nginx certbot "$TIME_SERVICE" logrotate unattended-upgrades
-    ethtool kmod util-linux procps dbus python3-systemd)
+    ethtool kmod util-linux procps dbus python3-systemd nftables)
 DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
 vk_setup_docker_repository
 # Fail before changing access/boot if this release has no signed package candidates.
 vk_apt_run "${APT[@]}" --simulate install "${NODE_PACKAGES[@]}" "${DOCKER_PACKAGES[@]}"
 printf 'TIME_PROVIDER=%s; системные NTP-пакеты не заменяются.\n' "$TIME_SERVICE"
 vk_apt_run "${APT[@]}" install "${NODE_PACKAGES[@]}"
+command -v nft >/dev/null || die 'Пакет nftables установлен, но команда nft недоступна.'
+timeout --foreground 5s nft --version >/dev/null || die 'nftables CLI не проходит локальную проверку версии.'
 ensure_sshd_runtime
 [[ $(python3 "$TIME_HELPER" select) == "$TIME_SERVICE" ]] || die 'NTP provider изменился во время APT; останавливаюсь.'
 
@@ -5984,7 +6510,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.4.3-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.5.0-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -6035,7 +6561,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.4.3 — исправление только на НОДЕ'
+    echo 'VKarmani 2.5.0 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -6100,7 +6626,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.4.3\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.5.0\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -6130,7 +6656,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.4.3-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.5.0-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -6141,7 +6667,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.4.3 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.5.0 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -6178,7 +6704,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.4.3\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.5.0\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true
