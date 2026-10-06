@@ -1,5 +1,14 @@
 # Изменения
 
+## 2.5.1 — 2026-10-06
+
+- Исправлен реальный false-negative `NODE_CAPABILITY_POLICY` на Docker Engine 29.8.x: `docker inspect` может возвращать canonical `CAP_NET_ADMIN` / `CAP_NET_RAW`; checker теперь нормализует только допустимый `CAP_` prefix и по-прежнему требует exact `NET_ADMIN` add, exact `NET_RAW` drop и `no-new-privileges`. Дополнительные capabilities не разрешены.
+- Исправлен `PUBLIC_TCP_LISTENERS_POLICY FAIL NOT_VERIFIED INVALID_LOCAL_DATA` на Ubuntu 24.04: `ss` может печатать loopback `systemd-resolved` как `127.0.0.53%lo:53`; parser теперь отделяет display scope `%iface`, игнорирует настоящий loopback и продолжает строго проверять non-loopback listeners.
+- Добавлен explicit `--repair-acceptance` только для exact незавершённого 2.5.0 final-acceptance failure (`INSTALL_FAILED rc=1 line=6412` + exact reviewed helper SHA). Repair делает private backup, staging, syntax/post-check и rollback; не запускает APT, не меняет SSH/UFW/Nginx/GRUB/sysctl, не restart/recreate Docker/RemnaNode, не меняет Panel и не переписывает исходную `install-version=2.5.0`.
+- Реальный Ubuntu 24.04 запуск 2.5.0 теперь зафиксирован как **failed canary evidence**, а не как production verification. Post-fix 2.5.1 VPS canary остаётся обязательным.
+
+[Hotfix detail](docs/HOTFIX_2.5.1.md) · [Node Plugins base contract](docs/NODE_PLUGINS_2.5.0.md) · [Operations](docs/OPERATIONS.md).
+
 ## 2.5.0 — 2026-10-06
 
 - Исправлена первопричина acceptance-version bug: одна reviewed contract classification для modern/legacy/unreviewed; 2.4.1–2.4.3 снова используют `ssh_guard.py check` и strict Selfsteal target check, future/malformed versions fail closed.

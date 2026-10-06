@@ -41,9 +41,38 @@ class SecurityRegression250Tests(unittest.TestCase):
         self.assertIn("{{json .HostConfig.CapAdd}}", self.acceptance)
         self.assertIn("{{json .HostConfig.CapDrop}}", self.acceptance)
         self.assertIn("{{json .HostConfig.SecurityOpt}}", self.acceptance)
-        self.assertIn("cap_add != ['NET_ADMIN']", self.acceptance)
-        self.assertIn("cap_drop != ['NET_RAW']", self.acceptance)
+        self.assertIn("normalized_caps(cap_add) != ['NET_ADMIN']", self.acceptance)
+        self.assertIn("normalized_caps(cap_drop) != ['NET_RAW']", self.acceptance)
         self.assertIn("startswith('no-new-privileges')", self.acceptance)
+
+
+    def test_capability_acceptance_tolerates_docker_298_canonical_prefix_only(self):
+        import json
+        import subprocess
+        snippet = payload('PY_CAPS')
+        good = (
+            (['NET_ADMIN'], ['NET_RAW'], ['no-new-privileges:true']),
+            (['CAP_NET_ADMIN'], ['CAP_NET_RAW'], ['no-new-privileges=true']),
+        )
+        for cap_add, cap_drop, security in good:
+            with self.subTest(cap_add=cap_add):
+                result = subprocess.run(
+                    ['python3', '-', json.dumps(cap_add), json.dumps(cap_drop), json.dumps(security)],
+                    input=snippet, text=True, capture_output=True, timeout=3,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+        bad = (
+            (['CAP_NET_ADMIN', 'CAP_SYS_ADMIN'], ['CAP_NET_RAW'], ['no-new-privileges:true']),
+            (['CAP_NET_ADMIN'], ['CAP_NET_RAW', 'CAP_SYS_ADMIN'], ['no-new-privileges:true']),
+            (['CAP_NET_ADMIN'], ['CAP_NET_RAW'], []),
+        )
+        for cap_add, cap_drop, security in bad:
+            with self.subTest(cap_add=cap_add, cap_drop=cap_drop, security=security):
+                result = subprocess.run(
+                    ['python3', '-', json.dumps(cap_add), json.dumps(cap_drop), json.dumps(security)],
+                    input=snippet, text=True, capture_output=True, timeout=3,
+                )
+                self.assertNotEqual(result.returncode, 0)
 
     def test_no_new_public_diagnostics_service_contract(self):
         # External path diagnosis remains a runbook. The node installer must not

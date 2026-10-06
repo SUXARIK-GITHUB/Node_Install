@@ -21,9 +21,9 @@ class AcceptanceVersionContractTests(unittest.TestCase):
         return subprocess.run(['bash', '-c', code, '_', version], capture_output=True, text=True, timeout=3)
 
     def test_reviewed_matrix_and_future_fail_closed(self):
-        modern = ('2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0')
+        modern = ('2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1')
         legacy = ('1.3.0', '1.3.99', '2.0.3', '2.1.0', '2.1.3', '2.2.0')
-        future = ('2.5.1', '2.6.0', '3.0.0', 'broken')
+        future = ('2.5.2', '2.6.0', '3.0.0', 'broken')
         for version in modern:
             with self.subTest(version=version):
                 self.assertEqual(self.classify(version).stdout.strip(), 'modern')
@@ -64,7 +64,7 @@ vk_check_selfsteal_target_contract
 
     def test_no_obsolete_regex_feature_gate_remains(self):
         self.assertNotIn(r'^2\.(3\.0|4\.0)$', CHECKER)
-        self.assertEqual(CHECKER.count('2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0'), 1)
+        self.assertEqual(CHECKER.count('2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1'), 1)
 
 
 if __name__ == '__main__':

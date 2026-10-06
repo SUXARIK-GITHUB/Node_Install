@@ -16,3 +16,5 @@ Replacement is the correct recovery path when a VPS/IP/prefix/provider path is g
 Provider/ASN diversity can reduce a single infrastructure failure domain, but it does not guarantee resistance to blocking. Do not build a list of “rare ASNs”, automate provider hopping or promise that diversity prevents censorship. Select providers for ToS, abuse handling, console/recovery, snapshots and network quality as well.
 
 The 2.5.0 installer does not provide an in-place `--repair-acceptance` migration for completed 2.4.1–2.4.3 nodes. A safe atomic repair contract was not proven by an actual production-node canary here; ordinary rerun therefore remains diagnostic-only and does not silently replace installed helpers.
+
+2.5.1 adds one deliberately narrower exception: `--repair-acceptance` is accepted only for the exact reviewed **incomplete 2.5.0 final-acceptance failure** identified in [HOTFIX_2.5.1](HOTFIX_2.5.1.md). It is not a migration path for completed 2.4.x/2.5.0 nodes and does not change Panel objects, container image, firewall or host networking.

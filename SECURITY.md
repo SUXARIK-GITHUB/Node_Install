@@ -1,4 +1,12 @@
-# 🔐 Безопасность VKarmani Node Install 2.5.0
+# 🔐 Безопасность VKarmani Node Install 2.5.1
+
+## 2.5.1: acceptance hotfix boundaries
+
+2.5.1 не расширяет runtime privileges и не меняет сетевую архитектуру. Capability hotfix допускает только эквивалентные textual representations `NET_ADMIN`/`CAP_NET_ADMIN` и `NET_RAW`/`CAP_NET_RAW`; любые дополнительные `CapAdd`/`CapDrop` по-прежнему являются FAIL. Listener hotfix отделяет iproute2 display scope `%iface` от IPv4 перед классификацией; loopback игнорируется, non-loopback адрес продолжает проходить public-surface policy.
+
+`--repair-acceptance` является explicit recovery только для exact reviewed failed-state 2.5.0. До записи он проверяет source version, failure checkpoint, отсутствие `INSTALL_COMPLETE`, отсутствие pending network/image transactions и SHA256 трёх старых acceptance-файлов. Repair не читает/печатает `SECRET_KEY`, не читает container env, не меняет firewall/SSH/GRUB/sysctl/Nginx/Panel и не управляет lifecycle RemnaNode; `docker inspect` используется только read-only для подтверждения running state. Backup приватный, а failed post-check восстанавливает прежние helper/checker файлы.
+
+Исходная `install-version=2.5.0` при repair намеренно не переписывается. Отдельный receipt `ACCEPTANCE_REPAIR_2_5_1` фиксирует применённый hotfix и backup path. Auto-reboot из repair не выполняется.
 
 ## 2.5.0: Node Plugins и диагностическая поверхность
 
@@ -305,10 +313,10 @@ sudo dpkg --audit
 4. проверяет `--version`;
 5. запускает только после всех проверок.
 
-SHA256 `install.sh` для release candidate `2.5.0`:
+SHA256 `install.sh` для release candidate `2.5.1`:
 
 ```text
-e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4
+905cef6d4b60b5fde4fc8799d540f60a77c12912c5a64f1cddc11f854ddf8e8b
 ```
 
 Если `install.sh` изменён, README и release manifest должны обновляться согласованно после review. Никогда не вычисляйте новый хеш из недоверенного изменившегося файла и не называйте его после этого «проверенным».

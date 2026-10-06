@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.0. Read README.md before running as root.
+# VKarmani Node 2.5.1. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1160,6 +1160,13 @@ def parse_ss_listeners(raw):
         host, sep, port_text = fields[3].rpartition(':')
         if not sep or not port_text.isdigit():
             raise ValueError('SS_LOCAL_ADDRESS_INVALID')
+        # iproute2 can render an IPv4 address with an interface scope suffix,
+        # e.g. systemd-resolved on Ubuntu 24.04 as 127.0.0.53%lo:53.
+        # The scope is display metadata; policy decisions must use the address.
+        if '%' in host:
+            host, scope = host.split('%', 1)
+            if not host or not scope or '%' in scope:
+                raise ValueError('SS_LOCAL_ADDRESS_INVALID')
         port = int(port_text)
         if host not in ('*', '0.0.0.0'):
             try:
@@ -1320,10 +1327,13 @@ VK_NODE_PLUGINS_PY
 }
 
 vk_write_acceptance() {
-    vk_write_time_helper
-    vk_write_node_plugins_helper
-    install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-check')"
-    cat > '/usr/local/sbin/vkarmani-node-check' <<'VK_PAYLOAD_VK_WRITE_ACCEPTANCE'
+    local destination=${1:-/usr/local/sbin/vkarmani-node-check}
+    local plugin_destination=${2:-${LIB:-/usr/local/lib/vkarmani-node}/node_plugins.py}
+    local time_destination=${3:-/usr/local/lib/vkarmani-node/time_helper.py}
+    vk_write_time_helper "$time_destination"
+    vk_write_node_plugins_helper "$plugin_destination"
+    install -d -m 0755 "$(dirname -- "$destination")"
+    cat > "$destination" <<'VK_PAYLOAD_VK_WRITE_ACCEPTANCE'
 #!/usr/bin/env bash
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
 # Local-only checks. Does not establish connectivity from the panel.
@@ -1376,7 +1386,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1648,9 +1658,26 @@ try:
     cap_add, cap_drop, security = (json.loads(x) for x in sys.argv[1:4])
 except Exception:
     raise SystemExit(1)
-if cap_add != ['NET_ADMIN']:
+
+def normalized_caps(value):
+    if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+        raise SystemExit(1)
+    result = []
+    for item in value:
+        item = item.strip().upper()
+        if item.startswith('CAP_'):
+            item = item[4:]
+        if not item:
+            raise SystemExit(1)
+        result.append(item)
+    return result
+
+# Docker Engine 29.8+ canonicalizes capability names returned by inspect to
+# CAP_NET_ADMIN/CAP_NET_RAW. Older engines commonly return NET_ADMIN/NET_RAW.
+# Accept only that representational difference; the effective policy stays exact.
+if normalized_caps(cap_add) != ['NET_ADMIN']:
     raise SystemExit(1)
-if cap_drop != ['NET_RAW']:
+if normalized_caps(cap_drop) != ['NET_RAW']:
     raise SystemExit(1)
 if not isinstance(security, list) or not any(isinstance(x, str) and x.startswith('no-new-privileges') for x in security):
     raise SystemExit(1)
@@ -1906,7 +1933,7 @@ if [[ "$MODE" == --require-xray && "$XRAY_COVER_OK" -ne 1 ]]; then
 fi
 exit 0
 VK_PAYLOAD_VK_WRITE_ACCEPTANCE
-    chmod 0755 '/usr/local/sbin/vkarmani-node-check'
+    chmod 0755 "$destination"
 }
 
 vk_write_fail2ban_config() {
@@ -2355,7 +2382,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -2459,8 +2486,9 @@ vk_check_saved_ufw_rules() {
 
 # Stream-safe entry point: the complete function must parse before any setup runs.
 vk_write_time_helper() {
-    install -d -m 0700 /usr/local/lib/vkarmani-node
-    cat > /usr/local/lib/vkarmani-node/time_helper.py <<'PY_TIME_HELPER'
+    local destination=${1:-/usr/local/lib/vkarmani-node/time_helper.py}
+    install -d -m 0700 "$(dirname -- "$destination")"
+    cat > "$destination" <<'PY_TIME_HELPER'
 #!/usr/bin/env python3
 """Select and verify one NTP client without replacing an installed time daemon.
 No external Python dependencies; no control of the system clock in this helper.
@@ -2675,7 +2703,7 @@ if __name__ == '__main__':
         print('ERROR: ' + (str(exc) if isinstance(exc, Failure) else 'TIME_HELPER_IO_OR_DATA_ERROR'), file=sys.stderr)
         sys.exit(1)
 PY_TIME_HELPER
-    chmod 0700 /usr/local/lib/vkarmani-node/time_helper.py
+    chmod 0700 "$destination"
 }
 
 vk_check_202_ntp_resume() {
@@ -3420,8 +3448,8 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
-        raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.0 installation')
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+        raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
         if p.exists() or p.is_symlink():
@@ -4333,7 +4361,7 @@ VK_CERT_DEPLOY_PY
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.0 — 2026-10-06
+# VKarmani Remnawave Node Installer 2.5.1 — 2026-10-06
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -4345,7 +4373,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.0
+INSTALLER_VERSION=2.5.1
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -4361,7 +4389,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.0
+VKarmani Remnawave Node Installer 2.5.1
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -4375,6 +4403,7 @@ VKarmani Remnawave Node Installer 2.5.0
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
   sudo bash install.sh --repair-node           # узкое исправление нашей завершённой 1.3.x
+  sudo bash install.sh --repair-acceptance     # только известный final-acceptance failure 2.5.0 -> hotfix checker 2.5.1
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
@@ -4780,7 +4809,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.0: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.1: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -5347,7 +5376,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.0\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.1\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -5523,7 +5552,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.0 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.1 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -6510,7 +6539,7 @@ PY
         echo 'STOP: Compose и запущенная нода используют разные образы; автоматическая замена запрещена.'; exit 1;
     }
     nginx -t
-    BK="$STATE/backups/repair-2.5.0-$(date +%Y%m%d-%H%M%S)-$$"
+    BK="$STATE/backups/repair-2.5.1-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$BK"
     local -a paths=(
         /usr/local/lib/vkarmani-node/time_helper.py
@@ -6561,7 +6590,7 @@ PY
     LOG=/var/log/vkarmani-node-repair.log
     touch "$LOG"; chmod 0600 "$LOG"
     exec > >(exec 9>&-; tee -a "$LOG") 2>&1
-    echo 'VKarmani 2.5.0 — исправление только на НОДЕ'
+    echo 'VKarmani 2.5.1 — исправление только на НОДЕ'
     echo "Резервная копия: $BK"
     echo 'Без APT, перезапуска Docker daemon, изменений SSH, маршрутов/MTU, замены ключей и reboot.'
     echo 'RemnaNode ненадолго остановится для удаления старой зависимости systemd.'
@@ -6626,7 +6655,7 @@ PY
         sleep 2
     done
     /usr/local/sbin/vkarmani-node-check --local
-    printf 'version=2.5.0\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
+    printf 'version=2.5.1\nat=%s\n' "$(date -Is)" > "$STATE/REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'REPAIR_LOCAL=PASS; PANEL_CONNECTION=NOT_VERIFIED'
     echo 'Дефекты конфигурации исправлены; это не подтверждение подключения панели.'
@@ -6656,7 +6685,7 @@ vkarmani_repair_network_main() {
     [[ -d /run/systemd/system ]] || { echo 'STOP: нужен systemd.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'Другой процесс установки/исправления уже работает.'; exit 1; }
-    local bk="$state/backups/network-2.5.0-$(date +%Y%m%d-%H%M%S)-$$"
+    local bk="$state/backups/network-2.5.1-$(date +%Y%m%d-%H%M%S)-$$"
     install -d -m 0700 "$bk"
     cp -a "$helper" "$bk/network-helper.before"
     cp -a "$unit_file" "$bk/network-unit.before"
@@ -6667,7 +6696,7 @@ vkarmani_repair_network_main() {
     touch /var/log/vkarmani-node-network-repair.log
     chmod 0600 /var/log/vkarmani-node-network-repair.log
     exec > >(exec 9>&-; tee -a /var/log/vkarmani-node-network-repair.log) 2>&1
-    echo 'VKarmani 2.5.0 — исправление применения sysctl после отключения IPv6'
+    echo 'VKarmani 2.5.1 — исправление применения sysctl после отключения IPv6'
     echo "Резервная копия: $bk"
     echo 'Без APT, reboot, рестарта Docker/RemnaNode/Nginx, изменения ключей, firewall, адресов, маршрутов или MTU.'
     echo '===== ЖУРНАЛ NETWORK ДО ИСПРАВЛЕНИЯ ====='
@@ -6704,7 +6733,7 @@ vkarmani_repair_network_main() {
     systemctl is-active --quiet "$unit"
     [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr ]]
     [[ $(sysctl -n net.core.default_qdisc) == fq ]]
-    printf 'version=2.5.0\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
+    printf 'version=2.5.1\nat=%s\n' "$(date -Is)" > "$state/NETWORK_REPAIR_COMPLETE"
     trap - ERR INT TERM HUP
     echo 'NETWORK_REPAIR=PASS'
     journalctl -b -u "$unit" -n 12 --no-pager || true
@@ -6732,6 +6761,140 @@ vkarmani_repair_network_main() {
     return "$check_rc"
 }
 
+
+vkarmani_repair_acceptance_main() {
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C LANG=C PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    [[ $# -eq 0 ]] || { echo 'Использование: bash install.sh --repair-acceptance'; return 2; }
+    [[ $EUID -eq 0 ]] || { echo 'Запустите --repair-acceptance от root.' >&2; return 1; }
+
+    local state=/var/lib/vkarmani-node
+    local lib=/usr/local/lib/vkarmani-node
+    local checker=/usr/local/sbin/vkarmani-node-check
+    local plugin="$lib/node_plugins.py"
+    local time_helper="$lib/time_helper.py"
+    local base_version=2.5.0
+    local repair_version=2.5.1
+    local old_checker_sha=affb9c5b282d09156ad8eaa304606870698eea12c6f1f54c9e7e36e1c71f789e
+    local old_plugin_sha=5e7b09208c07e1121370fd69d0c97d2ca37b2a8c86eb3a0ace0376eb63044fe6
+    local old_time_sha=2c4ee1fba63649d35f5e0ee164e8598eda05da725c95b7bbcfd7a91697971cbc
+
+    command -v flock >/dev/null || { echo 'STOP: util-linux/flock отсутствует.' >&2; return 1; }
+    command -v sha256sum >/dev/null || { echo 'STOP: sha256sum отсутствует.' >&2; return 1; }
+    command -v docker >/dev/null || { echo 'STOP: Docker отсутствует.' >&2; return 1; }
+    install -d -m 0755 /run/lock
+    exec 8>/run/lock/vkarmani-node-installer.lock
+    flock -n 8 || { echo 'STOP: installer/repair уже запущен.' >&2; return 1; }
+
+    [[ -d "$state" && ! -L "$state" ]] || { echo 'STOP: state directory отсутствует или небезопасен.' >&2; return 1; }
+    [[ -f "$state/owned-installation" && ! -L "$state/owned-installation" ]] || { echo 'STOP: это не project-owned installation.' >&2; return 1; }
+    [[ -s "$state/install-version" && $(cat "$state/install-version") == "$base_version" ]] || {
+        echo 'STOP: --repair-acceptance разрешён только для известного незавершённого 2.5.0.' >&2; return 1;
+    }
+    [[ ! -e "$state/INSTALL_COMPLETE" ]] || { echo 'STOP: завершённые установки этим repair не мигрируются.' >&2; return 1; }
+    [[ -f "$state/INSTALL_FAILED" && ! -L "$state/INSTALL_FAILED" ]] || { echo 'STOP: INSTALL_FAILED отсутствует.' >&2; return 1; }
+    grep -Eq '^rc=1 line=6412 at=[^[:space:]]+$' "$state/INSTALL_FAILED" || {
+        echo 'STOP: failure checkpoint не соответствует известному final-acceptance bug 2.5.0.' >&2; return 1;
+    }
+    for marker in network-rollback-armed network-rollback-running image-update-pending; do
+        [[ ! -e "$state/$marker" ]] || { echo "STOP: найден $marker; сначала разберите незавершённую транзакцию." >&2; return 1; }
+    done
+    [[ ! -e /root/reality-keys.txt ]] || {
+        echo 'STOP: /root/reality-keys.txt уже существует; repair не будет перезаписывать операторский/неизвестный файл.' >&2; return 1;
+    }
+    for path in "$checker" "$plugin" "$time_helper" /usr/local/lib/vkarmani-node/node_helper.py \
+                /etc/vkarmani-node/config.json /opt/vkarmani-node/compose.yaml "$state/image-digest"; do
+        [[ -f "$path" && ! -L "$path" ]] || { echo "STOP: отсутствует ожидаемый regular file: $path" >&2; return 1; }
+        [[ $(stat -c '%u' "$path") -eq 0 ]] || { echo "STOP: неверный owner: $path" >&2; return 1; }
+    done
+    [[ $(sha256sum "$checker" | awk '{print $1}') == "$old_checker_sha" ]] || {
+        echo 'STOP: установленный checker не совпадает с известным 2.5.0; не перезаписываю.' >&2; return 1;
+    }
+    [[ $(sha256sum "$plugin" | awk '{print $1}') == "$old_plugin_sha" ]] || {
+        echo 'STOP: node_plugins.py не совпадает с известным 2.5.0; не перезаписываю.' >&2; return 1;
+    }
+    [[ $(sha256sum "$time_helper" | awk '{print $1}') == "$old_time_sha" ]] || {
+        echo 'STOP: time_helper.py не совпадает с известным 2.5.0; не перезаписываю.' >&2; return 1;
+    }
+    [[ $(docker inspect remnanode --format '{{.State.Running}}' 2>/dev/null) == true ]] || {
+        echo 'STOP: remnanode не запущен; это уже не узкий acceptance-only случай.' >&2; return 1;
+    }
+
+    local bk="$state/backups/acceptance-2.5.1-$(date +%Y%m%d-%H%M%S)-$$"
+    install -d -m 0700 "$bk"
+    cp -a "$checker" "$plugin" "$time_helper" "$bk/"
+    (cd "$bk" && sha256sum vkarmani-node-check node_plugins.py time_helper.py > MANIFEST.sha256 && sha256sum --check --quiet MANIFEST.sha256)
+
+    local tmp_checker tmp_plugin tmp_time
+    tmp_checker=$(mktemp /usr/local/sbin/.vkarmani-node-check.2.5.1.XXXXXXXX)
+    tmp_plugin=$(mktemp "$lib/.node_plugins.py.2.5.1.XXXXXXXX")
+    tmp_time=$(mktemp "$lib/.time_helper.py.2.5.1.XXXXXXXX")
+    local committed=0 receipt_committed=0
+    vk_acceptance_repair_rollback() {
+        local rc=${1:-1}
+        set +e
+        rm -f "$tmp_checker" "$tmp_plugin" "$tmp_time"
+        if [[ "$committed" -eq 0 ]]; then
+            cp -a "$bk/vkarmani-node-check" "$checker"
+            cp -a "$bk/node_plugins.py" "$plugin"
+            cp -a "$bk/time_helper.py" "$time_helper"
+            rm -f /root/reality-keys.txt
+            [[ "$receipt_committed" -eq 0 ]] || rm -f "$state/ACCEPTANCE_REPAIR_2_5_1"
+        fi
+        return "$rc"
+    }
+    trap 'rc=$?; trap - ERR INT TERM HUP; vk_acceptance_repair_rollback "$rc"; exit "$rc"' ERR INT TERM HUP
+
+    LIB="$lib" vk_write_acceptance "$tmp_checker" "$tmp_plugin" "$tmp_time"
+    bash -n "$tmp_checker"
+    python3 - "$tmp_plugin" "$tmp_time" <<'PY_REPAIR_COMPILE'
+from pathlib import Path
+import sys
+for name in sys.argv[1:]:
+    compile(Path(name).read_text(), name, 'exec')
+PY_REPAIR_COMPILE
+
+    # Helpers first, checker last: there is no instant where a new checker sees an old parser.
+    mv -f -- "$tmp_time" "$time_helper"
+    mv -f -- "$tmp_plugin" "$plugin"
+    mv -f -- "$tmp_checker" "$checker"
+    chown root:root "$checker" "$plugin" "$time_helper"
+    chmod 0755 "$checker"
+    chmod 0700 "$plugin" "$time_helper"
+
+    echo 'ACCEPTANCE_REPAIR_FILES=INSTALLED; running read-only preboot acceptance'
+    "$checker" --preboot
+    /usr/local/lib/vkarmani-node/node_helper.py reality-export >/dev/null
+    [[ -f /root/reality-keys.txt && ! -L /root/reality-keys.txt && $(stat -c '%u:%a' /root/reality-keys.txt) == 0:600 ]] || {
+        echo 'STOP: reality export post-check failed.' >&2; return 1;
+    }
+
+    local digest
+    digest=$(cat "$state/image-digest")
+    [[ "$digest" =~ ^(remnawave/node|ghcr\.io/remnawave/node)@sha256:[a-f0-9]{64}$ ]] || {
+        echo 'STOP: image-digest повреждён.' >&2; return 1;
+    }
+    local receipt_tmp complete_tmp
+    receipt_tmp=$(mktemp "$state/.ACCEPTANCE_REPAIR_2_5_1.XXXXXXXX")
+    complete_tmp=$(mktemp "$state/.INSTALL_COMPLETE.XXXXXXXX")
+    printf 'source_version=%s\nrepair_version=%s\nat=%s\nbackup=%s\n' \
+        "$base_version" "$repair_version" "$(date -Is)" "$bk" > "$receipt_tmp"
+    printf 'version=%s\nat=%s\nimage=%s\n' "$base_version" "$(date -Is)" "$digest" > "$complete_tmp"
+    chmod 0600 "$receipt_tmp" "$complete_tmp"
+    mv -f -- "$receipt_tmp" "$state/ACCEPTANCE_REPAIR_2_5_1"
+    receipt_committed=1
+    mv -f -- "$complete_tmp" "$state/INSTALL_COMPLETE"
+    committed=1
+    rm -f "$state/INSTALL_FAILED" "$state/RESUME_FAILED"
+    trap - ERR INT TERM HUP
+
+    echo "ACCEPTANCE_REPAIR=PASS source=$base_version repair=$repair_version backup=$bk"
+    echo 'INSTALL_COMPLETE=PASS; исходная install-version сохранена как 2.5.0.'
+    echo 'AUTO_REBOOT=NOT_PERFORMED_BY_REPAIR; выполните один обычный reboot после проверки доступа к консоли/SSH.'
+}
+
 # VKARMANI_COMPLETE_PAYLOAD_2_1_1
 # Sourcing definitions is intentionally inert: used by offline regression tests.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -6741,6 +6904,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         --diagnose-resources) shift; vkarmani_resources_main "$@" ;;
         --repair-network) shift; vkarmani_repair_network_main "$@" ;;
         --repair-node) shift; vkarmani_repair_main "$@" ;;
+        --repair-acceptance) shift; vkarmani_repair_acceptance_main "$@" ;;
         --check)
             shift
             [[ -x /usr/local/sbin/vkarmani-node-check ]] || { echo 'Сначала установите ноду.'; exit 1; }

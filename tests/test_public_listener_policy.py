@@ -40,6 +40,20 @@ class PublicListenerPolicyTests(unittest.TestCase):
         self.assertTrue(M.public_listener_policy(raw, [22], 2222, set(), {40}, False, '8.8.4.4')[0])
         self.assertFalse(M.public_listener_policy(raw, [22], 2222, set(), {40}, True, '8.8.4.4')[0])
 
+
+    def test_scoped_ipv4_loopback_from_real_iproute2_is_ignored(self):
+        raw = self.good() + line('127.0.0.53%lo:53', 'systemd-resolve', 60) + '\n'
+        self.assertEqual(
+            M.public_listener_policy(raw, [22], 2222, {30}, {40}, True, '8.8.4.4'),
+            (True, 'EXPECTED_ONLY'),
+        )
+
+    def test_scoped_non_loopback_address_is_still_audited(self):
+        raw = self.good() + line('8.8.4.4%eth0:9999', 'debug', 61) + '\n'
+        ok, reason = M.public_listener_policy(raw, [22], 2222, {30}, {40}, True, '8.8.4.4')
+        self.assertFalse(ok)
+        self.assertEqual(reason, 'UNEXPECTED_PUBLIC_PORTS=9999')
+
     def test_http_and_xray_must_bind_expected_public_ipv4(self):
         raw = self.good().replace('8.8.4.4:80', '0.0.0.0:80')
         ok, reason = M.public_listener_policy(raw, [22], 2222, {30}, {40}, True, '8.8.4.4')

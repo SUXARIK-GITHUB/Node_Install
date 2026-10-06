@@ -1,7 +1,7 @@
 {
-  "version": "2.5.0",
+  "version": "2.5.1",
   "date": "2026-10-06",
-  "status": "LOCAL_ROOT_AND_UID1000_TESTS_PASSED_CANARY_NOT_PERFORMED_REMOTE_CI_NOT_RUN",
+  "status": "LOCAL_ROOT_AND_UID1000_TESTS_PASSED_POST_FIX_VPS_CANARY_NOT_PERFORMED_REMOTE_CI_NOT_RUN",
   "baseline": {
     "commit": "817b283d813b79bbfa9bde8ced136fc792b48108",
     "archive_sha256": "6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04",
@@ -10,53 +10,106 @@
     "git_tree_before_changes": "CLEAN",
     "sha256sums": "PASS"
   },
-  "installer_sha256": "e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4",
-  "root_cause": "Generated acceptance used duplicated ^2\\.(3\\.0|4\\.0)$ feature gates. Installer 2.4.1-2.4.3 therefore fell into the historical SSH branch and skipped the modern Selfsteal target check. 2.5.0 replaces those gates with one reviewed fail-closed contract classifier.",
+  "base_release_2_5_0": {
+    "installer_sha256": "e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4",
+    "local_tests_root": 590,
+    "local_tests_uid1000": 590,
+    "status": "SUPERSEDED_BY_2_5_1_ACCEPTANCE_HOTFIX"
+  },
+  "installer_sha256": "905cef6d4b60b5fde4fc8799d540f60a77c12912c5a64f1cddc11f854ddf8e8b",
+  "root_cause": {
+    "acceptance_2_4_x": "Generated acceptance in 2.4.x used duplicated ^2\\.(3\\.0|4\\.0)$ feature gates. 2.5.0 replaced them with one reviewed fail-closed contract classifier.",
+    "hotfix_2_5_1": [
+      "2.5.0 compared Docker inspect capability arrays literally as NET_ADMIN/NET_RAW. Docker 29.8 can expose the equivalent canonical CAP_NET_ADMIN/CAP_NET_RAW representation, causing NODE_CAPABILITY_POLICY false-negative.",
+      "2.5.0 passed ss scoped IPv4 text such as 127.0.0.53%lo directly to IPv4Address, causing PUBLIC_TCP_LISTENERS_POLICY=NOT_VERIFIED INVALID_LOCAL_DATA instead of treating it as loopback."
+    ]
+  },
+  "hotfix_2_5_1": {
+    "capability_policy": "Normalize only an optional leading CAP_ before exact comparison; require exactly NET_ADMIN added, exactly NET_RAW dropped, and no-new-privileges. Extra capabilities still fail.",
+    "public_listener_policy": "Strip one validated %interface display scope before IPv4 classification; loopback remains ignored and non-loopback unexpected public listeners still fail.",
+    "repair_acceptance": {
+      "available": true,
+      "supported_source_version": "2.5.0",
+      "supported_state": "exact reviewed incomplete rc=1 line=6412 final-preboot failure only",
+      "backup": true,
+      "atomic_activation": true,
+      "post_check": true,
+      "automatic_rollback_before_commit": true,
+      "install_version_rewritten": false,
+      "apt_or_firewall_or_ssh_or_grub_or_sysctl_mutation": false,
+      "docker_or_remnanode_restart_recreate": false,
+      "automatic_reboot": false
+    }
+  },
   "change_scope": [
-    "centralized modern/legacy/unreviewed installer contract classification",
+    "2.5.0 centralized modern/legacy/unreviewed installer contract classification",
     "kernel >=5.7 preflight before host mutation",
     "nftables CLI in signed distro package plan without nftables.service or /etc/nftables.conf management",
     "strict Xray profile sniffing and preserved RAW+REALITY+Vision+Selfsteal invariants",
     "read-only Node Plugins runtime nft JSON validation",
     "Xray >=26.3.27 functional floor and >=26.7.11 reviewed security floor",
-    "effective NET_ADMIN/NET_RAW/no-new-privileges runtime acceptance",
-    "public IPv4 TCP listener/owner/bind audit",
+    "effective NET_ADMIN/NET_RAW/no-new-privileges runtime acceptance with Docker 29.8 canonical capability compatibility",
+    "public IPv4 TCP listener/owner/bind audit with iproute2 scoped-IPv4 compatibility",
     "conntrack/disk/inode/reboot survivability facts in existing resource helper",
     "manual Panel Node Plugin reference policy and external/replacement/incident runbooks",
-    "negative regressions for destructive firewall/RST/community-list/scanner/custom-core shortcuts"
+    "negative regressions for destructive firewall/RST/community-list/scanner/custom-core shortcuts",
+    "explicit narrowly gated 2.5.0 acceptance-only repair with backup, post-check and rollback"
   ],
   "tests": [
     {
-      "stage": "release_candidate_2.5.0",
+      "stage": "release_candidate_2.5.1",
       "uid": 0,
-      "count": 590,
-      "seconds": 28.596,
+      "count": 597,
+      "seconds": 33.233,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "docs/evidence/250-root-tests.txt"
+      "log": "docs/evidence/251-root-tests.txt"
     },
     {
-      "stage": "release_candidate_2.5.0",
+      "stage": "release_candidate_2.5.1",
       "uid": 1000,
-      "count": 590,
-      "seconds": 28.197,
+      "count": 597,
+      "seconds": 33.497,
       "errors": 0,
       "failures": 0,
       "skips": 0,
-      "log": "docs/evidence/250-uid1000-tests.txt"
+      "log": "docs/evidence/251-uid1000-tests.txt"
     }
   ],
   "static_checks": {
     "bash_n_install": "PASS",
     "bash_n_tests_run": "PASS",
+    "generated_acceptance_staging_syntax": "PASS",
     "git_diff_check": "PASS",
     "sha256sum_check": "PASS_AFTER_FINAL_MANIFEST_REGENERATION",
     "shellcheck": "NOT_RUN_NOT_INSTALLED",
     "installer_actual_install_on_build_host": "NOT_RUN_BY_DESIGN",
-    "json_validation": "PASS",
-    "full_suite_root": "590_PASS_0_FAIL_0_ERROR_0_SKIP",
-    "full_suite_uid1000": "590_PASS_0_FAIL_0_ERROR_0_SKIP"
+    "json_validation": "PASS_AFTER_THIS_METADATA_UPDATE",
+    "full_suite_root": "597_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "full_suite_uid1000": "597_PASS_0_FAIL_0_ERROR_0_SKIP"
+  },
+  "real_vps_evidence_2_5_0": {
+    "date": "2026-10-06",
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-111-generic",
+    "docker_engine": "29.8.2",
+    "status": "FAILED_AT_FINAL_PREBOOT_ACCEPTANCE_BEFORE_INSTALL_COMPLETE",
+    "passed_before_failure": [
+      "RemnaNode running/stable",
+      "local Node TLS",
+      "Selfsteal",
+      "Xray functional floor",
+      "Xray security floor",
+      "RemnaNode nft runtime table"
+    ],
+    "false_negative_failures": [
+      "NODE_CAPABILITY_POLICY",
+      "PUBLIC_TCP_LISTENERS_POLICY INVALID_LOCAL_DATA"
+    ],
+    "install_complete_created": false,
+    "automatic_reboot_scheduled": false,
+    "note": "This is evidence that exposed the 2.5.0 regressions, not a successful 2.5.1 canary."
   },
   "upstream_review_2026_10_06": {
     "latest_stable_remnawave_node": "3.4.1",
@@ -66,14 +119,15 @@
     "note": "dated review snapshot; re-check before future release changes"
   },
   "canary": {
-    "status": "NOT_PERFORMED",
+    "status": "POST_FIX_2_5_1_NOT_PERFORMED",
     "required_before_production_verified_claim": true,
-    "minimum": "fresh disposable Ubuntu 24.04 amd64 VPS with snapshot/console, manual Panel Plugin Config assignment, real client and post-reboot acceptance"
+    "minimum": "fresh disposable Ubuntu 24.04 amd64 VPS or exact 2.5.0 repair canary with snapshot/console, post-reboot acceptance, manual Panel Plugin Config assignment and real client validation"
   },
   "not_executed": [
-    "real production/canary VPS installation",
-    "remote GitHub Actions matrix for the new 2.5.0 tree",
-    "public ACME issuance/renewal on a VPS",
+    "real post-fix 2.5.1 fresh VPS installation",
+    "real execution of 2.5.1 --repair-acceptance on the failed VPS",
+    "remote GitHub Actions matrix for the 2.5.1 tree",
+    "post-fix public ACME issuance/renewal",
     "Panel-side Plugin Config assignment or API mutation",
     "manual egress TCP/25 nft counter canary",
     "real RU fixed/mobile external-vantage validation",

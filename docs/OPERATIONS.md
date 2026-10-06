@@ -1,6 +1,20 @@
 # Эксплуатация, диагностика и восстановление
 
-## Текущий выпуск 2.5.0 — Node Plugins readiness и survivability
+## Текущий выпуск 2.5.1 — acceptance hotfix
+
+2.5.1 исправляет два false-negative, найденных реальной установкой 2.5.0 на Ubuntu 24.04 / Docker 29.8.2: canonical capability names `CAP_NET_ADMIN`/`CAP_NET_RAW` и iproute2 scope-notation `127.0.0.53%lo:53`. Политика не ослаблена: capability set остаётся exact, а public non-loopback listeners по-прежнему проверяются строго. Подробности: [HOTFIX_2.5.1](HOTFIX_2.5.1.md).
+
+Для **точно известного незавершённого 2.5.0**, остановившегося на `INSTALL_FAILED rc=1 line=6412`, используйте только новый explicit repair:
+
+```bash
+sudo bash install.sh --repair-acceptance
+```
+
+Repair сначала проверяет exact SHA старых acceptance-файлов и checkpoint, затем делает private backup, atomic replacement и `vkarmani-node-check --preboot`. При ошибке старые файлы восстанавливаются. APT, SSH, UFW, Nginx, Docker image/container lifecycle, GRUB/sysctl и Panel не меняются; `install-version=2.5.0` сохраняется, создаётся отдельный receipt. После PASS repair **сам не reboot-ит**: проверьте provider console и вторую SSH-сессию, затем выполните один `sudo reboot` и после входа проверьте `sudo vkarmani-node-check --postboot`.
+
+Для completed 2.5.0/2.4.x `--repair-acceptance` не является updater и должен отказать. Обычный повтор завершённого installer остаётся диагностикой.
+
+## База 2.5.0 — Node Plugins readiness и survivability
 
 2.5.0 сохраняет RAW+REALITY+Vision+Selfsteal и node-only границу, но делает prerequisites и диагностику явным контрактом. Перед host mutation kernel должен быть `>=5.7`; signed package plan включает `nftables`, однако его systemd service/config installer не включает. После установки используйте `sudo vkarmani-node-check`; после ручного назначения Profile/Plugin Config — `sudo vkarmani-node-check --require-xray`. Только strict режим требует подтверждённую структуру `table ip remnanode`; до Panel sync это `NOT_VERIFIED`, не PASS.
 

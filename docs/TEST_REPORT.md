@@ -1,49 +1,49 @@
-# TEST_REPORT — Node_Install 2.5.0
+# TEST_REPORT — Node_Install 2.5.1
 
-## 2.5.0 release-candidate validation — 2026-10-06
+## 2.5.1 release-candidate hotfix validation — 2026-10-06
 
-Baseline was verified before edits against commit `817b283d813b79bbfa9bde8ced136fc792b48108`: uploaded archive SHA256 `6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04`, baseline `install.sh` SHA256 `13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c`, clean Git tree, `sha256sum --check SHA256SUMS`, `bash -n install.sh`, `bash -n tests/run.sh`, `git diff --check` and `git diff --exit-code` all PASS. Baseline full suite: **557/557 PASS**.
+Baseline was verified before the 2.5.0 work against commit `817b283d813b79bbfa9bde8ced136fc792b48108`: uploaded archive SHA256 `6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04`, baseline `install.sh` SHA256 `13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c`, clean Git tree, `sha256sum --check SHA256SUMS`, `bash -n install.sh`, `bash -n tests/run.sh`, `git diff --check` and `git diff --exit-code` all PASS. Baseline full suite: **557/557 PASS**.
 
-The 2.5.0 implementation keeps the existing RAW+REALITY+Vision+Selfsteal, host-Nginx, IPv4-only, UFW and Docker layout. The main release-candidate additions validated offline are:
+2.5.1 keeps the 2.5.0 RAW+REALITY+Vision+Selfsteal, host-Nginx, IPv4-only, UFW, Node Plugins readiness and survivability scope. This patch changes only the acceptance interpretation/recovery path for two false-negative cases discovered by a real 2.5.0 Ubuntu 24.04 installation:
 
-- centralized reviewed installer-contract classification (`modern` / `legacy` / `unreviewed`) with executable 2.4.1/2.4.2/2.4.3 SSH/Selfsteal regressions and fail-closed future versions;
-- kernel `>=5.7` preflight before host mutation, distro `nftables` CLI plan without `nftables.service` or `/etc/nftables.conf` management;
-- effective runtime container policy: exact `NET_ADMIN` add, exact `NET_RAW` drop and `no-new-privileges` for modern contracts;
-- strict Torrent sniffing profile contract and preserved TCP/443 + RAW/REALITY/Vision + own-domain/Selfsteal invariants;
-- Xray plugin floor `>=26.3.27` and separate reviewed security floor `>=26.7.11`;
-- bounded structured `nft -j list table ip remnanode` validation without active firewall tests;
-- public IPv4 TCP listener/owner/bind policy without printing client/peer addresses;
-- `--diagnose-resources` conntrack, root disk/inode percentages, reboot marker, FD/OOM status without auto-tuning;
-- documentation/runbooks for Panel-only Plugin Config, external-path taxonomy/control-vantage diagnosis, safe node replacement and provider-abuse incidents;
-- negative regressions against destructive firewall flushes, RST/community auto-lists, scanner services and custom Xray replacement.
+- Docker Engine 29.8 canonical `CAP_NET_ADMIN` / `CAP_NET_RAW` inspect values are normalized to the same exact capability policy as legacy textual `NET_ADMIN` / `NET_RAW`; extra capabilities still fail;
+- iproute2 scoped IPv4 text such as `127.0.0.53%lo:53` is normalized before loopback/public listener classification; non-loopback unexpected listeners still fail;
+- explicit `--repair-acceptance` is restricted to the exact reviewed incomplete 2.5.0 final-preboot failure, exact old helper SHA256 and no pending network/image transaction; it backs up and atomically replaces only acceptance files, runs a post-check and rolls back on failure;
+- repair does not run APT, mutate SSH/UFW/Nginx/GRUB/sysctl/Panel, or restart/recreate Docker/RemnaNode; it does not rewrite the original `install-version=2.5.0` and does not auto-reboot.
+
+The complete 2.5.0 scope remains covered: centralized reviewed installer-contract classification, kernel `>=5.7` preflight, distro `nftables` CLI without service/config ownership, strict sniffing/profile invariants, Xray plugin/security floors, read-only RemnaNode nft runtime validation, public TCP surface audit, resource/conntrack facts and negative anti-regression tests.
 
 ### Full local suite
 
 | Run | Tests | unittest time | Errors / failures / skips | Result |
 |---|---:|---:|---:|---|
-| 2.5.0, root | 590 | 28.596 s | 0 / 0 / 0 | PASS |
-| 2.5.0, UID 1000 | 590 | 28.197 s | 0 / 0 / 0 | PASS |
+| 2.5.1, root | 597 | 33.233 s | 0 / 0 / 0 | PASS |
+| 2.5.1, UID 1000 | 597 | 33.497 s | 0 / 0 / 0 | PASS |
 
-The two runs execute the same suite under different UIDs; they are not additive. No test was removed or weakened to make the release green. The previously observed PTY/hidden-input timeout from the project history did not reproduce in these full runs.
+The two runs execute the same suite under different UIDs; they are not additive. No test was removed or weakened. New 2.5.1 regressions execute both capability representations, real-style `%lo` listener text, non-loopback scoped enforcement, explicit repair staging, exact failed-state gating and the repair no-mutation contract.
+
+Logs: [2.5.1 root](evidence/251-root-tests.txt), [2.5.1 UID 1000](evidence/251-uid1000-tests.txt). Existing 2.5.0 evidence is preserved as pre-hotfix evidence.
 
 ### Static/release gates
 
 - `bash -n install.sh` — PASS;
 - `bash -n tests/run.sh` — PASS;
-- all embedded Python payload compile tests — PASS as part of the 590-test suite;
-- `python3 -m json.tool docs/NODE_PLUGINS_REFERENCE_2.5.0.json` and `docs/RELEASE_VALIDATION.json` — PASS;
-- `git diff --check` — PASS, including new files via intent-to-add inspection;
-- `sha256sum --check SHA256SUMS` — PASS after final manifest regeneration;
+- generated Bash/Python acceptance files can be staged into a disposable tree and compile — PASS;
+- `python3 -m json.tool docs/NODE_PLUGINS_REFERENCE_2.5.0.json` and `docs/RELEASE_VALIDATION.json` — PASS after final metadata update;
+- `git diff --check` — PASS before packaging;
+- `sha256sum --check SHA256SUMS` — required PASS after final manifest regeneration;
 - `ShellCheck` — **NOT_RUN_NOT_INSTALLED** in this environment; no new hard dependency was added;
 - installer was **not** executed as a real installation on the build host.
 
-Current release-candidate `install.sh` SHA256 before final manifest packaging: `e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4`.
+Current release-candidate `install.sh` SHA256 after final content lock: `905cef6d4b60b5fde4fc8799d540f60a77c12912c5a64f1cddc11f854ddf8e8b`.
 
-## What local validation does not prove
+## Real canary evidence and remaining limits
 
-`PRODUCTION_CANARY=NOT_PERFORMED`. This environment did not perform a fresh Ubuntu 24.04 VPS install, public ACME issuance, Panel assignment/Plugin Config sync, real panel→node 2222 path, authenticated VLESS/REALITY client transfer, manual egress TCP/25 counter canary, reboot/postboot acceptance, or real ISP/RU-mobile external-vantage testing. Ubuntu 26.04 remains userspace-CI scope until a real 26.04 VPS canary is run; arm64 also needs a real canary before broad rollout. Remote GitHub Actions for the new 2.5.0 tree were not run because no push/PR/tag/release was performed.
+A real Ubuntu 24.04.4 VPS run of 2.5.0 did occur on 2026-10-06. It reached RemnaNode running/stable, local Node TLS PASS, Selfsteal PASS, Xray functional/security floors PASS and `NODE_PLUGIN_NFT_RUNTIME PASS`, then stopped at final `--preboot` acceptance before `INSTALL_COMPLETE` because `NODE_CAPABILITY_POLICY` and `PUBLIC_TCP_LISTENERS_POLICY` were false negatives. This incident is evidence for the two 2.5.1 fixes; it is **not** a successful production canary.
 
-These limitations are deliberate: local `PASS` is not called proof of Panel configuration, torrent detection, censorship reachability, ban resistance or production verification.
+`POST_FIX_2_5_1_CANARY=NOT_PERFORMED` in this build environment. The corrected code still requires a real VPS run/repair followed by reboot/postboot acceptance, Panel assignment, real panel→node path and authenticated client test before any `production verified` claim. Ubuntu 26.04 remains userspace-CI scope until a real 26.04 VPS canary; arm64 also needs a real canary before broad rollout. Remote GitHub Actions for the 2.5.1 tree were not run because no push/PR/tag/release was performed.
+
+These limitations are deliberate: local PASS is not proof of Panel configuration, torrent detection, censorship reachability, ban resistance or production verification.
 
 ---
 
