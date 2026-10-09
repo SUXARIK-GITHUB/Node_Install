@@ -28,6 +28,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/', block)
         self.assertRegex(block, r'RELEASE_COMMIT="[0-9a-f]{40}"')
+        self.assertNotIn('RELEASE_COMMIT="' + '0'*40 + '"', block)
         self.assertNotIn('/main/install.sh', block)
         self.assertIn('--proto \'=https\'', block)
         self.assertIn('--proto-redir \'=https\'', block)

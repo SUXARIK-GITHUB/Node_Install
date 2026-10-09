@@ -793,5 +793,3 @@ XHTTP is an optional **alternative** VLESS transport to RAW+Vision for a single 
 [⬆️ К навигации](#report) · [🚀 README](README.md) · [🧰 Operations](docs/OPERATIONS.md) · [📩 Security tab](https://github.com/SUXARIK-GITHUB/Node_Install/security)
 
 </div>
-
-

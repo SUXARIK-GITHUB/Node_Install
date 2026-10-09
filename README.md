@@ -35,7 +35,7 @@ for tool in curl sha256sum mktemp install bash; do
 done
 
 EXPECTED_SHA256="da745235274cee2ea89d5986e7107b5848d0ef2a8fa2767d3fba2a253b40041b"
-RELEASE_COMMIT="0000000000000000000000000000000000000000"
+RELEASE_COMMIT="eab5207032e3655b91b82b6b1c596f37457787e3"
 URL="https://raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/${RELEASE_COMMIT}/install.sh"
 WORK_DIR="$(mktemp -d /root/vkarmani-node-download.XXXXXXXX)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
