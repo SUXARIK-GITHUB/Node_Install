@@ -45,13 +45,16 @@ class RKNGuardTests(unittest.TestCase):
         return '# scanner list\n' + ''.join('23.1.%s.0/24\n' % n for n in range(count)) + '2a03:e140:42::/48\n'
 
     def test_abort_unconfirmed_ufw_rollback_prevents_auto_reboot(self):
-        self.assertIn("die 'RKN rollback не подтверждён:", SCRIPT)
-        self.assertIn('/etc/ufw/before.rules 2>/dev/null ||', SCRIPT)
-        self.assertIn('RKN_POSTCHECK=FAIL', SCRIPT)
-        self.assertIn('vk_rkn_abort_setup && /usr/local/sbin/vkarmani-node-check --preboot', SCRIPT)
-        self.assertLess(SCRIPT.index("die 'RKN rollback не подтверждён:"),
-                        SCRIPT.index('helper reality-export >/dev/null',
-                                     SCRIPT.index("stage 'RKN-Guard data:")))
+        # The finalizer now owns this ordering. Dynamic interrupted/failed
+        # rollback tests in test_finalization_256 execute this actual payload.
+        final = payload('VK_FINALIZER_PY')
+        self.assertIn('RKN_ROLLBACK_BASE_FIREWALL_MISMATCH_CONSOLE_REQUIRED', final)
+        self.assertIn("self.absent(self.path(DROPIN))", final)
+        self.assertIn('self.rollback_rkn(obj)\n                self.acceptance()', final)
+        self.assertLess(final.index('self.rollback_rkn(obj)'), final.index('self.complete(obj)'))
+        tail = SCRIPT.split("stage 'Очистка только APT-кэша и ограниченных журналов'", 1)[1]
+        self.assertLess(tail.index('finalize_install.py" finish'),
+                        tail.index('--on-active=30s /usr/bin/systemctl reboot'))
 
     def test_embedded_python_equals_reviewed_source(self):
         self.assertEqual(payload('VK_RKN_GUARD_PY'), self.source)

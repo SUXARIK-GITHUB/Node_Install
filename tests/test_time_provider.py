@@ -143,9 +143,12 @@ class TimeProviderTests(unittest.TestCase):
             if failed and args[0] == failed:
                 raise self.m.Failure('INJECTED_COMMAND_FAILURE')
             if args[0] == 'systemctl':
-                return ''
+                return ('ActiveState=active\nSubState=running\nInvocationID=' + 'a'*32
+                        if args[1] == 'show' else '')
             if args[1] == 'show':
                 return synced
+            if '--property=NTPMessage' in args:
+                return '{ Leap=0, Mode=4, Stratum=2, Ignored=no, PacketCount=3 }'
             if args[1] == 'show-timesync':
                 return address
             raise AssertionError(args)
@@ -200,6 +203,8 @@ class TimeProviderTests(unittest.TestCase):
 
     def test_chrony_sync_success_uses_original_correction_threshold(self):
         def run(args, deadline):
+            if args[:2] == ['systemctl', 'show']:
+                return 'ActiveState=active\nSubState=running\nInvocationID=' + 'a'*32
             if 'waitsync' in args:
                 self.assertEqual(args[-4:], ['1', '0.1', '0.0', '1'])
             return 'Leap status     : Normal' if 'tracking' in args else ''
@@ -207,7 +212,9 @@ class TimeProviderTests(unittest.TestCase):
             self.m.probe('chrony', self.m.time.monotonic() + 15)
 
     def test_chrony_abnormal_leap_fails(self):
-        with patch.object(self.m, 'run', return_value='Leap status : Not synchronised'):
+        with patch.object(self.m, 'run', side_effect=lambda args, deadline: (
+                'ActiveState=active\nSubState=running\nInvocationID=' + 'a'*32
+                if args[:2] == ['systemctl', 'show'] else 'Leap status : Not synchronised')):
             with self.assertRaisesRegex(self.m.Failure, 'CHRONY_NOT'):
                 self.m.probe('chrony', self.m.time.monotonic() + 15)
 
@@ -248,8 +255,9 @@ class TimeProviderTests(unittest.TestCase):
     def test_readiness_and_postboot_use_selected_provider(self):
         acceptance = payload('VK_PAYLOAD_VK_WRITE_ACCEPTANCE')
         self.assertIn('"$TIME_HELPER" provider', acceptance)
-        self.assertIn('fail2ban "$TIME_SERVICE" ufw', acceptance)
-        self.assertIn('"$TIME_HELPER" check', acceptance)
+        self.assertIn('fail2ban ufw', acceptance)
+        self.assertNotIn('fail2ban "$TIME_SERVICE" ufw', acceptance)
+        self.assertIn('"$TIME_HELPER" wait --seconds "$NTP_WAIT_SECONDS" --stable-samples 2', acceptance)
         unit = template('/etc/systemd/system/vkarmani-node-postboot.service')
         self.assertEqual(unit.count('${TIME_SERVICE}.service'), 2)
         self.assertNotIn('chrony.service', unit)

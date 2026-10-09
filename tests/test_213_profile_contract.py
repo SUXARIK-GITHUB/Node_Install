@@ -79,7 +79,7 @@ class Profile213Tests(unittest.TestCase):
         self.h.export_reality_keys_file(self.c)
         guide = (self.h.ETC / 'PANEL-SETUP.txt').read_text()
         self.assertIn('minClientVer=0.0.0', guide)
-        self.assertIn('RemnaNode 2.5.5', guide)
+        self.assertIn('RemnaNode 2.5.6', guide)
         self.assertIn('minClientVer: 0.0.0', self.h.REALITY_EXPORT.read_text())
         self.assertEqual((self.h.ETC / 'reality.json').read_bytes(), keys)
 
@@ -348,7 +348,7 @@ warn() { printf 'NOTE %s %s\\n' "$1" "$2"; }
 
     def test_all_reviewed_versions_execute_expected_profile_contract(self):
         validated = ('2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0',
-                     '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5')
+                     '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6')
         for version in validated:
             with self.subTest(version=version):
                 result = self.gate(version)
@@ -368,7 +368,7 @@ warn() { printf 'NOTE %s %s\\n' "$1" "$2"; }
 
     def test_future_malformed_versions_do_not_silently_pass(self):
         for version in ('2.1.4', '2.1.20', '2.1.3-extra', '2.2.1', '2.3.1',
-                        '2.4.4', '2.5.6', '2.6.0', '3.0.0', 'broken', ''):
+                        '2.4.4', '2.5.7', '2.6.0', '3.0.0', 'broken', ''):
             with self.subTest(version=version):
                 result = self.gate(version)
                 self.assertEqual(result.returncode, 1, result.stderr)

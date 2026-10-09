@@ -6,7 +6,7 @@
 
 🛡️ IPv4-only · ⚡ VLESS REALITY · 🌐 Selfsteal Nginx · 🧩 RAW / XHTTP · 🔄 RKN Guard · 🧰 Диагностика и откат
 
-**Версия установщика: `2.5.6` · Обновление документации: 09.10.2026**
+**Версия установщика: `2.5.5` · Обновление документации: 09.10.2026**
 
 [⚡ Установить](#install) · [🗺️ Карта проекта](#navigation) · [🔑 Remnawave](#panel) · [📋 RAW](#raw) · [🌐 XHTTP](#xhttp) · [🔐 Security](SECURITY.md) · [🛠️ Поддержка](#operations)
 
@@ -23,7 +23,7 @@
 **Скопируйте блок целиком в SSH-терминал VPS.** Файл будет скачан по HTTPS из **неизменяемого Git-коммита**, проверен по жёстко закреплённой SHA256, синтаксису Bash и версии, сохранён на VPS и только затем запущен **без автоматического reboot**. `curl | bash` не используется.
 
 ```bash
-sudo bash <<'VKARMANI_NODE_INSTALL_256'
+sudo bash <<'VKARMANI_NODE_INSTALL_255'
 set -Eeuo pipefail
 set +x
 umask 077
@@ -34,8 +34,8 @@ for tool in curl sha256sum mktemp install bash; do
   command -v "$tool" >/dev/null 2>&1 || { echo "Нет команды: $tool" >&2; exit 1; }
 done
 
-EXPECTED_SHA256="da745235274cee2ea89d5986e7107b5848d0ef2a8fa2767d3fba2a253b40041b"
-RELEASE_COMMIT="0000000000000000000000000000000000000000"
+EXPECTED_SHA256="ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40"
+RELEASE_COMMIT="276789eab8a43a9ff08dca124e137456e212b2e3"
 URL="https://raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/${RELEASE_COMMIT}/install.sh"
 WORK_DIR="$(mktemp -d /root/vkarmani-node-download.XXXXXXXX)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
@@ -47,34 +47,17 @@ curl --fail --show-error --silent --location \
 printf '%s  %s\n' "$EXPECTED_SHA256" "$WORK_DIR/install.sh" | sha256sum --check --status \
   || { echo 'STOP: неверный SHA256 установщика.' >&2; exit 1; }
 bash -n "$WORK_DIR/install.sh"
-[[ "$(bash "$WORK_DIR/install.sh" --version)" == "2.5.6" ]] \
+[[ "$(bash "$WORK_DIR/install.sh" --version)" == "2.5.5" ]] \
   || { echo 'STOP: установщик имеет неверную версию.' >&2; exit 1; }
 
 install -d -m 0700 /root/vkarmani-node-installer
 install -m 0700 "$WORK_DIR/install.sh" /root/vkarmani-node-installer/install.sh
 bash /root/vkarmani-node-installer/install.sh --no-reboot
-VKARMANI_NODE_INSTALL_256
+VKARMANI_NODE_INSTALL_255
 ```
 
 > [!NOTE]
 > **Почему `--no-reboot`:** успешная установка сама по себе не подтверждает соединение Panel → Node и доступ пользователя из внешней сети. Сначала проверяем сервисы, SSH, сертификат и Selfsteal; перезагрузку выполняем контролируемо из консоли хостера. В обычном режиме без `--no-reboot` установщик планирует одну перезагрузку через 30 секунд.
-
-### 🩹 Исправление финальной приёмки — 2.5.6
-
-**Устранён воспроизведённый сценарий 2.5.5:** NTP успел синхронизироваться в начале установки, затем служба перезапустилась, а финальная одноразовая проверка попала в окно повторной синхронизации. Теперь приёмка ждёт **до 120 секунд** в `--preboot`/`--postboot` и до 35 секунд в остальных режимах; нужны **два последовательных успешных наблюдения** одной службы и одного источника. Не просто `active`: подтверждаются IPv4, синхронизация, настоящий неотброшенный NTP-ответ и стабильный `InvocationID`.
-
-Если синхронизация не восстановилась в отведённое время, установка **не объявляется успешной и не перезагружает сервер**. Сохраняется контрольная точка финальной фазы. После устранения причины:
-
-```bash
-sudo bash /root/vkarmani-node-installer/install.sh --finish-install
-```
-
-Команда подходит **только для записанной финальной фазы 2.5.6**. Она повторяет приёмку, экспортирует существующие ключи, завершает RKN и фиксирует успех; не повторяет APT, SSH, установку Docker/Nginx или выпуск сертификатов. Повторный обычный запуск той же 2.5.6 с таким checkpoint тоже направляется сюда. При любом продолжении **авторебута нет**, даже если первый запуск был без `--no-reboot`.
-
-> [!WARNING]
-> Не запускайте новую первичную установку поверх работающей 2.5.5. Исправный `spite` уже восстановлен и не требует переустановки. Новая версия предназначена для следующих установок; она не заменяет уже установленные helpers на старых нодах. Произвольные незавершённые 2.5.5 и более старые состояния **не мигрируются** этим finish-режимом.
-
-Полный разбор, границы доказательства, проверка и rollback: [🧯 NTP / finalization 2.5.6](docs/NTP_FINALIZATION_2.5.6.md).
 
 ### 🧾 Что вводить в терминал
 
@@ -121,7 +104,6 @@ sudo docker compose -f /opt/vkarmani-node/compose.yaml ps
 | TCP/443 · один VLESS inbound | TLS 1.3 + HTTP/2 + Let's Encrypt | IPv4-only, DNS и routing | `--prepare-xhttp` |
 | REALITY X25519 / ShortID | Unix-сокет и PROXY v1 | RKN Guard · ежедневный CIDR | Image/cover rollback |
 | RAW+Vision **или** XHTTP | ACME HTTP-01 на TCP/80 | NET_ADMIN с явными ограничениями | `--xray-versions` |
-| ⏱️ Ограниченное ожидание NTP | Без изменений Selfsteal | Контрольная точка финальной фазы | `--finish-install` |
 
 **Границы ответственности:** установщик подготавливает **только ноду**. Создание объектов **Node, Host, Config Profile, Internal Squad, пользователей и подписок** выполняется в Remnawave Panel отдельно. Нода получает активный Xray Config Profile **от панели**, а локальные JSON в `/etc/vkarmani-node/` — шаблоны для импорта, **не** автоматически применяемая конфигурация.
 
@@ -610,17 +592,6 @@ RemnaNode поставляется с собственной версией `rw-
 | `/usr/local/lib/vkarmani-node/` | эксплуатационные helpers | проверять перед заменой |
 | `/var/log/vkarmani-node-install.log` | журнал установки | 🔒 root-only |
 
-<a id="resource-review"></a>
-### 📊 Честная сводка ресурсов в 2.5.6
-
-```bash
-sudo bash install.sh --diagnose-resources --seconds 10 --strict
-```
-
-JSON теперь содержит `review_summary`: `OK` либо `REVIEW_REQUIRED`, количество и список причин. Вложенный `verified: false` (например, процесс исчез или `/proc/PID/fd` не прочитан), WARN/CRITICAL и отсутствующие обязательные данные больше не теряются. Без `--strict` код успешного сбора JSON остаётся `0` для совместимости; с `--strict` неполный/требующий разбора снимок возвращает **2**. Это не означает автоматического вмешательства или доказанного падения VPN.
-
-**Этот режим можно выполнить новым `install.sh` на работающей ноде для чтения ресурсов.** Он создаёт только временный helper; не обновляет установленный checker и не меняет конфигурации. Старый отдельный аудит, считающий только коды команд без анализа JSON, сам от появления нового архива не обновляется.
-
 <a id="acceptance"></a>
 ## 📈 Карта приёмки, ошибок и восстановления
 
@@ -677,7 +648,6 @@ git diff --check
 | [`docs/TRANSPORT_SWITCHING_2.5.4.md`](docs/TRANSPORT_SWITCHING_2.5.4.md) | Подробная RAW ⇄ XHTTP замена inbound |
 | [`docs/RKN_GUARD_2.5.3.md`](docs/RKN_GUARD_2.5.3.md) | CIDR, UFW, исключение панели, аварийные сценарии |
 | [`docs/XRAY_CORE_UPDATES_2.5.5.md`](docs/XRAY_CORE_UPDATES_2.5.5.md) | Xray/CoreLoader и безопасная политика обновлений |
-| [`docs/NTP_FINALIZATION_2.5.6.md`](docs/NTP_FINALIZATION_2.5.6.md) | Новый NTP wait, finish-checkpoint и безопасный retry |
 | [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) | Граница offline-тестов и реальные неподтверждённые проверки |
 | [`docs/history/README_2.5.4.md`](docs/history/README_2.5.4.md) | Предыдущий исторический документ (не потерян) |
 | [`docs/history/README_2.5.5_before_ui_refresh.md`](docs/history/README_2.5.5_before_ui_refresh.md) | Исходная 2.5.5 до переработки дизайна |
@@ -690,7 +660,7 @@ git diff --check
 
 <div align="center">
 
-**🚀 VKARMANI NODE INSTALL 2.5.6 · 🛡️ Безопасность → 🧩 Совместимость → 📈 Стабильность**
+**🚀 VKARMANI NODE INSTALL 2.5.5 · 🛡️ Безопасность → 🧩 Совместимость → 📈 Стабильность**
 
 [⬆️ К главной команде](#install) · [🔐 Security](SECURITY.md) · [🛠️ Operations](docs/OPERATIONS.md)
 

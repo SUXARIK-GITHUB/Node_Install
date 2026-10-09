@@ -1,0 +1,440 @@
+{
+  "version": "2.5.5",
+  "date": "2026-10-09",
+  "status": "LOCAL_631_ROOT_AND_631_UNPRIVILEGED_TESTS_PASSED; LIVE_VPS_PANEL_CLIENT_NOT_VERIFIED",
+  "baseline": {
+    "commit": "817b283d813b79bbfa9bde8ced136fc792b48108",
+    "archive_sha256": "6a879ab1712da032e7df3fa75bdf42d912ac29d3608f69404c792e3cdc6b1a04",
+    "installer_sha256": "13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c",
+    "tests": 557,
+    "git_tree_before_changes": "CLEAN",
+    "sha256sums": "PASS"
+  },
+  "base_release_2_5_0": {
+    "installer_sha256": "e6d514ce2c815b7943de62ce8dd1adbf85b90ebfbedb65695cf8e8c37e482ae4",
+    "local_tests_root": 590,
+    "local_tests_uid1000": 590,
+    "status": "SUPERSEDED_BY_2_5_1_ACCEPTANCE_HOTFIX"
+  },
+  "installer_sha256": "ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40",
+  "root_cause": {
+    "acceptance_2_4_x": "Generated acceptance in 2.4.x used duplicated ^2\\.(3\\.0|4\\.0)$ feature gates. 2.5.0 replaced them with one reviewed fail-closed contract classifier.",
+    "hotfix_2_5_1": [
+      "2.5.0 compared Docker inspect capability arrays literally as NET_ADMIN/NET_RAW. Docker 29.8 can expose the equivalent canonical CAP_NET_ADMIN/CAP_NET_RAW representation, causing NODE_CAPABILITY_POLICY false-negative.",
+      "2.5.0 passed ss scoped IPv4 text such as 127.0.0.53%lo directly to IPv4Address, causing PUBLIC_TCP_LISTENERS_POLICY=NOT_VERIFIED INVALID_LOCAL_DATA instead of treating it as loopback."
+    ],
+    "hotfix_2_5_2": [
+      "Before the first reboot, rw-node can own one AF_INET6 wildcard NODE_PORT socket with bindv6only=0 while real IPv4 connects succeed; ss -4 alone therefore produced a false MISSING_EXPECTED_PORTS=2222.",
+      "After reboot/live profile activation, rw-core legitimately binds the reviewed generated VLESS listener as 0.0.0.0:443; 2.5.1 listener audit incorrectly required the concrete public IPv4 and produced BIND_ADDRESS_MISMATCH PORTS=443."
+    ]
+  },
+  "hotfix_2_5_1": {
+    "capability_policy": "Normalize only an optional leading CAP_ before exact comparison; require exactly NET_ADMIN added, exactly NET_RAW dropped, and no-new-privileges. Extra capabilities still fail.",
+    "public_listener_policy": "Strip one validated %interface display scope before IPv4 classification; loopback remains ignored and non-loopback unexpected public listeners still fail.",
+    "repair_acceptance": {
+      "available": true,
+      "supported_source_version": "2.5.0",
+      "supported_state": "exact reviewed incomplete rc=1 line=6412 final-preboot failure only",
+      "backup": true,
+      "atomic_activation": true,
+      "post_check": true,
+      "automatic_rollback_before_commit": true,
+      "install_version_rewritten": false,
+      "apt_or_firewall_or_ssh_or_grub_or_sysctl_mutation": false,
+      "docker_or_remnanode_restart_recreate": false,
+      "automatic_reboot": false
+    }
+  },
+  "change_scope": [
+    "2.5.0 centralized modern/legacy/unreviewed installer contract classification",
+    "kernel >=5.7 preflight before host mutation",
+    "nftables CLI in signed distro package plan without nftables.service or /etc/nftables.conf management",
+    "strict Xray profile sniffing and preserved RAW+REALITY+Vision+Selfsteal invariants",
+    "read-only Node Plugins runtime nft JSON validation",
+    "Xray >=26.3.27 functional floor and >=26.7.11 reviewed security floor",
+    "effective NET_ADMIN/NET_RAW/no-new-privileges runtime acceptance with Docker 29.8 canonical capability compatibility",
+    "public IPv4 TCP listener/owner/bind audit with iproute2 scoped-IPv4 compatibility",
+    "conntrack/disk/inode/reboot survivability facts in existing resource helper",
+    "manual Panel Node Plugin reference policy and external/replacement/incident runbooks",
+    "negative regressions for destructive firewall/RST/community-list/scanner/custom-core shortcuts",
+    "explicit narrowly gated 2.5.0 acceptance-only repair with backup, post-check and rollback",
+    "preboot proof-based AF_INET6 dual-stack NODE_PORT compatibility without hiding any other missing listener",
+    "reviewed Xray IPv4 wildcard 0.0.0.0:443 acceptance with container PID ownership proof",
+    "2.5.4 alternative XHTTP+REALITY template and explicit --prepare-xhttp on completed 2.5.2/2.5.3/2.5.4 nodes; preserve RAW+Vision, Selfsteal, UFW/RKN and same public 443",
+    "2.5.5 complete README rewrite + two full secret-redacted RAW/XHTTP JSON examples; read-only pinned upstream Xray metadata advisory; no custom core auto-replace; 2.5.5 completed-node/cover/RKN gates"
+  ],
+  "tests": [
+    {
+      "stage": "release_candidate_2.5.3",
+      "uid": 0,
+      "count": 609,
+      "seconds": 34.512,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/253-root-tests.txt"
+    },
+    {
+      "stage": "release_candidate_2.5.3",
+      "uid": 65534,
+      "count": 609,
+      "seconds": 33.103,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/253-unprivileged-tests.txt"
+    },
+    {
+      "stage": "release_candidate_2.5.2",
+      "uid": 0,
+      "count": 599,
+      "seconds": 33.437,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/252-root-tests.txt"
+    },
+    {
+      "stage": "release_candidate_2.5.2",
+      "uid": 1000,
+      "count": 599,
+      "seconds": 33.354,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/252-uid1000-tests.txt"
+    },
+    {
+      "stage": "release_candidate_2.5.4",
+      "uid": 0,
+      "count": 620,
+      "seconds": 38.669,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/254-root-tests.txt"
+    },
+    {
+      "stage": "release_candidate_2.5.4",
+      "uid": 65534,
+      "count": 620,
+      "seconds": 39.064,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/254-unprivileged-tests.txt"
+    },
+    {
+      "stage": "release_candidate_2.5.5",
+      "uid": 0,
+      "count": 631,
+      "seconds": 39.821,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/255-root-tests.txt"
+    },
+    {
+      "stage": "release_candidate_2.5.5",
+      "uid": 65534,
+      "count": 631,
+      "seconds": 39.055,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "log": "docs/evidence/255-unprivileged-tests.txt"
+    }
+  ],
+  "static_checks": {
+    "bash_n_install": "PASS",
+    "bash_n_tests_run": "PASS",
+    "generated_acceptance_staging_syntax": "PASS",
+    "git_diff_check": "PASS",
+    "sha256sum_check": "PASS",
+    "shellcheck": "NOT_RUN_NOT_INSTALLED",
+    "installer_actual_install_on_build_host": "NOT_RUN_BY_DESIGN",
+    "json_validation": "PASS",
+    "full_suite_root": "620_PASS_0_FAIL_0_ERROR",
+    "full_suite_uid1000": "599_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "full_suite_uid65534": "609_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "previous_2_5_2_uid1000": "599_PASS_HISTORICAL",
+    "embedded_rkn_source_sync": "PASS",
+    "rkn_rules_mock_rollback": "PASS",
+    "rkn_running_real_vps": "NOT_VERIFIED",
+    "full_suite_unprivileged": "620_PASS_0_FAIL_0_ERROR",
+    "real_xray_core_syntax_on_vps": "NOT_RUN_NO_DOCKER_NODE",
+    "real_xhttp_traffic": "NOT_RUN",
+    "read_only_nginx_template_validation": "PASS",
+    "archive_crc": "PENDING_BUILD",
+    "git_clone_manifest": "PENDING_BUILD"
+  },
+  "real_vps_evidence_2_5_0": {
+    "date": "2026-10-06",
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-111-generic",
+    "docker_engine": "29.8.2",
+    "status": "FAILED_AT_FINAL_PREBOOT_ACCEPTANCE_BEFORE_INSTALL_COMPLETE",
+    "passed_before_failure": [
+      "RemnaNode running/stable",
+      "local Node TLS",
+      "Selfsteal",
+      "Xray functional floor",
+      "Xray security floor",
+      "RemnaNode nft runtime table"
+    ],
+    "false_negative_failures": [
+      "NODE_CAPABILITY_POLICY",
+      "PUBLIC_TCP_LISTENERS_POLICY INVALID_LOCAL_DATA"
+    ],
+    "install_complete_created": false,
+    "automatic_reboot_scheduled": false,
+    "note": "This is evidence that exposed the 2.5.0 regressions, not a successful 2.5.1 canary."
+  },
+  "upstream_review_2026_10_06": {
+    "latest_stable_remnawave_node": "3.4.2",
+    "reviewed_xray_in_node_source": "26.7.28",
+    "torrent_blocker_floor": "26.3.27",
+    "xray_security_floor": "26.7.11",
+    "note": "Official GitHub releases page showed v3.4.2 as latest on 2026-10-06; functional/security Xray floors remain independently enforced by runtime version checks."
+  },
+  "canary": {
+    "status": "LOCAL_UBUNTU_24_04_REBOOT_CANARY_PASSED_PANEL_AND_AUTHENTICATED_CLIENT_NOT_VERIFIED",
+    "required_before_production_verified_claim": true,
+    "minimum_remaining": "manual Panel assignment/path validation, Node Plugin Config sync and authenticated client traffic/canary"
+  },
+  "not_executed": [
+    "fresh end-to-end 2.5.2 install from an untouched VPS (the real VPS was repaired from the 2.5.1 candidate during diagnosis)",
+    "remote GitHub Actions matrix for the 2.5.2 tree",
+    "Panel-side Plugin Config assignment or API mutation",
+    "authenticated client VPN traffic validation",
+    "manual egress TCP/25 nft counter canary",
+    "real RU fixed/mobile external-vantage validation",
+    "real Ubuntu 26.04 VPS canary",
+    "real arm64 VPS canary",
+    "long load/soak/performance tests",
+    "ShellCheck",
+    "fresh 2.5.3 RKN-enabled VPS installation and postboot ipset/UFW canary",
+    "real Remnawave Panel→Node and authenticated VPN client after enabling scanner filter",
+    "real update over HTTPS on target VPS",
+    "GitHub Actions for locally built 2.5.3 commit; GitHub main untouched",
+    "real XHTTP+REALITY Core+Panel+client canary and RAW-to-XHTTP-to-RAW switch on VPS for 2.5.4",
+    "real 2.5.5 VPS install and reboot",
+    "real 2.5.5 XHTTP+REALITY and RAW client acceptance",
+    "actual custom core update (intentionally not automated)",
+    "GitHub Actions for unpublished 2.5.5 commit"
+  ],
+  "user_servers_changed": false,
+  "panel_objects_changed": false,
+  "github_changed": false,
+  "git_push_tag_release_pr": false,
+  "hotfix_2_5_2": {
+    "preboot_node_port_dual_stack": "Accept only when NODE_PORT is the sole missing IPv4 listener, a single rw-node/node IPv6 wildcard socket belongs to remnanode, bindv6only=0, and IPv4 connects to loopback plus public IPv4 both pass.",
+    "xray_443_bind": "TCP/80 remains concrete-public-IPv4-only. TCP/443 accepts concrete public IPv4 or 0.0.0.0, while exact rw-core/xray process and remnanode PID ownership remain mandatory.",
+    "architecture_changed": false,
+    "firewall_changed": false,
+    "docker_capabilities_changed": false,
+    "panel_mutation_added": false
+  },
+  "real_vps_evidence_2_5_2": {
+    "date": "2026-10-06",
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-111-generic",
+    "docker_engine": "29.8.2",
+    "node_image_digest": "sha256:1f97485b4bc7e4944f1ae95cc57d176376813b0022e9567b705f384f1a2e909d",
+    "preboot_dual_stack_node_port_proof": "PASS",
+    "post_reboot_ipv6_kernel_disable": "PASS",
+    "post_reboot_node_port_ipv4_listener": "PASS",
+    "xray_ipv4_wildcard_443_owner_proof": "PASS",
+    "full_local_acceptance": "PASS",
+    "postboot_systemd_service": "PASS",
+    "systemd_failed_units": 0,
+    "panel_to_node": "NOT_VERIFIED",
+    "authenticated_client": "NOT_VERIFIED",
+    "torrent_detection": "NOT_VERIFIED",
+    "status": "LOCAL_REBOOT_CANARY_PASSED_EXTERNAL_LEVELS_NOT_VERIFIED"
+  },
+  "release_2_5_3": {
+    "date": "2026-10-09",
+    "scope": "IPv4-only rkn-guard scanner list integration for node TCP/80,443, dynamic panel exceptions; daily systemd refresh",
+    "code_upstream": "https://github.com/Flecksis/rkn-guard",
+    "code_upstream_reviewed_sha": "34ed9c13bfa1280d32226164084da25b33a4c155",
+    "list_repository": "https://github.com/shadow-netlab/traffic-guard-lists",
+    "list_url": "https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/government_networks.list",
+    "list_auto_update": "daily; Persistent=true; atomic ipset; retain last-known-good on download error",
+    "code_auto_update": false,
+    "panel_ipv4_source": "/etc/vkarmani-node/config.json panel_ipv4; re-read each prepare/update",
+    "fallback": "disable only managed scanner rules; abort pre-reboot when rollback or acceptance cannot be confirmed",
+    "upstream_review_required_per_next_release": true,
+    "upstream_review_doc": "docs/RKN_GUARD_2.5.3.md",
+    "offline_tests_root_passed": 609,
+    "offline_tests_unprivileged_passed": 609,
+    "real_vps_canary": "NOT_RUN",
+    "github_main_mutated": false,
+    "original_archive_modified": false
+  },
+  "release_2_5_4": {
+    "date": "2026-10-09",
+    "scope": "one manually chosen VLESS inbound on TCP443: RAW+REALITY+Vision or XHTTP+REALITY (empty flow), with unchanged Nginx Selfsteal/IPv4/UFW/RKN and key identity",
+    "installed_profile_paths": [
+      "/etc/vkarmani-node/profile.json",
+      "/etc/vkarmani-node/profile-xhttp.json"
+    ],
+    "api_or_panel_auto_modification": false,
+    "daemon_auto_switch": false,
+    "second_public_port": false,
+    "on_completed_installs": "explicit --prepare-xhttp supported only for reviewed 2.5.2/2.5.3/2.5.4",
+    "real_core_syntax": "validated on the actual running remnanode image when --prepare-xhttp is used; core incompatibility fails closed for XHTTP template, fresh RAW install remains available",
+    "runtime_on_vps_test": "NOT_RUN; requires canary on production-matched staging",
+    "client_and_subscription_e2e": "NOT_RUN; needs one real RAW-to-XHTTP-to-RAW switch",
+    "selfsteal": "Existing Unix socket /dev/shm/nginx.sock with xver=1 and host Nginx HTTP2/PROXY v1",
+    "canary_required": true,
+    "docs": "docs/TRANSPORT_SWITCHING_2.5.4.md",
+    "sha256_installer": "18aee26a96577e6168dfc37f6ceb4017d030be9afe4014920ef364b74a0208fa",
+    "tests_file": "tests/test_xhttp_254.py",
+    "upstream_examples": "https://github.com/XTLS/Xray-examples/tree/main/VLESS-XHTTP-Reality/minimal-steal_others",
+    "local_tests_root": 620,
+    "local_tests_unprivileged": 620,
+    "xhttp_offline_tests_in_suite": 11,
+    "full_suite_root_seconds": 38.669,
+    "full_suite_unprivileged_seconds": 39.064,
+    "mode_when_xhttp_unsupported": "Fresh RAW installation survives; XHTTP status NOT_READY, existing --prepare-xhttp refuses without changing live node"
+  },
+  "static_checks_2_5_3_history": {
+    "bash_n_install": "PASS",
+    "bash_n_tests_run": "PASS",
+    "generated_acceptance_staging_syntax": "PASS",
+    "git_diff_check": "PASS",
+    "sha256sum_check": "PASS",
+    "shellcheck": "NOT_RUN_NOT_INSTALLED",
+    "installer_actual_install_on_build_host": "NOT_RUN_BY_DESIGN",
+    "json_validation": "PASS",
+    "full_suite_root": "609_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "full_suite_uid1000": "599_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "full_suite_uid65534": "609_PASS_0_FAIL_0_ERROR_0_SKIP",
+    "previous_2_5_2_uid1000": "599_PASS_HISTORICAL",
+    "embedded_rkn_source_sync": "PASS",
+    "rkn_rules_mock_rollback": "PASS",
+    "rkn_running_real_vps": "NOT_VERIFIED"
+  },
+  "canary_2_5_4": {
+    "status": "NOT_RUN",
+    "production_verified": false,
+    "requires": [
+      "backup/snapshot VPS and exported Remnawave Config Profile/Host",
+      "XHTTP template accepted by actual bundled rw-core",
+      "panel live inbound RAW -> XHTTP -> RAW using same tag and one TCP443",
+      "Selfsteal HTTPS and certificate renewal, client subscription refresh",
+      "real authorized client connect and egress",
+      "UFW/RKN/SSH/Node API unchanged"
+    ]
+  },
+  "baseline_2_5_3_archive_sha256": "192dc3f33cd68641f3dc9d5888ca19318b1136c75ce63ebb7e25a3ae16e0eb0b",
+  "release_2_5_5": {
+    "date": "2026-10-09",
+    "scope": "Complete README+full example profiles; read-only upstream Xray version advisory; safe patch of 2.5.5 supported contract gates; duplicate-free public IPv4 route",
+    "source_archive_version": "2.5.4",
+    "network_or_firewall_changes": false,
+    "nginx_or_selfsteal_changes": false,
+    "panel_or_node_live_changes": false,
+    "raw_private_key_in_example": false,
+    "raw_and_xhttp_same_inbound_tag": true,
+    "official_builtin_xray": "Bundled in RemnaNode Docker image, actual running version must be queried",
+    "custom_core_policy": "NO_AUTO_UPDATE; operator-reviewed geodata.core.url+sha256 via Panel or verified pinned official Node image",
+    "upstream_rkn_review_required_per_release": true,
+    "github_main_mutated": false,
+    "production_vps_test": "NOT_RUN",
+    "authenticated_client_test": "NOT_RUN",
+    "installed_image_xray_version": "NOT_VERIFIED_IN_OFFLINE_ENVIRONMENT",
+    "docs": [
+      "README.md",
+      "docs/XRAY_CORE_UPDATES_2.5.5.md",
+      "docs/history/README_2.5.4.md"
+    ],
+    "example_files": [
+      "examples/inbound-raw-full.example.json",
+      "examples/inbound-xhttp-full.example.json"
+    ],
+    "upstream_review_2026_10_09": {
+      "Flecksis/rkn-guard": "34ed9c13bfa1280d32226164084da25b33a4c155",
+      "shadow-netlab/traffic-guard-lists": "7b9623238d7420cbb31feaa149610738feb45fd5",
+      "XTLS/Xray-core": "836a6fed385b902e437dde43ee9adc82d23a5303",
+      "remnawave/node": "ea7a835485af81ec464ebbf7acaaa7d6dd486a05",
+      "policy": "upstream source and releases must be re-reviewed at EACH future build; do not execute upstream code automatically"
+    },
+    "sha256_installer": "ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40",
+    "sha256_of_unmodified_source_2_5_4_zip": "13e6ec080dfa35419f89c87397103edd9957cea7fd4d61904091d12fdee790d3",
+    "local_tests_root": 631,
+    "local_tests_unprivileged": 631,
+    "root_seconds": 39.821,
+    "unprivileged_seconds": 39.055,
+    "root_evidence": "docs/evidence/255-root-tests.txt",
+    "unprivileged_evidence": "docs/evidence/255-unprivileged-tests.txt",
+    "status": "OFFLINE_TESTS_PASSED_NOT_PRODUCTION_VERIFIED",
+    "shellcheck": "NOT_INSTALLED",
+    "actual_remnanode_core": "NOT_AVAILABLE_IN_THIS_BUILD_ENVIRONMENT",
+    "real_nginx_vps": "NOT_EXECUTED",
+    "custom_xray_auto_update": false,
+    "static_checks": {
+      "bash_syntax": "PASS",
+      "all_embedded_python_unit_compilation": "PASS_IN_SUITE",
+      "source_examples_json": "PASS_IN_SUITE",
+      "clean_git_clone": "PASS",
+      "sha256sum_manifest": "PASS",
+      "zip_crc": "PASS"
+    }
+  },
+  "docs_security_ui_refresh_2026_10_09": {
+    "release_version_unchanged": "2.5.5",
+    "baseline_github_main_sha": "276789eab8a43a9ff08dca124e137456e212b2e3",
+    "runtime_installer_unchanged": true,
+    "installer_sha256": "ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40",
+    "primary_install_pinned_commit": "276789eab8a43a9ff08dca124e137456e212b2e3",
+    "changed_public_examples_manual_opt_in": true,
+    "full_old_readme_retained": "docs/history/README_2.5.5_before_ui_refresh.md",
+    "full_old_security_retained": "docs/history/SECURITY_2.5.5_before_ui_refresh.md",
+    "affected": [
+      "README.md",
+      "SECURITY.md",
+      "CHANGELOG.md",
+      "docs/TEST_REPORT.md",
+      "docs/RELEASE_VALIDATION.json",
+      "examples/inbound-raw-full.example.json",
+      "examples/inbound-xhttp-full.example.json",
+      "tests/test_xray_versions_255.py",
+      "tests/test_docs_ui_255.py",
+      "docs/history/README_2.5.5_before_ui_refresh.md",
+      "docs/history/SECURITY_2.5.5_before_ui_refresh.md",
+      "SHA256SUMS",
+      "docs/evidence/255-docs-root-tests.txt",
+      "docs/evidence/255-docs-unprivileged-tests.txt"
+    ],
+    "test_scope": "offline; no Docker or live RemnaNode/Xray/server/Panel; no external client acceptance",
+    "live_panel_client_canary": "NOT_VERIFIED",
+    "new_github_actions": "NOT_YET_RUN",
+    "tests": [
+      {
+        "user": "root",
+        "uid": 0,
+        "total": 637,
+        "passed": 637,
+        "errors": 0,
+        "failures": 0,
+        "skips": 0,
+        "seconds": 38.893,
+        "evidence": "docs/evidence/255-docs-root-tests.txt"
+      },
+      {
+        "user": "nobody",
+        "uid": 65534,
+        "total": 637,
+        "passed": 637,
+        "errors": 0,
+        "failures": 0,
+        "skips": 0,
+        "seconds": 39.11,
+        "evidence": "docs/evidence/255-docs-unprivileged-tests.txt"
+      }
+    ],
+    "local_tests_status": "PASS_637_ROOT_AND_637_UNPRIVILEGED"
+  }
+}

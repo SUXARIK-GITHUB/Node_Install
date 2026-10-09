@@ -22,18 +22,18 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
     def test_main_install_command_at_top_is_pinned_verified_and_syntax_valid(self):
         self.assertLess(self.readme.index('## ⚡ ГЛАВНАЯ КОМАНДА УСТАНОВКИ'), 850)
         block = self.readme.split("```bash\n", 1)[1].split('\n```', 1)[0]
-        self.assertTrue(block.startswith("sudo bash <<'VKARMANI_NODE_INSTALL_255'"))
+        self.assertTrue(block.startswith("sudo bash <<'VKARMANI_NODE_INSTALL_256'"))
         result = subprocess.run(['bash', '-n'], input=block, text=True,
                                 capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/', block)
-        self.assertIn('276789eab8a43a9ff08dca124e137456e212b2e3', block)
+        self.assertRegex(block, r'RELEASE_COMMIT="[0-9a-f]{40}"')
         self.assertNotIn('/main/install.sh', block)
         self.assertIn('--proto \'=https\'', block)
         self.assertIn('--proto-redir \'=https\'', block)
         self.assertIn('sha256sum --check --status', block)
         self.assertIn('bash -n "$WORK_DIR/install.sh"', block)
-        self.assertIn('"2.5.5"', block)
+        self.assertIn('"2.5.6"', block)
         self.assertIn('--no-reboot', block)
         self.assertNotIn('curl | bash', block)
         sha = re.search(r'EXPECTED_SHA256="([0-9a-f]{64})"', block)
@@ -115,9 +115,11 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertGreater(len(self.security.splitlines()), 700)
         self.assertIn('не является гарантией',self.security.lower())
 
-    def test_installer_code_unmodified_by_documentation_work(self):
-        self.assertEqual(hashlib.sha256((ROOT/'install.sh').read_bytes()).hexdigest(),
-                         'ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40')
+    def test_previous_documentation_is_preserved_on_hotfix(self):
+        for path in ('docs/history/README_2.5.5.md', 'docs/history/SECURITY_2.5.5.md'):
+            self.assertTrue((ROOT/path).is_file())
+        self.assertIn('## ⚡ ГЛАВНАЯ КОМАНДА УСТАНОВКИ', self.readme)
+        self.assertIn('2.5.6', self.readme)
 
 
 if __name__ == '__main__':

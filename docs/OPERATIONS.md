@@ -1,3 +1,22 @@
+# Дополнение эксплуатации 2.5.6 — NTP / finish-only
+
+Полный разбор: [NTP_FINALIZATION_2.5.6](NTP_FINALIZATION_2.5.6.md).
+
+**Рабочую завершённую 2.5.5 не переустанавливать.** Новая версия и новый архив не меняют её helpers автоматически. Перед новыми развёртываниями нужен canary 2.5.6.
+
+```bash
+# Только checkpoint финальной фазы 2.5.6, после устранения причины отказа:
+sudo bash install.sh --finish-install
+# Read-only снимок ресурсов; 2 означает REVIEW_REQUIRED, не автоматическую настройку:
+sudo bash install.sh --diagnose-resources --seconds 10 --strict
+```
+
+Во время NTP wait не перезапускать сервис вручную для «помощи» проверке: каждый запуск сбрасывает её стабильность. Не закреплять IP NTP по старому выводу, не отключать IPv4-проверку, не создавать INSTALL_COMPLETE вручную. При истечении deadline сначала смотреть текущие `ServerAddress`, `NTPMessage`, `InvocationID`, journal и актуальный package-manager state.
+
+Новый checkpoint: `/var/lib/vkarmani-node/finalization/checkpoint.json`. В том же каталоге закрытая копия данных финальной фазы; она содержит секреты. `FINALIZE_FAILED` оставляет код последнего сбоя. При несовпадении hash/IP/digest или при проваленном RKN rollback — остановка и консоль. Запись состояния руками запрещена. Подробные проверяемые границы и rollback ниже в новом runbook.
+
+---
+
 # Эксплуатация, диагностика и восстановление
 
 ## Выпуск 2.5.5 — RAW/XHTTP профили, версии Core, безопасное обслуживание

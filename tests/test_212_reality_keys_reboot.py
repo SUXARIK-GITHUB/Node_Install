@@ -100,7 +100,8 @@ class RebootContractTests(unittest.TestCase):
 
     def test_private_key_display_bypasses_install_log(self):
         self.assertIn('REALITY_KEYS_FILE=/root/reality-keys.txt', SCRIPT)
-        self.assertIn('helper reality-export >/dev/null', SCRIPT)
+        self.assertIn("'reality-export'], quiet=True)", SCRIPT)
+        self.assertIn("self.read(self.path('root/reality-keys.txt'), private=True)", SCRIPT)
         self.assertIn('cat "$REALITY_KEYS_FILE"', SCRIPT)
         self.assertIn('} > /dev/tty', SCRIPT)
         self.assertIn('PrivateKey не записывается в install log', SCRIPT)

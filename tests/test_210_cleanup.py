@@ -163,20 +163,28 @@ class CleanupTests(unittest.TestCase):
         # Execute the REAL final sequence up to the marker with all commands mocked.
         final=SCRIPT.split("stage 'Очистка только APT-кэша и ограниченных журналов'",1)[1]
         final=final.split("stage 'Установка завершена",1)[0]
-        with tempfile.TemporaryDirectory() as d:
-            keyfile = str(Path(d) / 'reality-keys.txt')
-            code='set -Eeuo pipefail\nSTATE='+repr(d)+'; INSTALLER_VERSION=2.1.2; DIGEST=test; REALITY_KEYS_FILE='+repr(keyfile)+'\n'
-            code+='python3(){ printf "cleanup deferred\\n"; return 0; }\n'
-            code+='helper(){ : > "$REALITY_KEYS_FILE"; chmod 0600 "$REALITY_KEYS_FILE"; }\n'
-            code+='stage(){ :; }\nvk_rkn_activate(){ return 1; }\n'
-            # Only replace the diagnostic executable path, retaining shell strict mode.
-            final=final.replace('/usr/local/sbin/vkarmani-node-check','test_check')
-            for rc in (1,0):
-                with self.subTest(acceptance_rc=rc):
-                    result=subprocess.run(['bash','-c',code+f'test_check(){{ echo acceptance; return {rc}; }}\n'+final],capture_output=True,text=True)
-                    self.assertEqual(result.returncode,rc)
-                    self.assertIn('acceptance',result.stdout)
-                    self.assertEqual((Path(d)/'INSTALL_COMPLETE').exists(),rc==0)
+        code = r'''set -Eeuo pipefail
+LIB=/fixture; STATE=/fixture
+stage(){ :; }
+vk_write_finalizer_helper(){ echo finalizer_written; }
+python3(){
+    case "$*" in
+        *apt_clean.py*) echo cleanup_deferred; return 0 ;;
+        *prepare) echo checkpoint_prepared; return 0 ;;
+        *finish) echo acceptance; return "$MOCK_CHECK_RC" ;;
+        *) return 99 ;;
+    esac
+}
+'''
+        for rc in (1,0):
+            with self.subTest(acceptance_rc=rc):
+                result=subprocess.run(['bash','-c',code+final],
+                                      env={**os.environ,'MOCK_CHECK_RC':str(rc)},
+                                      capture_output=True,text=True)
+                self.assertEqual(result.returncode,rc,result.stderr)
+                self.assertIn('acceptance',result.stdout)
+                self.assertLess(result.stdout.index('cleanup_deferred'), result.stdout.index('checkpoint_prepared'))
+                self.assertLess(result.stdout.index('checkpoint_prepared'), result.stdout.index('acceptance'))
         self.assertIn('apt_clean.py',template('/usr/local/sbin/vkarmani-node-cleanup'))
 
     def test_no_lock_removal_or_security_update_disabling(self):

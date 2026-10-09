@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.5. Read README.md before running as root.
+# VKarmani Node 2.5.6. Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1480,7 +1480,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1520,7 +1520,7 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 ]]; then
         if [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
             if helper profile-check "$ETC/profile-xhttp.json"; then
                 pass XHTTP_IMPORT_PROFILE_POLICY
@@ -1586,7 +1586,7 @@ while IFS= read -r port; do
     if ss -H -4 -lnt | awk '{print $4}' | _contains -E ":${port}$"; then pass "SSH_TCP_$port"; else fail "SSH_TCP_$port"; fi
 done < "$ETC/ssh-ports"
 TIME_SERVICE=$(python3 "$TIME_HELPER" provider) || { fail TIME_PROVIDER; exit 1; }
-for service in docker containerd nginx fail2ban "$TIME_SERVICE" ufw vkarmani-node-network; do
+for service in docker containerd nginx fail2ban ufw vkarmani-node-network; do
     if systemctl is-active --quiet "$service"; then
         pass "SERVICE_$service"
     else
@@ -1729,10 +1729,17 @@ vk_check_ssh_contract() {
 }
 vk_check_ssh_contract
 warn INTERFACE_QDISC 'сохранена текущая структура очередей; root qdisc не перезаписывается'
-if [[ "$MODE" == --postboot ]]; then
-    python3 "$TIME_HELPER" wait --seconds 35 >/dev/null 2>&1 || true
+# APT hooks or network changes may restart the time daemon after initial sync.
+# Wait for evidence, not a fixed sleep; failures remain failures at the deadline.
+case "$MODE" in --preboot|--postboot) NTP_WAIT_SECONDS=120 ;; *) NTP_WAIT_SECONDS=35 ;; esac
+if python3 "$TIME_HELPER" wait --seconds "$NTP_WAIT_SECONDS" --stable-samples 2; then
+    pass "SERVICE_$TIME_SERVICE"
+    pass NTP_SYNC
+else
+    fail NTP_SYNC 'bounded wait expired or invalid time evidence; no service restart attempted'
+    systemctl show "$TIME_SERVICE.service" -p ActiveState -p SubState -p Result \
+        -p NRestarts -p ExecMainStatus --no-pager 2>/dev/null || true
 fi
-python3 "$TIME_HELPER" check && pass NTP_SYNC || fail NTP_SYNC
 if [[ $(docker inspect remnanode --format '{{.State.Running}}' 2>/dev/null) == true ]]; then
     R1=$(docker inspect remnanode --format '{{.RestartCount}}' 2>/dev/null)
     sleep 5
@@ -2487,7 +2494,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -2727,13 +2734,49 @@ def save_provider(provider, etc=ETC):
         temporary.unlink(missing_ok=True)
 
 
+def service_identity(provider, deadline):
+    raw = run(['systemctl', 'show', provider + '.service',
+               '--property=ActiveState', '--property=SubState',
+               '--property=InvocationID'], deadline)
+    fields = {}
+    for line in raw.splitlines():
+        key, sep, value = line.partition('=')
+        if not sep or key in fields:
+            raise Failure('TIME_SERVICE_STATE_INVALID')
+        fields[key] = value
+    if fields.get('ActiveState') != 'active' or fields.get('SubState') != 'running':
+        raise Failure('TIME_SERVICE_NOT_READY')
+    invocation = fields.get('InvocationID', '')
+    if not re.fullmatch(r'[0-9a-f]{32}', invocation) or invocation == '0' * 32:
+        raise Failure('TIME_SERVICE_INVOCATION_INVALID')
+    return invocation
+
+
+def valid_ntp_message(raw):
+    # timedatectl show-timesync's documented machine property, not localized status.
+    # Do not log raw output; diagnostics never include arbitrary DBus text.
+    def field(name, pattern):
+        matches = re.findall(r'(?:^|[\s,{])' + name + r'=(' + pattern + r')(?=[\s,}]|$)', raw)
+        if len(matches) != 1:
+            raise Failure('TIMESYNCD_NTP_MESSAGE_INVALID')
+        return matches[0]
+    count = int(field('PacketCount', r'[0-9]+'))
+    ignored = field('Ignored', r'yes|no')
+    leap = int(field('Leap', r'[0-9]+'))
+    mode = int(field('Mode', r'[0-9]+'))
+    stratum = int(field('Stratum', r'[0-9]+'))
+    if count < 1 or ignored != 'no' or leap not in (0, 1, 2) or mode != 4 or not 1 <= stratum <= 15:
+        raise Failure('TIMESYNCD_NO_ACCEPTED_NTP_REPLY')
+
+
 def probe(provider, deadline, sync_marker=SYNC_MARKER):
     if provider not in PROVIDERS:
         raise Failure('INVALID_TIME_PROVIDER')
     run(['systemctl', 'is-active', '--quiet', provider + '.service'], deadline)
+    invocation = service_identity(provider, deadline)
+    address = ''
     if provider == 'chrony':
-        # One observation, bounded by the common deadline. Keep the previous
-        # installation threshold: <0.1 seconds remaining system-clock correction.
+        # Preserve the previous <0.1 s remaining clock correction requirement.
         run(['chronyc', '-n', 'waitsync', '1', '0.1', '0.0', '1'], deadline)
         tracking = run(['chronyc', '-n', 'tracking'], deadline)
         if not re.search(r'^Leap status\s*:\s*Normal\s*$', tracking, re.M):
@@ -2747,26 +2790,37 @@ def probe(provider, deadline, sync_marker=SYNC_MARKER):
             ipaddress.IPv4Address(address)
         except ipaddress.AddressValueError as exc:
             raise Failure('TIMESYNCD_NO_IPV4_TIME_SOURCE') from exc
-        # Service active + a selected server do not prove a successful NTP reply.
         try:
             st = sync_marker.lstat()
         except OSError as exc:
             raise Failure('TIMESYNCD_NO_SUCCESSFUL_SYNC_MARKER') from exc
         if not stat.S_ISREG(st.st_mode):
             raise Failure('TIMESYNCD_INVALID_SYNC_MARKER')
+        valid_ntp_message(run(['timedatectl', 'show-timesync', '--property=NTPMessage', '--value'], deadline))
+    if invocation != service_identity(provider, deadline):
+        raise Failure('TIME_SERVICE_CHANGED_DURING_PROBE')
+    # Same source and same invocation are required across stabilization samples.
+    return invocation, address
 
 
-def wait_sync(provider, seconds, sync_marker=SYNC_MARKER):
+def wait_sync(provider, seconds, sync_marker=SYNC_MARKER, stable_samples=1):
     if not 1 <= seconds <= 120:
         raise Failure('INVALID_TIME_WAIT_BUDGET')
+    if type(stable_samples) is not int or not 1 <= stable_samples <= 3:
+        raise Failure('INVALID_TIME_STABILITY_SAMPLES')
     deadline = time.monotonic() + seconds
-    last = 'not yet checked'
+    last, previous, consecutive = 'not yet checked', None, 0
     while time.monotonic() < deadline:
         try:
-            probe(provider, deadline, sync_marker)
-            return
+            observed = probe(provider, deadline, sync_marker)
+            consecutive = consecutive + 1 if consecutive and observed == previous else 1
+            previous = observed
+            if consecutive >= stable_samples and time.monotonic() < deadline:
+                return
+            last = 'TIME_EVIDENCE_NOT_YET_STABLE'
         except Failure as exc:
             last = str(exc)
+            previous, consecutive = None, 0
         left = deadline - time.monotonic()
         if left > 0:
             time.sleep(min(2.0, left))
@@ -2785,6 +2839,7 @@ def main():
     wait = sub.add_parser('wait')
     wait.add_argument('--provider', choices=PROVIDERS)
     wait.add_argument('--seconds', type=int, default=120)
+    wait.add_argument('--stable-samples', type=int, default=1, choices=range(1, 4))
     args = parser.parse_args()
     if args.action == 'select':
         print(select_provider())
@@ -2795,7 +2850,7 @@ def main():
     else:
         provider = args.provider or saved_provider()
         if args.action == 'wait':
-            wait_sync(provider, args.seconds)
+            wait_sync(provider, args.seconds, stable_samples=args.stable_samples)
         else:
             probe(provider, time.monotonic() + 15)
         print('NTP_SYNC=PASS provider=' + provider)
@@ -3553,7 +3608,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -3731,6 +3786,7 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 import time
 
 
@@ -3849,7 +3905,7 @@ def container_state():
                 or type(data.get('restarts')) is not int or data['restarts'] < 0):
             raise ValueError()
         return {'verified': True, **data,
-                'status': 'CRITICAL' if data['oom_killed'] else ('WARN' if data['restarting'] else 'OK')}
+                'status': 'CRITICAL' if data['oom_killed'] or not data['running'] else ('WARN' if data['restarting'] else 'OK')}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {'verified': False, 'reason': 'timeout_or_invalid_response'}
 
@@ -3898,7 +3954,7 @@ def fd_snapshot(proc=Path('/proc'), limit=64):
                            'soft_limit_percent': percent, 'status': status})
         except (OSError, ValueError, IndexError):
             errors += 1
-    return {'verified': not errors and not truncated, 'processes': result,
+    return {'verified': bool(result) and not errors and not truncated, 'processes': result,
             'unreadable_or_changed': errors, 'truncated': truncated,
             'scope': 'POINT_IN_TIME_DAEMON_FD_COUNTS_NOT_A_LEAK_DIAGNOSIS'}
 
@@ -3992,9 +4048,48 @@ def reboot_required(root=Path('/')):
         return False
 
 
+def review_summary(result):
+    """Flatten partial verification and threshold warnings without hiding raw facts."""
+    findings = []
+    def add(path, reason):
+        item = {'section': path, 'reason': reason}
+        if item not in findings:
+            findings.append(item)
+    def walk(value, path):
+        if isinstance(value, dict):
+            if value.get('verified') is False:
+                add(path, 'NOT_VERIFIED')
+            for key, val in value.items():
+                if key in ('status', 'inode_status') and val in ('WARN', 'CRITICAL', 'NOT_VERIFIED'):
+                    add(path + '.' + key, val)
+                elif isinstance(val, (dict, list)):
+                    walk(val, path + '.' + key)
+        elif isinstance(value, list):
+            for i, val in enumerate(value):
+                walk(val, path + '[' + str(i) + ']')
+    walk(result, 'resources')
+    for key in ('cpu', 'memory', 'root_disk'):
+        if not result.get(key):
+            add('resources.' + key, 'MISSING_DATA')
+    for kind in ('cpu', 'memory', 'io'):
+        if not result.get('pressure', {}).get(kind):
+            add('resources.pressure.' + kind, 'NOT_AVAILABLE')
+    for kind in ('tcp_delta', 'tcp_ext_delta', 'vm_delta'):
+        if not result.get(kind) or any(value is None for value in result[kind].values()):
+            add('resources.' + kind, 'MISSING_OR_RESET_COUNTERS')
+    queue = result.get('selfsteal_socket_queue', {})
+    if queue.get('verified') and not queue.get('present'):
+        add('resources.selfsteal_socket_queue', 'LISTENER_ABSENT')
+    return {'status': 'REVIEW_REQUIRED' if findings else 'OK',
+            'review_required': bool(findings), 'finding_count': len(findings),
+            'findings': findings,
+            'scope': 'RESOURCE_SNAPSHOT_ONLY_NOT_END_TO_END_ACCEPTANCE'}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seconds', type=int, default=3, choices=range(1, 31), metavar='1..30')
+    parser.add_argument('--strict', action='store_true', help='exit 2 if resource facts need review')
     args = parser.parse_args()
     proc = Path('/proc')
     start = time.monotonic()
@@ -4011,11 +4106,13 @@ def main():
     result['interpretation'] = ('Counters are host-wide observations, not a diagnosis of censorship or proof of provider overselling. '
                                 'Compare idle/load samples and client-side throughput before changing MTU, queues, buffers or CPU settings. '
                                 'Threshold statuses are diagnostic only; this command never tunes conntrack, limits, swap, MTU or firewall state.')
+    result['review_summary'] = review_summary(result)
     print(json.dumps(result, indent=2, sort_keys=True))
+    return 2 if args.strict and result['review_summary']['review_required'] else 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
 VK_RESOURCES_PY
     chmod 0700 "$destination"
 }
@@ -5031,6 +5128,9 @@ vk_rkn_activate() {
     done
     ufw status | grep -Fx 'Status: active' >/dev/null || { echo 'RKN: UFW inactive; refusing to modify it.' >&2; return 1; }
     if ! command -v ipset >/dev/null 2>&1; then
+        if [[ ${VK_RKN_NO_PACKAGE_INSTALL:-0} == 1 ]]; then
+            echo 'RKN: ipset missing; finish-only mode never installs packages.' >&2; return 1
+        fi
         # ipset is installed with main packages on fresh VPS. This branch is
         # only for explicit --enable-rkn-guard on an already completed node.
         command -v apt-get >/dev/null || { echo 'RKN: apt-get unavailable' >&2; return 1; }
@@ -5089,8 +5189,8 @@ vkarmani_rkn_command() {
         [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
-        grep -Eq '^version=2\.5\.[2345]$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2/2.5.3/2.5.4/2.5.5 nodes.' >&2; return 1;
+        grep -Eq '^version=2\.5\.[23456]$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+            echo 'RKN integration supports only completed 2.5.2/2.5.3/2.5.4/2.5.5/2.5.6 nodes.' >&2; return 1;
         }
         install -d -m 0755 /run/lock
         exec 9>/run/lock/vkarmani-node-installer.lock
@@ -5410,7 +5510,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -5602,9 +5702,444 @@ vkarmani_xray_versions_main() {
     return "$rc"
 }
 
+vk_write_finalizer_helper() {
+    local destination=$1
+    cat > "$destination" <<'VK_FINALIZER_PY'
+#!/usr/bin/env python3
+"""Finish ONLY a recorded 2.5.6 final-acceptance checkpoint, never reinstall the OS.
+
+Caller owns the installer flock. No panel API, package installation, key rotation,
+container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
+The root argument and injectable runner are for offline tests; CLI has no --root.
+"""
+import argparse
+import datetime as dt
+import hashlib
+import ipaddress
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+
+VERSION = '2.5.6'
+STATE = 'var/lib/vkarmani-node'
+CHECKER = '/usr/local/sbin/vkarmani-node-check'
+KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
+RKN = '/usr/local/sbin/vkarmani-rkn-guard'
+UFW = 'etc/ufw/before.rules'
+DROPIN = 'etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf'
+RKN_MARKER = '# BEGIN VKARMANI-RKN-GUARD IPv4 managed by Node_Install'
+WATCHED = (
+    'etc/vkarmani-node/config.json', 'etc/vkarmani-node/reality.json',
+    'etc/vkarmani-node/profile.json', 'etc/vkarmani-node/remnanode.env',
+    'etc/vkarmani-node/time-provider', 'etc/vkarmani-node/ssh-ports',
+    'opt/vkarmani-node/compose.yaml', STATE + '/install-version',
+    STATE + '/image-digest', STATE + '/owned-installation',
+    'usr/local/lib/vkarmani-node/node_helper.py',
+    'usr/local/lib/vkarmani-node/time_helper.py',
+    'usr/local/lib/vkarmani-node/node_plugins.py',
+    'usr/local/lib/vkarmani-node/ssh_guard.py',
+    'usr/local/lib/vkarmani-node/finalize_install.py',
+    'usr/local/sbin/vkarmani-node-check',
+    'usr/local/sbin/vkarmani-selfsteal-check',
+    'usr/local/sbin/vkarmani-node-tls-check',
+)
+OPTIONAL_WATCHED = ('etc/vkarmani-node/profile-xhttp.json',)
+PENDING = ('network-rollback-armed', 'network-rollback-running', 'image-update-pending', 'RESUME_FAILED')
+IMAGE = re.compile(r'(?:remnawave/node|ghcr\.io/remnawave/node)@sha256:[0-9a-f]{64}')
+ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+       'LC_ALL': 'C', 'LANG': 'C', 'PYTHONDONTWRITEBYTECODE': '1',
+       'SYSTEMD_PAGER': 'cat', 'PAGER': 'cat', 'HOME': '/root'}
+
+
+class Failure(Exception):
+    """Only a fixed diagnostic code; never concatenate untrusted/secret output."""
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def run(args, timeout=30, quiet=False):
+    # A new process group lets timeout stop inherited pipes/children, not just bash.
+    with subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, env=ENV, start_new_session=True) as p:
+        try:
+            out, err = p.communicate(timeout=timeout)
+        except BaseException:
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+                p.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(p.pid, signal.SIGKILL)
+                p.communicate()
+            except ProcessLookupError:
+                pass
+            raise
+        if not quiet:
+            # Only invoke reviewed secret-free checker/RKN commands without quiet.
+            sys.stdout.write(out.decode('utf-8', 'replace'))
+            sys.stderr.write(err.decode('utf-8', 'replace'))
+        if p.returncode:
+            raise Failure('FINALIZATION_COMMAND_FAILED')
+        return out.decode('utf-8', 'strict')
+
+
+class Finalizer:
+    def __init__(self, root=Path('/'), runner=run, owner=0):
+        self.root = root
+        self.state = root / STATE
+        self.tx = self.state / 'finalization'
+        self.runner = runner
+        self.owner = owner
+
+    def path(self, relative):
+        parts = PurePosixPath(relative)
+        if parts.is_absolute() or '..' in parts.parts or not parts.parts:
+            raise Failure('UNSAFE_RELATIVE_PATH')
+        return self.root.joinpath(*parts.parts)
+
+    def safe(self, path, directory=False, private=False):
+        # All ancestors below the test/host root are root-owned, not writable by others.
+        path.relative_to(self.root)
+        for part in reversed([path, *path.parents]):
+            if part == self.root or self.root not in part.parents:
+                continue
+            st = part.lstat()
+            last = part == path
+            regular = stat.S_ISDIR(st.st_mode) if (not last or directory) else stat.S_ISREG(st.st_mode)
+            if not regular or st.st_uid != self.owner or st.st_mode & 0o022:
+                raise Failure('UNSAFE_FINALIZATION_PATH')
+            if last and private and st.st_mode & 0o077:
+                raise Failure('UNSAFE_FINALIZATION_PERMISSIONS')
+        return path
+
+    def read(self, path, private=False):
+        self.safe(path, private=private)
+        if path.stat().st_size > 64 * 1024 * 1024:
+            raise Failure('FINALIZATION_FILE_TOO_LARGE')
+        return path.read_bytes()
+
+    def absent(self, path):
+        if path.exists() or path.is_symlink():
+            raise Failure('UNEXPECTED_FINALIZATION_STATE')
+
+    def write(self, path, data, exclusive=False):
+        self.safe(path.parent, directory=True)
+        if path.exists() or path.is_symlink():
+            if exclusive:
+                raise Failure('FINALIZATION_TARGET_EXISTS')
+            self.safe(path, private=True)
+        fd, name = tempfile.mkstemp(prefix='.' + path.name + '-', dir=path.parent)
+        try:
+            with os.fdopen(fd, 'wb') as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if exclusive:
+                os.link(name, path)  # exclusive publish; never overwrite INSTALL_COMPLETE
+            else:
+                os.replace(name, path)
+            self.fsync(path.parent)
+        finally:
+            Path(name).unlink(missing_ok=True)
+
+    @staticmethod
+    def fsync(path):
+        fd = os.open(path, os.O_DIRECTORY | os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def checkpoint(self):
+        obj = json.loads(self.read(self.tx / 'checkpoint.json', private=True))
+        if obj.get('schema') != 1 or obj.get('version') != VERSION:
+            raise Failure('UNSUPPORTED_FINALIZATION_CHECKPOINT')
+        if obj.get('phase') not in ('ready', 'rkn-started', 'rkn-enabled', 'degraded', 'checked', 'complete'):
+            raise Failure('UNKNOWN_FINALIZATION_PHASE')
+        expected = set(WATCHED) | set(obj.get('optional_files', []))
+        if not set(obj.get('optional_files', [])).issubset(OPTIONAL_WATCHED) or set(obj.get('files', {})) != expected:
+            raise Failure('INVALID_FINALIZATION_MANIFEST')
+        return obj
+
+    def record(self, obj, phase):
+        obj['phase'] = phase
+        self.write(self.tx / 'checkpoint.json', (json.dumps(obj, sort_keys=True, indent=2) + '\n').encode())
+
+    def base_checks(self):
+        self.safe(self.state, directory=True, private=True)
+        if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
+            raise Failure('FINISH_ONLY_RECORDED_2_5_6_SUPPORTED')
+        self.read(self.state / 'owned-installation', private=True)
+        for name in PENDING:
+            self.absent(self.state / name)
+        cfg = json.loads(self.read(self.path('etc/vkarmani-node/config.json'), private=True))
+        if cfg.get('installation_mode') != 'secret-key-only':
+            raise Failure('WRONG_INSTALLATION_MODE')
+        addr = str(ipaddress.IPv4Address(cfg['public_ipv4']))
+        rows = json.loads(self.runner(['ip', '-j', '-4', 'address', 'show'], quiet=True))
+        actual = {a.get('local') for row in rows for a in row.get('addr_info', []) if a.get('family') == 'inet'}
+        if addr not in actual:
+            raise Failure('FINALIZATION_WRONG_NODE_IPV4')
+        digest = self.read(self.state / 'image-digest', private=True).decode().strip()
+        if not IMAGE.fullmatch(digest):
+            raise Failure('FINALIZATION_IMAGE_DIGEST_INVALID')
+        fmt = '{{.Config.Image}}|{{.State.Running}}|{{.State.Restarting}}'
+        current = self.runner(['docker', '--host', 'unix:///var/run/docker.sock',
+                               'inspect', 'remnanode', '--format', fmt], quiet=True).strip()
+        if current != digest + '|true|false':
+            raise Failure('FINALIZATION_IMAGE_OR_CONTAINER_DRIFT')
+        return digest
+
+    def verify_backup(self):
+        pointer = self.read(self.state / 'latest-backup-path', private=True).decode().strip()
+        rel = PurePosixPath(pointer)
+        if not rel.is_absolute() or '..' in rel.parts:
+            raise Failure('INVALID_BACKUP_POINTER')
+        rel = str(rel).lstrip('/')
+        if not rel.startswith(STATE + '/backups/'):
+            raise Failure('BACKUP_OUTSIDE_PROJECT')
+        backup = self.safe(self.path(rel), directory=True, private=True)
+        manifest = self.read(backup / 'MANIFEST.sha256').decode().splitlines()
+        if not 1 <= len(manifest) <= 20000:
+            raise Failure('INVALID_BACKUP_MANIFEST')
+        for line in manifest:
+            m = re.fullmatch(r'([0-9a-f]{64})  (.+)', line)
+            if not m:
+                raise Failure('INVALID_BACKUP_MANIFEST')
+            part = PurePosixPath(m[2])
+            if part.is_absolute() or '..' in part.parts:
+                raise Failure('BACKUP_MANIFEST_PATH_ESCAPE')
+            if sha(self.read(backup.joinpath(*part.parts))) != m[1]:
+                raise Failure('BACKUP_CHECKSUM_MISMATCH')
+        return pointer
+
+    def prepare(self, installer):
+        digest = self.base_checks()
+        self.absent(self.state / 'INSTALL_COMPLETE')
+        self.absent(self.tx)
+        if (self.state / 'rkn/owned').exists() or (self.state / 'rkn/owned').is_symlink() or RKN_MARKER in self.read(self.path(UFW)).decode():
+            raise Failure('RKN_ALREADY_PRESENT_BEFORE_CHECKPOINT')
+        self.absent(self.path(DROPIN))
+        backup = self.verify_backup()
+        source = self.read(installer, private=True)
+        tmp = Path(tempfile.mkdtemp(prefix='.finalization-', dir=self.state))
+        tmp.chmod(0o700)
+        try:
+            watched = {name: sha(self.read(self.path(name))) for name in WATCHED}
+            optional = [name for name in OPTIONAL_WATCHED if self.path(name).exists() or self.path(name).is_symlink()]
+            watched.update({name: sha(self.read(self.path(name), private=True)) for name in optional})
+            snap = tmp / 'snapshot'
+            snap.mkdir(mode=0o700)
+            # Recovery copy contains secrets: only root can traverse/read it.
+            for name in watched:
+                target = snap / name
+                current = snap
+                for part in PurePosixPath(name).parts[:-1]:
+                    current = current / part
+                    current.mkdir(mode=0o700, exist_ok=True)
+                    self.safe(current, directory=True, private=True)
+                self.write(target, self.read(self.path(name)), exclusive=True)
+                if sha(self.read(target)) != watched[name]:
+                    raise Failure('FINALIZATION_SNAPSHOT_MISMATCH')
+            self.write(tmp / 'installer.sh', source, exclusive=True)
+            ufw = self.read(self.path(UFW))
+            self.write(tmp / 'ufw-before.rules', ufw, exclusive=True)
+            obj = {'schema': 1, 'version': VERSION, 'phase': 'ready', 'files': watched,
+                   'optional_files': optional, 'installer_sha256': sha(source),
+                   'ufw_before_sha256': sha(ufw), 'image': digest, 'original_backup': backup,
+                   'created_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'rkn': 'NOT_ATTEMPTED'}
+            self.write(tmp / 'checkpoint.json', (json.dumps(obj, sort_keys=True, indent=2) + '\n').encode(), exclusive=True)
+            os.rename(tmp, self.tx)
+            self.fsync(self.state)
+        except BaseException:
+            if tmp.exists():
+                shutil.rmtree(tmp)
+            raise
+        print('FINALIZATION_CHECKPOINT=READY; BACKUP=VERIFIED; VERSION=' + VERSION)
+
+    def verify(self, obj):
+        if self.base_checks() != obj['image']:
+            raise Failure('FINALIZATION_IMAGE_CHANGED')
+        if sha(self.read(self.tx / 'installer.sh', private=True)) != obj['installer_sha256']:
+            raise Failure('FINALIZATION_INSTALLER_CHANGED')
+        if sha(self.read(self.tx / 'ufw-before.rules', private=True)) != obj['ufw_before_sha256']:
+            raise Failure('FINALIZATION_UFW_BACKUP_CHANGED')
+        for name, expected in obj['files'].items():
+            if sha(self.read(self.path(name))) != expected or sha(self.read(self.tx / 'snapshot' / name)) != expected:
+                raise Failure('FINALIZATION_CONFIG_OR_HELPER_DRIFT')
+        for name in set(OPTIONAL_WATCHED) - set(obj['optional_files']):
+            self.absent(self.path(name))
+
+    def acceptance(self):
+        cmdline = self.read(self.path('proc/cmdline')).decode().split()
+        mode = '--normal' if 'ipv6.disable=1' in cmdline else '--preboot'
+        self.runner([str(self.path(CHECKER.lstrip('/'))), mode], timeout=610)
+
+    def rkn_function(self, function):
+        if function not in ('vk_rkn_activate', 'vk_rkn_abort_setup'):
+            raise Failure('INVALID_RKN_ACTION')
+        self.runner(['bash', '--noprofile', '--norc', '-c',
+                     'set -uo pipefail; set +x; umask 077; VK_RKN_NO_PACKAGE_INSTALL=1; source "$1"; ' + function,
+                     'finalization', str(self.tx / 'installer.sh')], timeout=600)
+
+    def rollback_rkn(self, obj):
+        self.rkn_function('vk_rkn_abort_setup')
+        if sha(self.read(self.path(UFW))) != obj['ufw_before_sha256']:
+            raise Failure('RKN_ROLLBACK_BASE_FIREWALL_MISMATCH_CONSOLE_REQUIRED')
+        self.absent(self.path(DROPIN))
+        print('RKN_ROLLBACK=VERIFIED_BASE_UFW')
+
+    def check_rkn(self):
+        self.runner([str(self.path(RKN.lstrip('/'))), 'status'], timeout=45)
+        for unit in ('vkarmani-rkn-prepare.service', 'vkarmani-rkn-update.timer'):
+            self.runner(['systemctl', 'is-enabled', '--quiet', unit])
+        self.runner(['systemctl', 'is-active', '--quiet', 'vkarmani-rkn-update.timer'])
+
+    def complete(self, obj):
+        self.record(obj, 'checked')
+        data = (f'version={VERSION}\nat={dt.datetime.now().astimezone().isoformat(timespec="seconds")}\n'
+                f'image={obj["image"]}\n').encode()
+        self.write(self.state / 'INSTALL_COMPLETE', data, exclusive=True)
+        self.cleanup(obj)
+
+    def cleanup(self, obj):
+        # After a power loss between commit and cleanup, only our checked checkpoint
+        # may clear failure markers. An ordinary completed older node is not migrated.
+        data = dict(line.split('=', 1) for line in self.read(self.state / 'INSTALL_COMPLETE', private=True).decode().splitlines())
+        if obj['phase'] not in ('checked', 'complete') or data.get('version') != VERSION or data.get('image') != obj['image']:
+            raise Failure('UNRELATED_INSTALL_COMPLETE')
+        for name in ('INSTALL_FAILED', 'FINALIZE_FAILED'):
+            p = self.state / name
+            if p.exists() or p.is_symlink():
+                self.safe(p, private=True)
+                p.unlink()
+        self.fsync(self.state)
+        self.record(obj, 'complete')
+        print('FINALIZATION=PASS; INSTALL_COMPLETE=PASS; RKN=' + obj['rkn'])
+        print('NO_REINSTALL_NO_KEY_ROTATION=YES; FINALIZER_REBOOT=NOT_SCHEDULED')
+
+    def finish(self):
+        obj = self.checkpoint()
+        self.verify(obj)
+        complete = self.state / 'INSTALL_COMPLETE'
+        if complete.exists() or complete.is_symlink():
+            self.cleanup(obj)
+            return
+        self.acceptance()
+        self.runner(['python3', '-I', '-B', str(self.path(KEY_HELPER.lstrip('/'))), 'reality-export'], quiet=True)
+        self.read(self.path('root/reality-keys.txt'), private=True)
+        self.verify(obj)  # export must not regenerate keys, config or profiles
+        if obj['phase'] == 'rkn-started':
+            self.rollback_rkn(obj)  # safely abandon a previously interrupted owned attempt
+            self.acceptance()
+        if obj['phase'] in ('ready', 'rkn-started'):
+            if sha(self.read(self.path(UFW))) != obj['ufw_before_sha256']:
+                raise Failure('BASE_UFW_CHANGED_BEFORE_RKN')
+            self.record(obj, 'rkn-started')
+            try:
+                self.rkn_function('vk_rkn_activate')
+                self.check_rkn()
+                self.acceptance()
+            except (Failure, OSError, subprocess.TimeoutExpired):
+                self.rollback_rkn(obj)
+                self.acceptance()  # fail-open is allowed ONLY after successful rollback and node check
+                obj['rkn'] = 'DEGRADED_ROLLED_BACK'
+                self.record(obj, 'degraded')
+            else:
+                obj['rkn'] = 'ENABLED'
+                self.record(obj, 'rkn-enabled')
+        elif obj['phase'] in ('rkn-enabled', 'checked') and obj['rkn'] == 'ENABLED':
+            self.check_rkn()
+        elif obj['phase'] == 'degraded' or obj['rkn'] == 'DEGRADED_ROLLED_BACK':
+            if sha(self.read(self.path(UFW))) != obj['ufw_before_sha256']:
+                raise Failure('DEGRADED_BASE_FIREWALL_CHANGED')
+            self.absent(self.path(DROPIN))
+        else:
+            raise Failure('FINALIZATION_STATE_INCONSISTENT')
+        self.verify(obj)
+        self.acceptance()
+        self.complete(obj)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('prepare', 'finish'))
+    args = parser.parse_args()
+    if os.geteuid() != 0:
+        raise Failure('ROOT_REQUIRED')
+    def interrupted(signum, frame):
+        raise Failure('FINALIZATION_INTERRUPTED_SIGNAL_' + str(signum))
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(signum, interrupted)
+    f = Finalizer()
+    if args.action == 'prepare':
+        f.prepare(f.state / ('installer-' + VERSION + '.sh'))
+    else:
+        try:
+            f.finish()
+        except BaseException as exc:
+            # Preserve the old failure and checkpoint. Never delete backup or fake success.
+            if f.tx.is_dir() and not f.tx.is_symlink():
+                code = str(exc) if isinstance(exc, Failure) else 'FINALIZATION_IO_OR_INTERRUPT'
+                f.write(f.state / 'FINALIZE_FAILED', ('code=' + code + '\n').encode())
+            raise
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (Failure, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+        code = str(exc) if isinstance(exc, Failure) else 'FINALIZATION_LOCAL_IO_OR_DATA_ERROR'
+        print('FINALIZATION=FAIL code=' + code + '; CHECKPOINT_PRESERVED; no reboot.', file=sys.stderr)
+        sys.exit(1)
+VK_FINALIZER_PY
+    chmod 0700 "$destination"
+}
+
+vkarmani_finish_install_main() (
+    set -Eeuo pipefail
+    set +x
+    umask 077
+    export LC_ALL=C LANG=C PYTHONDONTWRITEBYTECODE=1
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    unset BASH_ENV ENV CDPATH
+    [[ $# -eq 0 && $EUID -eq 0 ]] || { echo 'Usage: sudo bash install.sh --finish-install' >&2; exit 1; }
+    # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
+    local state=/var/lib/vkarmani-node work
+    [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
+        echo 'STOP: no supported 2.5.6 finalization checkpoint; no installation state changed.' >&2; exit 1;
+    }
+    local lock=/run/lock/vkarmani-node-installer.lock
+    if [[ ! -e "$lock" && ! -L "$lock" ]]; then
+        (set -C; : > "$lock") || { echo 'STOP: cannot create installer lock safely.' >&2; exit 1; }
+    fi
+    [[ -f "$lock" && ! -L "$lock" && $(stat -c '%u' "$lock") == 0 ]] || {
+        echo 'STOP: unsafe installer lock.' >&2; exit 1;
+    }
+    [[ $(find "$lock" -maxdepth 0 -perm /022 -print) == '' ]] || {
+        echo 'STOP: installer lock writable by another user.' >&2; exit 1;
+    }
+    exec 9>"$lock"
+    flock -n 9 || { echo 'STOP: installer/maintenance is busy.' >&2; exit 1; }
+    work=$(mktemp -d /tmp/vkarmani-finish.XXXXXXXX)
+    trap 'rm -rf -- "$work"' EXIT
+    vk_write_finalizer_helper "$work/finalize.py"
+    python3 -I -B "$work/finalize.py" finish
+    echo 'FINISH_INSTALL=PASS; AUTO_REBOOT=NOT_SCHEDULED'
+)
+
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.5 — 2026-10-09
+# VKarmani Remnawave Node Installer 2.5.6 — 2026-10-09
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -5616,7 +6151,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.5
+INSTALLER_VERSION=2.5.6
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -5632,7 +6167,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.5
+VKarmani Remnawave Node Installer 2.5.6
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -5642,6 +6177,7 @@ VKarmani Remnawave Node Installer 2.5.5
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.6, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -5650,7 +6186,7 @@ VKarmani Remnawave Node Installer 2.5.5
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.5 ноде
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.6 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
@@ -5800,6 +6336,9 @@ vk_collect_inputs() {
 }
 [[ $EUID -eq 0 ]] || { echo 'Запустите через sudo bash или от root.' >&2; exit 1; }
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
+    if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.6 use --finish-install.' >&2; exit 1
+    fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
     [[ -x /usr/local/sbin/vkarmani-node-check ]] || { echo 'Диагностическая команда отсутствует; требуется разбор состояния.'; exit 1; }
@@ -5813,6 +6352,20 @@ if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     fi
     return
 fi
+# A saved final phase must never replay APT/SSH/UFW/Nginx setup on a retry.
+if [[ -e "$STATE/finalization" || -L "$STATE/finalization" ]]; then
+    [[ -z "$IMAGE_OVERRIDE" && $WEEKLY_REBOOT -eq 0 ]] || {
+        echo 'STOP: finalization retry cannot change image or reboot schedule.' >&2; exit 1;
+    }
+    echo 'FINALIZATION_RESUME=SCOPED; no OS/service reinstall and no automatic reboot.'
+    vkarmani_finish_install_main
+    return
+fi
+# Save and pin this already approved local script before any setup mutation.
+VK_SOURCE_PATH=$(readlink -f -- "${BASH_SOURCE[0]}")
+[[ -f "$VK_SOURCE_PATH" && -r "$VK_SOURCE_PATH" ]] || { echo 'STOP: complete local install.sh required.' >&2; exit 1; }
+VK_SOURCE_SHA256=$(sha256sum -- "$VK_SOURCE_PATH")
+VK_SOURCE_SHA256=${VK_SOURCE_SHA256%% *}
 if [[ -e "$STATE/network-rollback-armed" || -e "$STATE/network-rollback-running" ]]; then
     echo 'STOP: не завершён сетевой откат. Используйте консоль VPS и /usr/local/sbin/vkarmani-network-rollback; не удаляйте backup.'; exit 1
 fi
@@ -5980,6 +6533,11 @@ vk_collect_inputs
 # All installer questions have been answered; unexpected package prompts fail safely.
 exec </dev/null
 install -d -m 0700 "$ETC" "$STATE" "$LIB" "$OPT"
+[[ ! -L "$STATE/installer-$INSTALLER_VERSION.sh" ]] || { echo 'STOP: unsafe saved installer.' >&2; exit 1; }
+install -m 0700 -- "$VK_SOURCE_PATH" "$STATE/installer-$INSTALLER_VERSION.sh"
+printf '%s  %s\n' "$VK_SOURCE_SHA256" "$STATE/installer-$INSTALLER_VERSION.sh" | sha256sum --check --status || {
+    echo 'STOP: installer source changed during preflight.' >&2; exit 1;
+}
 if [[ ! -s "$ETC/config.json" ]]; then
     printf '%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" > "$ETC/inputs.pending.tmp"
     chmod 0600 "$ETC/inputs.pending.tmp"
@@ -6012,6 +6570,9 @@ on_error() {
     printf 'rc=%s line=%s at=%s\n' "$rc" "$line" "$(date -Is)" > "$failure_record"
     if [[ -f "$STATE/network-rollback-armed" ]]; then
         /usr/local/sbin/vkarmani-network-rollback || true
+    fi
+    if [[ -f "$STATE/finalization/checkpoint.json" ]]; then
+        echo 'FINALIZATION_PENDING: use this install.sh --finish-install; do not reinstall or create INSTALL_COMPLETE manually.' >&2
     fi
     exit "$rc"
 }
@@ -6059,7 +6620,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.5: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.6: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -6653,7 +7214,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.5\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.6\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -6829,7 +7390,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.5 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.6 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -7049,7 +7610,7 @@ VK_TIMESYNCD_IPV4
     TIME_FAMILIES=$(systemctl show systemd-timesyncd.service -p RestrictAddressFamilies --value)
     [[ "$TIME_FAMILIES" == 'AF_UNIX AF_INET' || "$TIME_FAMILIES" == 'AF_INET AF_UNIX' ]] || die 'timesyncd IPv4-only policy не применена.'
 fi
-python3 "$TIME_HELPER" wait --provider "$TIME_SERVICE" --seconds 120
+python3 "$TIME_HELPER" wait --provider "$TIME_SERVICE" --seconds 120 --stable-samples 2
 python3 "$TIME_HELPER" save "$TIME_SERVICE"
 install -d -m 0755 /etc/systemd/journald.conf.d
 cat > /etc/systemd/journald.conf.d/90-vkarmani-limits.conf <<'EOF'
@@ -7738,37 +8299,10 @@ fi
 
 stage 'Очистка только APT-кэша и ограниченных журналов'
 python3 /usr/local/lib/vkarmani-node/apt_clean.py
-/usr/local/sbin/vkarmani-node-check --preboot
-stage 'RKN-Guard data: IPv4 ipset/UFW, исключение IP панели, ежедневный GitHub refresh'
-# Scanner filtering is fail-open if its independent integration cannot be applied.
-# Never compromise the already validated node/SSH/UFW for a third-party data feed.
-if vk_rkn_activate; then
-    # Firewall rules have just changed; verify that the existing node acceptance
-    # still passes before INSTALL_COMPLETE and before any automatic reboot.
-    if /usr/local/sbin/vkarmani-node-check --preboot; then
-        echo 'RKN_GUARD=PASS; node post-firewall acceptance passed; daily refresh enabled.'
-    else
-        echo 'RKN_POSTCHECK=FAIL; reverting independent scanner filter.' >&2
-        if vk_rkn_abort_setup && /usr/local/sbin/vkarmani-node-check --preboot; then
-            echo 'RKN_GUARD=DEGRADED; reverted filter after node regression.' >&2
-        else
-            die 'RKN rollback или повторная проверка ноды не подтверждены; требуется консоль VPS до reboot.'
-        fi
-    fi
-else
-    # If an emergency RKN rollback could not restore a consistent UFW state,
-    # do not record installation success or schedule the automatic reboot.
-    # The operator must use the hosting console to investigate first.
-    if grep -Fq '# BEGIN VKARMANI-RKN-GUARD IPv4 managed by Node_Install' /etc/ufw/before.rules 2>/dev/null ||
-       [[ -e /etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf ]]; then
-        die 'RKN rollback не подтверждён: до проверки UFW из консоли VPS нельзя считать установку завершённой и выполнять reboot.'
-    fi
-    echo 'RKN_GUARD=DEGRADED; node unchanged; use --enable-rkn-guard after installation.' >&2
-fi
-helper reality-export >/dev/null
-[[ -f "$REALITY_KEYS_FILE" && ! -L "$REALITY_KEYS_FILE" && $(stat -c '%a' "$REALITY_KEYS_FILE") == 600 ]] || die 'Файл REALITY-ключей должен быть regular 0600.'
-printf 'version=%s\nat=%s\nimage=%s\n' "$INSTALLER_VERSION" "$(date -Is)" "$DIGEST" > "$STATE/INSTALL_COMPLETE"
-rm -f "$STATE/INSTALL_FAILED" "$STATE/RESUME_FAILED" "$STATE/image-update-pending"
+stage 'Сохранение финальной фазы: NTP/приёмка → ключи → RKN → повторная приёмка → commit'
+vk_write_finalizer_helper "$LIB/finalize_install.py"
+python3 -I -B "$LIB/finalize_install.py" prepare
+python3 -I -B "$LIB/finalize_install.py" finish
 stage 'Установка завершена; проверки ДО перезагрузки пройдены'
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"
 printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
@@ -8238,6 +8772,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         --rkn-update) shift; vkarmani_rkn_command update "$@" ;;
         --rkn-sync-panel) shift; vkarmani_rkn_command panel "$@" ;;
         --rkn-disable) shift; vkarmani_rkn_command disable "$@" ;;
+        --finish-install) shift; vkarmani_finish_install_main "$@" ;;
         --check)
             shift
             [[ -x /usr/local/sbin/vkarmani-node-check ]] || { echo 'Сначала установите ноду.'; exit 1; }
