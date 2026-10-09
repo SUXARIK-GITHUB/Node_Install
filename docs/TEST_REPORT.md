@@ -1,5 +1,15 @@
 # TEST_REPORT — Node_Install 2.5.5
 
+## 2.5.5 docs/security UI refresh — 2026-10-09
+
+- **Финальные проверки новой документации:** root UID 0 **637/637 PASS** (38.893 s) — [`evidence/255-docs-root-tests.txt`](evidence/255-docs-root-tests.txt); unprivileged UID 65534 **637/637 PASS** (39.110 s) — [`evidence/255-docs-unprivileged-tests.txt`](evidence/255-docs-unprivileged-tests.txt). Оба прогона без ошибок и пропусков.
+- Исходный `install.sh` **не изменялся**; проверен SHA256 `ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40`.
+- Переработаны `README.md` и `SECURITY.md`, примеры `examples/inbound-*.json`. Оригинальные документы сохранены в `docs/history` побайтово. Документация расширенных опций DNS/routing является **manual opt-in**, без изменения генератора установленной ноды.
+- Добавлены offline-тесты документации: главная команда, неизменяемый Git commit и SHA, полные профили RAW/XHTTP, ссылки/анкоры, Security reporting и отсутствие production-секретов в примерах.
+- **Сохраняются прежние границы тестов**: GitHub CI новой документации, реальный Xray run-time на VPS, Panel→Node, настоящий XHTTP-клиент и сертификат через публичный путь требуют отдельного подтверждения.
+
+---
+
 ## 2.5.5 release-candidate offline validation — 2026-10-09
 
 - **Root UID 0:** **631/631 PASS**, 0 failures/errors/skips (39.821 s), [`evidence/255-root-tests.txt`](evidence/255-root-tests.txt).

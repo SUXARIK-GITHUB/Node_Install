@@ -5,9 +5,14 @@
   "dns": {
     "servers": [
       "1.1.1.1",
+      "1.0.0.1",
       "8.8.8.8"
     ],
-    "queryStrategy": "UseIPv4"
+    "queryStrategy": "UseIPv4",
+    "disableCache": false,
+    "serveStale": true,
+    "serveExpiredTTL": 3600,
+    "enableParallelQuery": true
   },
   "inbounds": [
     {
@@ -54,7 +59,16 @@
       "tag": "DIRECT",
       "protocol": "freedom",
       "settings": {
-        "domainStrategy": "UseIPv4"
+        "domainStrategy": "UseIPv4",
+        "finalRules": [
+          {
+            "ip": [
+              "geoip:private",
+              "::/0"
+            ],
+            "action": "block"
+          }
+        ]
       }
     },
     {
@@ -67,7 +81,22 @@
     "rules": [
       {
         "type": "field",
+        "protocol": [
+          "bittorrent"
+        ],
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "domain": [
+          "geosite:private"
+        ],
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
         "ip": [
+          "geoip:private",
           "0.0.0.0/8",
           "10.0.0.0/8",
           "100.64.0.0/10",

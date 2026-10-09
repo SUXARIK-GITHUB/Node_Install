@@ -382,5 +382,59 @@
       "sha256sum_manifest": "PASS",
       "zip_crc": "PASS"
     }
+  },
+  "docs_security_ui_refresh_2026_10_09": {
+    "release_version_unchanged": "2.5.5",
+    "baseline_github_main_sha": "276789eab8a43a9ff08dca124e137456e212b2e3",
+    "runtime_installer_unchanged": true,
+    "installer_sha256": "ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40",
+    "primary_install_pinned_commit": "276789eab8a43a9ff08dca124e137456e212b2e3",
+    "changed_public_examples_manual_opt_in": true,
+    "full_old_readme_retained": "docs/history/README_2.5.5_before_ui_refresh.md",
+    "full_old_security_retained": "docs/history/SECURITY_2.5.5_before_ui_refresh.md",
+    "affected": [
+      "README.md",
+      "SECURITY.md",
+      "CHANGELOG.md",
+      "docs/TEST_REPORT.md",
+      "docs/RELEASE_VALIDATION.json",
+      "examples/inbound-raw-full.example.json",
+      "examples/inbound-xhttp-full.example.json",
+      "tests/test_xray_versions_255.py",
+      "tests/test_docs_ui_255.py",
+      "docs/history/README_2.5.5_before_ui_refresh.md",
+      "docs/history/SECURITY_2.5.5_before_ui_refresh.md",
+      "SHA256SUMS",
+      "docs/evidence/255-docs-root-tests.txt",
+      "docs/evidence/255-docs-unprivileged-tests.txt"
+    ],
+    "test_scope": "offline; no Docker or live RemnaNode/Xray/server/Panel; no external client acceptance",
+    "live_panel_client_canary": "NOT_VERIFIED",
+    "new_github_actions": "NOT_YET_RUN",
+    "tests": [
+      {
+        "user": "root",
+        "uid": 0,
+        "total": 637,
+        "passed": 637,
+        "errors": 0,
+        "failures": 0,
+        "skips": 0,
+        "seconds": 38.893,
+        "evidence": "docs/evidence/255-docs-root-tests.txt"
+      },
+      {
+        "user": "nobody",
+        "uid": 65534,
+        "total": 637,
+        "passed": 637,
+        "errors": 0,
+        "failures": 0,
+        "skips": 0,
+        "seconds": 39.11,
+        "evidence": "docs/evidence/255-docs-unprivileged-tests.txt"
+      }
+    ],
+    "local_tests_status": "PASS_637_ROOT_AND_637_UNPRIVILEGED"
   }
 }

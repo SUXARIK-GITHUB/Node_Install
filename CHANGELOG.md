@@ -1,3 +1,13 @@
+## 📝 Документационное обновление 2.5.5 · 09.10.2026 (без изменения install.sh)
+
+- Полная переработка `README.md`: главная команда установки по неизменяемому Git commit URL + строго закреплённому SHA256 установщика, без `curl | bash`, с `--no-reboot`; эмоджи, GitHub Markdown-карточки, визуальная карта сети, путеводитель по командам и признакам отказов.
+- Полная переработка `SECURITY.md`: private vulnerability disclosure, угрозы/границы доверия, UFW/SSH/NET_ADMIN/RKN/сертификаты, backup, инциденты, сохранены все старые security-notes.
+- Полные публичные JSON-примеры RAW+REALITY+Vision и XHTTP+REALITY содержат `log/dns/inbounds/outbounds/routing` и расширенные DNS/finalRules/geoip/geosite/BitTorrent из пользовательского запроса; дополнительные правила **только для ручного staging-теста**, генератор реальной ноды не изменялся.
+- Предыдущие `README.md` и `SECURITY.md` 2.5.5 сохранены побайтово в `docs/history`. Добавлены offline-регрессии главной команды, SHA, профилей, Markdown-анкоров, ссылок и секретов.
+- **Production runtime неизменён:** `install.sh` SHA256 `ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40`; Docker, Nginx, UFW, сертификаты, действующие серверы не затронуты. GitHub публикуется только оператором.
+
+---
+
 ## 2.5.5 — 2026-10-09 (reviewed RAW/XHTTP examples, documentation, Xray release advisory)
 
 - **README полностью пересобран**, оглавление + полная процедура установки/приёмки, границы Node/Panel, отдельные полные RAW+REALITY+Vision и XHTTP+REALITY JSON с обезличенными ключами и адресами. Исходная README 2.5.4 целиком сохранена в `docs/history/README_2.5.4.md`.

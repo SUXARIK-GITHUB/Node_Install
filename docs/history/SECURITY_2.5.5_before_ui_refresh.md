@@ -1,106 +1,46 @@
-<div align="center">
+# 🔐 Безопасность VKarmani Node Install 2.5.5
 
-# 🔐 VKARMANI · SECURITY POLICY
 
-**Безопасность выделенной Remnawave-ноды: модель угроз, привилегии, секреты, защита сети и восстановление**
+## 2.5.5 — Xray supply chain и безопасные RAW/XHTTP примеры
 
-🛡️ **Проект:** Node_Install `2.5.5` · 📅 **Актуализировано:** 09.10.2026 · 🚨 **Vulnerability reporting:** [Security](https://github.com/SUXARIK-GITHUB/Node_Install/security)
+- Обнаружение версии Xray является **только чтением**. Официальные HTTPS release metadata недоверенны для автоматического исполнения: новые Xray pre-release и различие версий в образе RemnaNode **никогда не приводят** к скачиванию/запуску бинарника от root. При отказе GitHub выводится `NOT_VERIFIED`.
+- В RemnaNode upstream присутствует `geodata.core` с URL+SHA256 и staging/rollback встроенного Core, но использование этого механизма требует подготовленного вручную, проверенного на staging артефакта и изменения именно Panel Config Profile. Свежий `latest` не является гарантией безопасности и совместимости.
+- Публичные JSON-примеры из `examples/` и README содержат **только placeholder** для `privateKey` и ShortID. Используйте реальные ключи из защищённых файлов конкретной VPS (`root:0600`); нельзя публиковать их в Git, багрепортах и телеграммах. При раскрытии ключа требуется безопасная ротация, включая обновление конфигурации панели/клиентов.
+- Меняется только выбранный inbound панели; максимум один публичный VLESS слушатель TCP/443. XHTTP не использует Vision flow; Nginx Selfsteal на read-only Unix-socket через `xver:1` и `PROXY protocol v1` остаётся прежним.
+- Все прежние ACL для панели, UFW, RKN Guard и SSH действуют независимо от смены транспорта. Обе конфигурации требуют реальной проверки после применения. DPI/IP-блокировки этим кодом не устраняются автоматически.
 
-[🚨 Сообщить об уязвимости](#report) · [🧭 Карта рисков](#threat) · [🔒 Секреты](#secrets) · [🌐 UFW](#firewall) · [📦 Docker](#container) · [🌍 REALITY](#selfsteal) · [🔄 Supply chain](#supply) · [🧯 Инциденты](#incident)
+## 2.5.3 — RKN data firewall: supply chain, access and rollback
 
-</div>
+- Файл `integrations/rkn_guard.py` встроен в self-contained `install.sh`; загрузка и исполнение upstream `Flecksis/rkn-guard` бинарника, install.sh, Go-кода **не выполняются**.
+- HTTPS-список `shadow-netlab/traffic-guard-lists` обновляется ежедневно как **недоверенные входные данные**, проверяется CIDR и размер списка, затем `ipset swap`; сетевая ошибка сохраняет последний корректный список. Не заменяйте проверенный URL сторонним без нового code review.
+- Только IPv4 TCP/80,443; UFW SSH/2222 остаётся основной границей доступа. Конфиг `panel_ipv4` прочитывается с диска для каждого `prepare` и `update`; `ipset`-исключение применяется до DROP, без общего ACCEPT в UFW.
+- UFW `before.rules` меняется только маркированным разделом. Перед записью делается локальный snapshot, выполняются тест `iptables-restore --test`, `ufw reload` и runtime проверка правила. При ошибке файл возвращается; если rollback нельзя подтвердить, нужен доступ через консоль VPS до reboot. Нельзя считать этот код полным восстановлением ОС или firewall после произвольной чужой модификации.
+- Boot preparation зависит от ipset/xt_set в ядре и systemd ordering. Запуск на production без VPS snapshot и canary неприемлем. Проверяйте Panel→Node TCP/2222, SSH, настоящий VLESS клиент и `journalctl` после установки и reboot.
+- Изменения upstream кода НЕ обновляются автоматически. Каждый новый Node_Install release требует обязательного просмотра <https://github.com/Flecksis/rkn-guard> и source списка; checklist в `docs/RKN_GUARD_2.5.3.md`.
 
----
+## 2.5.1: acceptance hotfix boundaries
 
-> [!IMPORTANT]
-> Установщик запускается с **root** на отдельной VPS и меняет **SSH, UFW, Docker, Nginx, systemd, GRUB, sysctl и сертификаты**. Security-модель строится не на лозунге «невидимая нода», а на границах доверия, контрольных суммах, проверке перед записью, доступности консоли хостера, ограничении секретов и предсказуемом откате. **Реальная работа Panel → Node и клиента проверяется отдельно.**
+2.5.1 не расширяет runtime privileges и не меняет сетевую архитектуру. Capability hotfix допускает только эквивалентные textual representations `NET_ADMIN`/`CAP_NET_ADMIN` и `NET_RAW`/`CAP_NET_RAW`; любые дополнительные `CapAdd`/`CapDrop` по-прежнему являются FAIL. Listener hotfix отделяет iproute2 display scope `%iface` от IPv4 перед классификацией; loopback игнорируется, non-loopback адрес продолжает проходить public-surface policy.
 
-## 🧭 Быстрые карты безопасности
+`--repair-acceptance` является explicit recovery только для exact reviewed failed-state 2.5.0. До записи он проверяет source version, failure checkpoint, отсутствие `INSTALL_COMPLETE`, отсутствие pending network/image transactions и SHA256 трёх старых acceptance-файлов. Repair не читает/печатает `SECRET_KEY`, не читает container env, не меняет firewall/SSH/GRUB/sysctl/Nginx/Panel и не управляет lifecycle RemnaNode; `docker inspect` используется только read-only для подтверждения running state. Backup приватный, а failed post-check восстанавливает прежние helper/checker файлы.
 
-| 🚨 Если случилась проблема | 🛡️ Что защищаем | 🔎 Что проверяем | 🧯 Как восстанавливаем |
-|:--|:--|:--|:--|
-| [📩 Сообщить об уязвимости](#report) | [🔐 Секреты и ключи](#secrets) | [🌐 Открытые порты](#firewall) | [🚑 Инциденты](#incident) |
-| [⚠️ Модель угроз](#threat) | [🐧 SSH/OS](#ssh) | [🐳 Контейнер](#container) | [💾 Backup](#backup) |
-| [🧩 Границы доверия](#trust) | [🌍 REALITY/Selfsteal](#selfsteal) | [📦 Поставки и SHA](#supply) | [⏱️ Reboot](#reboot) |
-| [🧱 IPv4-only](#ipv4) | [🔄 RKN Guard](#rkn-security) | [🧪 Диагностика](#logging) | [🚫 Ограничения](#limits) |
+Исходная `install-version=2.5.0` при repair намеренно не переписывается. Отдельный receipt `ACCEPTANCE_REPAIR_2_5_1` фиксирует применённый hotfix и backup path. Auto-reboot из repair не выполняется.
 
-<a id="report"></a>
-## 🚨 Сообщение об уязвимости (GitHub Security)
+## 2.5.0: Node Plugins и диагностическая поверхность
 
-**Не публикуйте в открытом Issue/PR/Discussion** секреты, exploit-цепочки с доступом к реальному серверу, скриншоты с ключами, клиентские подписки или IP-инвентарь пользователей.
+`NET_ADMIN` остаётся сознательной capability RemnaNode, но `NET_RAW` не возвращён, `no-new-privileges` и отсутствие Docker socket сохранены. Installer устанавливает только distro `nftables` CLI и не управляет `nftables.service`/`/etc/nftables.conf`, не flush-ит ruleset и не создаёт параллельный host firewall. Runtime plugin table читается JSON-командой с timeout.
 
-1. Откройте **[Security проекта](https://github.com/SUXARIK-GITHUB/Node_Install/security)**. Если доступна кнопка **Report a vulnerability / Private vulnerability reporting**, используйте её.
-2. Если приватная отправка недоступна, запросите у владельца репозитория **закрытый контактный канал**, сообщив в открытой части только о необходимости безопасной связи; **не** вкладывайте детали уязвимости.
-3. Для воспроизведения используйте **отдельную тестовую VPS** и обезличенные логи. Укажите версию, ОС, архитектуру, affected component, безопасные шаги воспроизведения, ожидаемое/фактическое поведение и возможное воздействие.
-4. Не запускайте активную эксплуатацию неизвестных уязвимостей на production VPS и не исправляйте их отключением TLS/SSH/UFW «на время проверки».
+Диагностика не должна выводить `SECRET_KEY`, REALITY/TLS private key, container env, user UUID/email/subscription links, cookies/auth headers, remote/client IP inventory, raw FD targets или full PCAP. Новый public listener audit сообщает только локальные порты/ownership verdict. Resource snapshot содержит host-wide counters и не меняет sysctl/firewall/limits.
 
-**Никакой email для security-report не выдумывается:** официального адреса, подтверждённого владельцем, в проекте нет. GitHub Security tab — точка входа, если частные обращения действительно включены.
+Xray core из official Remnawave image проверяется по двум floor: `>=26.3.27` для plugin functionality и reviewed `>=26.7.11` для security advisory scope. Installer не скачивает custom core. Cover-site/REALITY не являются гарантией недетектируемости или отсутствия IP/prefix/provider block. Запрещены auto RST/community blocklists, random SNI/fingerprint/key rotation и provider hopping как «универсальное лечение».
 
-<a id="versions"></a>
-### 📦 Поддерживаемые версии и статус проверки
+Этот файл описывает security-модель **установщика ноды**, а не всей Remnawave-инфраструктуры. Installer работает с root-правами на выделенной VPS и намеренно меняет SSH, UFW, GRUB, sysctl, Nginx, Docker и systemd. Безопасность зависит и от встроенных guard-проверок, и от внешних компонентов, которые установщик не контролирует: хостер, панель, DNS, Cloudflare, рабочая станция администратора и клиентские устройства.
 
-| Выпуск | Статус | Рекомендация |
-|:--|:--|:--|
-| `2.5.5` | Последняя изученная версия **исходников**; локальная offline-проверка ≠ production validation | Canary VPS, snapshot, проверка обеих схем RAW/XHTTP |
-| `2.5.2–2.5.4` | Исторические совместимые поколения; исправления могут быть не перенесены на сервер | Плановая контролируемая миграция, не `install.sh` поверх живого узла |
-| `≤2.5.1` | Архивные версии без гарантии сопровождения security-исправлений | Не начинать новое развёртывание без аудита |
-
-Нет обещанного срока исправления инцидентов и нет SLA. Проверяйте [GitHub Releases/коммиты](https://github.com/SUXARIK-GITHUB/Node_Install) и утверждённые release notes до любого обновления.
-
-<a id="threat"></a>
-## ⚠️ Карта угроз и контрольных мер
-
-| Вектор | Существующий контроль | Остаточный риск / действие оператора |
-|:--|:--|:--|
-| SSH brute force | Password-only policy, Fail2ban, сохранение существующих SSH-портов | **Password-only увеличивает риск**, обязателен сильный пароль, защита панели хостера, fail2ban и контролируемый доступ |
-| Panel API извне | UFW ACL только от IPv4 backend панели + mTLS | Смена IP панели требует отдельного изменения **UFW ACL**, а не только `--rkn-sync-panel` |
-| Сканирование VPN/IP | REALITY+Selfsteal, узкий RKN Guard | Невозможно гарантировать отсутствие DPI fingerprint и блокировки IPv4/ASN |
-| Взлом контейнера | `NET_RAW` dropped, `no-new-privileges`, read-only socket mount, pinned image digest | `network_mode: host` + **NET_ADMIN** позволяют влиять на сеть хоста; нет полной изоляции |
-| Подмена установщика | HTTPS, неизменяемый Git commit URL, SHA256, Bash syntax/version check | Хеш из того же недоверенного источника не образует независимую trust chain |
-| Подмена RKN CIDR | Валидация CIDR/лимитов, last-known-good, atomic `ipset swap` | Данные в GitHub внешние/недоверенные; ошибочный список может блокировать легитимных клиентов/ACME |
-| Похищение REALITY/Node secret | Root-only файлы, `umask 077`, запрет вывода в логи | Компрометация root, backup или админского ПК компрометирует приватные ключи |
-| Падение Certbot/Nginx | `nginx -t`, deploy-hook, TLS leaf/h2 checks, ACME на 80 | Блокировка HTTP-01 UFW/RKN/провайдером приведёт к просрочке сертификата |
-| Некорректный inbound в Panel | Шаблоны, `rw-core run -test` для XHTTP подготовки, отдельный клиентский test | RemnaNode перезапускает Core; аварийное применение может оборвать клиентов |
-| Неподдерживаемый Xray Core | Official image digest, ручная проверка upstream, read-only `--xray-versions` | Самый свежий upstream/pre-release **может** быть несовместим с RemnaNode |
-| Потеря доступа при reboot | Preflight, частичный SSH/UFW rollback, provider console, VPS snapshot | Полного автоматического восстановления всех ресурсов **нет** |
-
-**Приоритет восстановления:** безопасность секретов и пользователей → доступ к VPS/backup → целостность сети/БД/панели → рабочий TLS/Node → оптимизации/визуальная маскировка. Не выполняйте destructive migration или `prune` как диагностический шаг.
-
-<a id="trust"></a>
-## 🧩 Модель доверия (trust boundaries)
-
-```mermaid
-flowchart TB
-    ADM["🧑‍💻 Администратор / локальная машина"] -->|"SSH / trusted terminal"| HOST["🐧 VPS / root / systemd / UFW"]
-    PAN["🧭 Remnawave Panel"] -->|"mTLS и UFW-политика :2222"| N["🐳 RemnaNode host network + NET_ADMIN"]
-    CLIENT["👤 VPN-клиент"] -->|"REALITY VLESS TCP :443"| N
-    N -->|"Unix-socket bind /dev/shm"| NX["🔐 Host Nginx Selfsteal"]
-    NX --> CERT["📜 Let's Encrypt / TLS private key только на хосте"]
-    HOST --- N
-    HOST --- NX
-    EXT["🌍 DNS / провайдер / Cloudflare / CDN / GitHub upstream"] -.->|"вне управления установщика"| HOST
-```
-
-**За пределами возможностей установщика:** аккаунт Cloudflare, провайдерский firewall/security group, гипервизор, сам Remnawave Backend и его БД, хранение пользовательских подписок, состояние клиентских устройств, исходящие маршруты операторов связи. Локальная проверка слушателя TCP/2222 **не подтверждает** успешную авторизацию панели; локальный `nginx -t` **не подтверждает** работу публичного HTTPS через Xray.
+> **Базовое условие:** отдельная чистая VPS-нода, snapshot, независимая console/recovery хостера, проверенный пароль администратора, доверенный release-файл/контрольная сумма и одна canary-нода до массовой раскатки.
 
 ---
 
-<a id="rkn-security"></a>
-## 🛡️ RKN Guard и динамический IPv4 панели
-
-В проект встроена **управляемая реализация фильтрации**, а не выполняемый бинарник/установщик [Flecksis/rkn-guard](https://github.com/Flecksis/rkn-guard). Ежедневно обновляются **только сетевые данные** из связанного GitHub source; upstream-код не обновляется автоматически с правами root.
-
-- IPv4-сети проверяются на CIDR, лимит, запрет неожиданно широких диапазонов; применяется `ipset swap`. Ошибка загрузки сохраняет last-known-good. UFW-файлы изменяются через маркированный блок с backup/проверкой/откатом.
-- Блокируются только **новые TCP/80 и TCP/443** из списка. Исключение IPv4 backend панели читается из `config.json` при каждом prepare/update, **без хардкода**.
-- `--rkn-sync-panel` меняет **только исключения RKN**. Основной UFW ACL TCP/2222 и provider firewall требуют отдельной безопасной синхронизации, иначе панель может потерять доступ при смене egress-IP.
-- Проверяйте обновление ACME HTTP-01 на TCP/80 после обновления CIDR. RKN Guard не предотвращает блокировку вашего VPS IPv4/ASN и не доказывает «незаметность».
-- Перед каждой новой сборкой Node_Install обязательно проверяйте актуальность [Flecksis/rkn-guard](https://github.com/Flecksis/rkn-guard) и [источника подсетей](https://github.com/shadow-netlab/traffic-guard-lists) по [`docs/RKN_GUARD_2.5.3.md`](docs/RKN_GUARD_2.5.3.md).
-
----
-
-<a id="trust-details"></a>
-## 🧭 Доверие, системные зоны и запреты установки
-
+## 1. Модель доверия и границы
 
 ```text
 Устройство администратора
@@ -134,9 +74,7 @@ Remnawave panel и её БД
 
 ---
 
-<a id="ssh"></a>
-## 🔑 SSH — парольная политика и её риски
-
+## 2. Парольный SSH — сознательная политика проекта
 
 По новому прямому требованию проекта **вход по SSH-ключам отключается**. Действует только `password`, не `any`: `PubkeyAuthentication no`, `PasswordAuthentication yes`, `AuthenticationMethods password`; keyboard-interactive, hostbased и GSSAPI выключены. Пустые пароли запрещены. Порты сохраняются, постоянного source-IP allowlist нет.
 
@@ -168,9 +106,7 @@ Installer не:
 
 ---
 
-<a id="secrets"></a>
-## 🔐 Секреты, права файлов и утечки
-
+## 3. Секреты и чувствительные данные
 
 ### Критические секреты
 
@@ -229,9 +165,7 @@ Base64 — кодирование, а не шифрование. Configuration b
 
 ---
 
-<a id="firewall"></a>
-## 🌐 Сетевые ACL, порты и multi-IP
-
+## 4. Сетевая поверхность
 
 Ожидаемые входящие порты:
 
@@ -263,9 +197,7 @@ UFW допускает backend панели к `2222` на локальных п
 
 ---
 
-<a id="ipv4"></a>
-## 🌍 IPv4-only, DNS и Cloudflare
-
+## 5. IPv4-only и DNS
 
 Проект сознательно IPv4-only:
 
@@ -281,9 +213,7 @@ NAT-only, IPv6-only, LXC/OpenVZ и неподдерживаемый boot layout 
 
 ---
 
-<a id="container"></a>
-## 🐳 Контейнер, NET_ADMIN и границы Docker
-
+## 6. Безопасность контейнера RemnaNode
 
 RemnaNode работает в `network_mode: host`. Это часть выбранной архитектуры и означает общий network namespace с хостом. Это **не** полноценная network isolation.
 
@@ -304,11 +234,9 @@ RemnaNode работает в `network_mode: host`. Это часть выбра
 
 ---
 
-<a id="selfsteal"></a>
-## 🎭 REALITY, Vision/XHTTP и Selfsteal
+## 7. REALITY / Selfsteal
 
-
-Архитектура проекта — **VLESS + RAW + REALITY + Vision** или **VLESS + XHTTP + REALITY**; активным бывает **один** inbound TCP/443. В `serverNames` используется собственный домен ноды. Обычный HTTPS/не-REALITY путь отправляется через:
+Архитектура проекта — **VLESS + RAW + REALITY**. В `serverNames` используется собственный домен ноды. Обычный HTTPS/не-REALITY путь отправляется через:
 
 ```text
 target=/dev/shm/nginx.sock
@@ -337,7 +265,7 @@ Cover-site не является гарантией «невидимости». 
 
 Она снимает нижний version-gate и согласована между profile, validator, guide и export. Это не обещание безопасности/работоспособности произвольного старого клиента и не реализация отсутствующих в нём функций. Генератор 2.1.2 использовал `1.0.0`; его оригинальная документация сохранена в `docs/history`.
 
-**Никаких удалённых профилей installer не переписывает.** Уже установленные helpers не следует заменять без явной контролируемой операции. Не заменяйте отдельный helper на рабочей ноде и не перегенерируйте `profile.json` ради прохождения нового validator: разные поколения template требуют отдельной согласованной миграции.
+**Никаких удалённых профилей installer не переписывает.** Старые установленные helpers автоматически не обновляются. Не заменяйте отдельный helper на рабочей ноде и не перегенерируйте `profile.json` ради прохождения нового validator: разные поколения template требуют отдельной согласованной миграции.
 
 `profile-check` читает только предоставленный regular JSON-файл размером до 2 MiB, отвергает финальный symlink, FIFO, duplicate JSON keys и NaN/Infinity. При отказе значения секретов/сырой JSON не выводятся. Это защита границ чтения, не sandbox от конкурирующего root.
 
@@ -345,9 +273,7 @@ Cover-site не является гарантией «невидимости». 
 
 ---
 
-<a id="tls"></a>
-## 📜 Nginx, TLS, HTTP/2, ACME и Certbot
-
+## 8. Nginx / TLS / ACME
 
 Nginx работает на хосте. Public TCP/80 нужен HTTP-01 и redirect. Selfsteal TLS обслуживается через local Unix socket. Сертификаты/private keys остаются на хосте.
 
@@ -375,9 +301,7 @@ Deploy hook теперь: локальный private config → `nginx -t` → `
 
 ---
 
-<a id="packages"></a>
-## 📦 APT/dpkg, OS/time providers
-
+## 9. Целостность APT/dpkg и time provider
 
 Нельзя «чинить» APT locks удалением lock-файлов или убийством штатных `apt`, `dpkg`, `unattended-upgrade`. В `2.1.1+` installer ждёт реальных владельцев package-manager lock в bounded deadline, затем делает `dpkg --audit` и продолжает только из согласованного состояния.
 
@@ -395,13 +319,11 @@ sudo dpkg --audit
 
 ---
 
-<a id="supply"></a>
-## 📥 Supply chain, SHA256 и доверие к релизам
-
+## 10. Supply chain
 
 ### Получение `install.sh`
 
-Не используйте live `curl | bash`. Главная команда из актуального README:
+Не используйте live `curl | bash`. Команда из README:
 
 1. скачивает полный файл;
 2. сверяет известный SHA256 release;
@@ -409,10 +331,10 @@ sudo dpkg --audit
 4. проверяет `--version`;
 5. запускает только после всех проверок.
 
-SHA256 `install.sh` для версии `2.5.5` (неизменённого исходного кода в текущем релизе):
+SHA256 `install.sh` для release candidate `2.5.2`:
 
 ```text
-ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40
+69177096f8d7142ee578a7bcd9f583b0e934ebe8990341d11a4ef07b24dd0523
 ```
 
 Если `install.sh` изменён, README и release manifest должны обновляться согласованно после review. Никогда не вычисляйте новый хеш из недоверенного изменившегося файла и не называйте его после этого «проверенным».
@@ -429,9 +351,7 @@ CI предназначен для test/validation, а не production deploymen
 
 ---
 
-<a id="backup"></a>
-## 💾 Backup, rollback и проверка восстановления
-
+## 11. Backup и rollback
 
 Configuration backups установщика полезны, но **не равны provider snapshot**. Snapshot/recovery остаётся whole-system boundary.
 
@@ -452,9 +372,7 @@ SSH/UFW rollback helper возвращает только принадлежащ
 
 ---
 
-<a id="reboot"></a>
-## 🔄 Перезагрузка и сохранение SSH-доступа
-
+## 12. Auto-reboot
 
 В `2.3.0` один post-install reboot включён по умолчанию. Он ставится через transient systemd unit только после успешной local preboot acceptance и export ключей.
 
@@ -472,9 +390,7 @@ Weekly reboot остаётся opt-in через `--weekly-reboot` и по ум�
 
 ---
 
-<a id="logging"></a>
-## 🧪 Диагностика и обезличивание логов
-
+## 13. Безопасная диагностика и redaction
 
 Предпочитайте узкий read-only вывод:
 
@@ -506,9 +422,7 @@ PublicKey/ShortID/domain иногда нужны для protocol troubleshooting
 
 ---
 
-<a id="incident"></a>
-## 🚑 Реагирование на инциденты
-
+## 14. Incident response
 
 ### Утечка `SECRET_KEY` / REALITY PrivateKey
 
@@ -547,9 +461,7 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 
 ---
 
-<a id="disclosure-details"></a>
-## 📩 Правила disclosure и состав отчёта
-
+## 15. Сообщение о security-проблеме
 
 Не придумывайте несуществующий security email. Используйте приватный contact method владельца репозитория/platform, если он доступен. Если есть только public issue tracker, публикуйте только просьбу дать private channel — без exploit details, secrets и production identifiers.
 
@@ -566,9 +478,7 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 
 ---
 
-<a id="limits"></a>
-## 🚫 Что модель безопасности не обещает
-
+## 16. Что security-модель не обещает
 
 Проект не обещает:
 
@@ -586,9 +496,7 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 
 ---
 
-<a id="references"></a>
-## 📚 Связанные документы
-
+## 17. Связанные документы
 
 - [README.md](README.md) — установка, Remnawave, архитектура и operator commands.
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — эксплуатация, диагностика и recovery.
@@ -603,74 +511,8 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 - [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — failure modes и остаточные риски.
 - [docs/NET_ADMIN_2.4.0.md](docs/NET_ADMIN_2.4.0.md) — default `NET_ADMIN`, существующие ноды и rollback-границы.
 
----
 
-<a id="history"></a>
-## 🕰️ Security changelog: полный технический контекст
-
-Все предыдущие release-specific security notes сохранены **без сокращения** в раскрываемых разделах ниже и в [полном архивном SECURITY.md до обновления](docs/history/SECURITY_2.5.5_before_ui_refresh.md). Это важно для расследования отказов старых установок, ABI/iptables regressions и сверки миграций.
-
-
-<details>
-<summary>📂 <strong>2.5.5 — Xray supply chain и безопасные RAW/XHTTP примеры</strong></summary>
-
-
-- Обнаружение версии Xray является **только чтением**. Официальные HTTPS release metadata недоверенны для автоматического исполнения: новые Xray pre-release и различие версий в образе RemnaNode **никогда не приводят** к скачиванию/запуску бинарника от root. При отказе GitHub выводится `NOT_VERIFIED`.
-- В RemnaNode upstream присутствует `geodata.core` с URL+SHA256 и staging/rollback встроенного Core, но использование этого механизма требует подготовленного вручную, проверенного на staging артефакта и изменения именно Panel Config Profile. Свежий `latest` не является гарантией безопасности и совместимости.
-- Публичные JSON-примеры из `examples/` и README содержат **только placeholder** для `privateKey` и ShortID. Используйте реальные ключи из защищённых файлов конкретной VPS (`root:0600`); нельзя публиковать их в Git, багрепортах и телеграммах. При раскрытии ключа требуется безопасная ротация, включая обновление конфигурации панели/клиентов.
-- Меняется только выбранный inbound панели; максимум один публичный VLESS слушатель TCP/443. XHTTP не использует Vision flow; Nginx Selfsteal на read-only Unix-socket через `xver:1` и `PROXY protocol v1` остаётся прежним.
-- Все прежние ACL для панели, UFW, RKN Guard и SSH действуют независимо от смены транспорта. Обе конфигурации требуют реальной проверки после применения. DPI/IP-блокировки этим кодом не устраняются автоматически.
-
-</details>
-
-
-<details>
-<summary>📂 <strong>2.5.3 — RKN data firewall: supply chain, access and rollback</strong></summary>
-
-
-- Файл `integrations/rkn_guard.py` встроен в self-contained `install.sh`; загрузка и исполнение upstream `Flecksis/rkn-guard` бинарника, install.sh, Go-кода **не выполняются**.
-- HTTPS-список `shadow-netlab/traffic-guard-lists` обновляется ежедневно как **недоверенные входные данные**, проверяется CIDR и размер списка, затем `ipset swap`; сетевая ошибка сохраняет последний корректный список. Не заменяйте проверенный URL сторонним без нового code review.
-- Только IPv4 TCP/80,443; UFW SSH/2222 остаётся основной границей доступа. Конфиг `panel_ipv4` прочитывается с диска для каждого `prepare` и `update`; `ipset`-исключение применяется до DROP, без общего ACCEPT в UFW.
-- UFW `before.rules` меняется только маркированным разделом. Перед записью делается локальный snapshot, выполняются тест `iptables-restore --test`, `ufw reload` и runtime проверка правила. При ошибке файл возвращается; если rollback нельзя подтвердить, нужен доступ через консоль VPS до reboot. Нельзя считать этот код полным восстановлением ОС или firewall после произвольной чужой модификации.
-- Boot preparation зависит от ipset/xt_set в ядре и systemd ordering. Запуск на production без VPS snapshot и canary неприемлем. Проверяйте Panel→Node TCP/2222, SSH, настоящий VLESS клиент и `journalctl` после установки и reboot.
-- Изменения upstream кода НЕ обновляются автоматически. Каждый новый Node_Install release требует обязательного просмотра <https://github.com/Flecksis/rkn-guard> и source списка; checklist в `docs/RKN_GUARD_2.5.3.md`.
-
-</details>
-
-
-<details>
-<summary>📂 <strong>2.5.1: acceptance hotfix boundaries</strong></summary>
-
-
-2.5.1 не расширяет runtime privileges и не меняет сетевую архитектуру. Capability hotfix допускает только эквивалентные textual representations `NET_ADMIN`/`CAP_NET_ADMIN` и `NET_RAW`/`CAP_NET_RAW`; любые дополнительные `CapAdd`/`CapDrop` по-прежнему являются FAIL. Listener hotfix отделяет iproute2 display scope `%iface` от IPv4 перед классификацией; loopback игнорируется, non-loopback адрес продолжает проходить public-surface policy.
-
-`--repair-acceptance` является explicit recovery только для exact reviewed failed-state 2.5.0. До записи он проверяет source version, failure checkpoint, отсутствие `INSTALL_COMPLETE`, отсутствие pending network/image transactions и SHA256 трёх старых acceptance-файлов. Repair не читает/печатает `SECRET_KEY`, не читает container env, не меняет firewall/SSH/GRUB/sysctl/Nginx/Panel и не управляет lifecycle RemnaNode; `docker inspect` используется только read-only для подтверждения running state. Backup приватный, а failed post-check восстанавливает прежние helper/checker файлы.
-
-Исходная `install-version=2.5.0` при repair намеренно не переписывается. Отдельный receipt `ACCEPTANCE_REPAIR_2_5_1` фиксирует применённый hotfix и backup path. Auto-reboot из repair не выполняется.
-
-</details>
-
-
-<details>
-<summary>📂 <strong>2.5.0: Node Plugins и диагностическая поверхность</strong></summary>
-
-
-`NET_ADMIN` остаётся сознательной capability RemnaNode, но `NET_RAW` не возвращён, `no-new-privileges` и отсутствие Docker socket сохранены. Installer устанавливает только distro `nftables` CLI и не управляет `nftables.service`/`/etc/nftables.conf`, не flush-ит ruleset и не создаёт параллельный host firewall. Runtime plugin table читается JSON-командой с timeout.
-
-Диагностика не должна выводить `SECRET_KEY`, REALITY/TLS private key, container env, user UUID/email/subscription links, cookies/auth headers, remote/client IP inventory, raw FD targets или full PCAP. Новый public listener audit сообщает только локальные порты/ownership verdict. Resource snapshot содержит host-wide counters и не меняет sysctl/firewall/limits.
-
-Xray core из official Remnawave image проверяется по двум floor: `>=26.3.27` для plugin functionality и reviewed `>=26.7.11` для security advisory scope. Installer не скачивает custom core. Cover-site/REALITY не являются гарантией недетектируемости или отсутствия IP/prefix/provider block. Запрещены auto RST/community blocklists, random SNI/fingerprint/key rotation и provider hopping как «универсальное лечение».
-
-Этот файл описывает security-модель **установщика ноды**, а не всей Remnawave-инфраструктуры. Installer работает с root-правами на выделенной VPS и намеренно меняет SSH, UFW, GRUB, sysctl, Nginx, Docker и systemd. Безопасность зависит и от встроенных guard-проверок, и от внешних компонентов, которые установщик не контролирует: хостер, панель, DNS, Cloudflare, рабочая станция администратора и клиентские устройства.
-
-> **Базовое условие:** отдельная чистая VPS-нода, snapshot, независимая console/recovery хостера, проверенный пароль администратора, доверенный release-файл/контрольная сумма и одна canary-нода до массовой раскатки.
-
-</details>
-
-
-<details>
-<summary>📂 <strong>18. Selfsteal 2.3.0: HTTP-поверхность и ограничения</strong></summary>
-
+## 18. Selfsteal 2.3.0: HTTP-поверхность и ограничения
 
 Публичный TCP/443 остаётся у Xray. Nginx обслуживает только собственный TLS target через закрытый Unix socket, но исправность target важна и для нового REALITY-handshake. Nginx L7 не поставлен перед аутентифицированным RAW/Vision-трафиком.
 
@@ -688,12 +530,8 @@ UFW остаётся единственным управляемым firewall; �
 
 Полное обновление работающих старых Nginx/helpers в 2.3.0 не реализовано. `--update-cover` меняет только страницы по уже существующей контролируемой транзакции, а не транспорт, firewall, TLS vhost или marker версии. Новые проверки не нужно переносить одиночным файлом на старую Nginx-policy: это вызовет ожидаемый несовместимый контракт. [Подробности](docs/SELFSTEAL_2.2.0.md).
 
-</details>
 
-
-<details>
-<summary>📂 <strong>19. Новые границы проверок 2.3.0</strong></summary>
-
+## 19. Новые границы проверок 2.3.0
 
 `--require-xray` теперь не принимает чужой Nginx на 443 за Xray. Сопоставляются IPv4-listener PID и core (`rw-core`/`xray`) в работающем `remnanode` с host networking; повторно проверяется идентичность контейнера и набор процессов. Отсутствие PID/ошибка команд/смена процесса — NOT_VERIFIED; чужой владелец — FAIL. Отсутствие самого listener может быть ожидаемо до назначения профиля, но не является успешной клиентской приёмкой.
 
@@ -701,43 +539,23 @@ UFW остаётся единственным управляемым firewall; �
 
 В новый generated profile добавлен общий Vision; DNS/routing предыдущего generator сохранены, включая запрет IP панели. Это не универсальная политика для любых публичных сервисов TECH. Live-профили панели и другие VPS автоматически не меняются.
 
-</details>
-
-
-<details>
-<summary>📂 <strong>19.1. Устойчивое подтверждение TLS после reload в 2.4.1</strong></summary>
-
+## 19.1. Устойчивое подтверждение TLS после reload в 2.4.1
 
 `systemctl reload nginx` выполняет graceful reload: новый worker может появиться до полного ухода старого. Поэтому одиночный успешный TLS probe не считается достаточным доказательством того, что новые соединения устойчиво обслуживаются новым сертификатом. В 2.4.1 deploy-hook требует четыре последовательных успешных `--target-only` проверки ожидаемого leaf fingerprint; любой промежуточный отказ сбрасывает серию. Общий deadline остаётся bounded, VPN/Xray не перезапускаются, сертификаты helper не переписывает.
 
 Это исправляет fail-open по доказательству активации, не меняя доверенную CA-модель, hostname/SNI/leaf pinning и не добавляя сетевых разрешений.
 
-</details>
-
-
-<details>
-<summary>📂 <strong>19.2. CI fragmentation fix 2.4.2 не ослабляет production TLS/PROXY</strong></summary>
-
+## 19.2. CI fragmentation fix 2.4.2 не ослабляет production TLS/PROXY
 
 2.4.2 меняет только test harness и version metadata. Тест больше не режет строку PROXY v1 на искусственные 7-байтовые writes, потому что Nginx может прочитать неполный header и корректно завершить соединение как malformed. После полного PROXY header тест делает отдельную паузу и продолжает **реально фрагментировать большой TLS ClientHello** по 37 байт; ошибки TLS не подавляются и `BrokenPipeError` не игнорируется.
 
 Production `proxy_protocol` listener, REALITY `xver=1`, cert-deploy checks, CA/hostname/leaf verification, NET_ADMIN/firewall/SSH и secret-handling не ослаблены. На работающих 2.4.1 нодах нет security-причины применять серверный repair только ради 2.4.2.
 
-</details>
-
-
-<details>
-<summary>📂 <strong>19.3. Git-normalization fix 2.4.3</strong></summary>
-
+## 19.3. Git-normalization fix 2.4.3
 
 2.4.3 исправляет только целостность release manifest после Git checkout: три evidence `.txt` нормализованы CRLF→LF, потому что `.gitattributes` с `* text=auto` всё равно канонизирует их как текст. Добавлена regression-проверка canonical LF и clean Git round-trip перед публикацией. Никакие секреты, runtime permissions, capabilities, TLS/PROXY policy или сетевые правила этим не ослабляются.
 
-</details>
-
-
-<details>
-<summary>📂 <strong>20. Default NET_ADMIN в 2.4.0</strong></summary>
-
+## 20. Default NET_ADMIN в 2.4.0
 
 Изменение ограничено capability/state/Compose и проверками версии. Новых портов, контейнеров, systemd units, Docker socket mounts, сетевых namespace, iptables/nftables правил или runtime-пакетов не добавлено. `NET_RAW` не возвращён.
 
@@ -745,33 +563,12 @@ Production `proxy_protocol` listener, REALITY `xver=1`, cert-deploy checks, CA/h
 
 Для уже завершённых нод изменение применяется отдельной узкой операцией с backup Compose/config, `docker compose config --quiet`, recreate только RemnaNode с `--pull never`, проверкой неизменности image и rollback при apply-failure. Полный VPS snapshot остаётся предпочтительным rollback перед массовой раскаткой. Подробный регламент: [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md) и [OPERATIONS](docs/OPERATIONS.md).
 
-</details>
 
-
-<details>
-<summary>📂 <strong>2.5.2 listener acceptance boundaries</strong></summary>
-
+## 2.5.2 listener acceptance boundaries
 
 `0.0.0.0:443` разрешён только для reviewed Xray/VLESS listener и только при подтверждённом owner/PID `rw-core`/`xray` внутри `remnanode`; это не разрешение произвольных wildcard listeners. TCP/80 по-прежнему должен быть привязан к конкретному public IPv4. Preboot dual-stack `NODE_PORT` допускается только как узкое доказанное состояние `rw-node` при `bindv6only=0` и успешном IPv4 connect; любые дополнительные/неизвестные public listeners остаются FAIL.
 
-</details>
 
-
-<details>
-<summary>📂 <strong>XHTTP transport switching 2.5.4 (2026-10-09)</strong></summary>
-
+## XHTTP transport switching 2.5.4 (2026-10-09)
 
 XHTTP is an optional **alternative** VLESS transport to RAW+Vision for a single listener on TCP/443, not a second exposed listener or an auto-switch daemon. Private JSON profiles and REALITY keys are mode 0600. Generator compares key-pair identity, rejects symlinks/unsafe source files, checks the same Selfsteal target and xver=1, and never logs key content. On existing installations `--prepare-xhttp` neither modifies the running node nor panel; temporary core syntax test is copied to RemnaNode and deleted on success. A failed probe must be resolved before enabling XHTTP. Back up the Remnawave Config Profile and Host before switching: a bad panel config can stop Xray. XHTTP does **not** guarantee protection against DPI or IP/ASN blocking; update client subscriptions explicitly. Runbook: `docs/TRANSPORT_SWITCHING_2.5.4.md`.
-
-</details>
-
-
----
-
-<div align="center">
-
-**🔐 Security is a process: backup → verify → canary → deploy → monitor → rollback**
-
-[⬆️ К навигации](#report) · [🚀 README](README.md) · [🧰 Operations](docs/OPERATIONS.md) · [📩 Security tab](https://github.com/SUXARIK-GITHUB/Node_Install/security)
-
-</div>

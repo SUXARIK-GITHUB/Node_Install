@@ -85,9 +85,21 @@ class XrayVersionReportTests(unittest.TestCase):
             self.assertEqual(node['sniffing']['routeOnly'],True)
             self.assertEqual(obj['dns']['queryStrategy'],'UseIPv4')
             self.assertEqual(obj['outbounds'][0]['settings']['domainStrategy'],'UseIPv4')
-            self.assertIn('::/0',obj['routing']['rules'][0]['ip'])
-            self.assertEqual(len(obj['routing']['rules'][0]['ip']),
-                             len(set(obj['routing']['rules'][0]['ip'])), 'duplicate route CIDR')
+            # Extra documented rules precede the original CIDR block.
+            route_ip_rules=[r for r in obj['routing']['rules'] if 'ip' in r]
+            self.assertEqual(len(route_ip_rules), 1)
+            ip_rules=route_ip_rules[0]['ip']
+            self.assertIn('::/0',ip_rules)
+            self.assertIn('geoip:private',ip_rules)
+            self.assertEqual(len(ip_rules),len(set(ip_rules)), 'duplicate route CIDR')
+            self.assertEqual(obj['routing']['rules'][0]['protocol'],['bittorrent'])
+            self.assertEqual(obj['routing']['rules'][1]['domain'],['geosite:private'])
+            self.assertTrue(obj['dns']['serveStale'])
+            self.assertEqual(obj['dns']['serveExpiredTTL'],3600)
+            self.assertTrue(obj['dns']['enableParallelQuery'])
+            self.assertEqual(obj['dns']['servers'],['1.1.1.1','1.0.0.1','8.8.8.8'])
+            self.assertEqual(obj['outbounds'][0]['settings']['finalRules'],
+                             [{'ip':['geoip:private','::/0'],'action':'block'}])
         raw=examples['raw']['inbounds'][0]
         xhttp=examples['xhttp']['inbounds'][0]
         self.assertEqual(raw['tag'],xhttp['tag'])
