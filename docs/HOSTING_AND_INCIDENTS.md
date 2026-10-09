@@ -92,3 +92,11 @@ ip -4 route show
 ## Что проверить у конкретного хостера до тиражирования
 
 Поддерживаемая ОС/полноценная VM/свой управляемый kernel/GRUB; непосредственно назначенный IPv4 вместо NAT; доступность DNS/NTP/APT/Registry/ACME; внешняя матрица портов; CPU steal/лимиты bandwidth и допустимый workload; консоль и восстановление snapshot; условия оферты для **собственного** Selfsteal. Отсутствие одной из предпосылок — причина остановить внедрение, а не отключать preflight установщика.
+
+## Provider complaint / suspend incident — 2.5.0
+
+Не смешивайте provider incident с сетевой цензурой. Зафиксируйте один из классов: outbound SMTP/spam; port scanning/malware; copyright/P2P complaint; credential compromise; DDoS/attack traffic; excessive PPS/connections; provider-specific prohibited service; false positive/IP reputation; censorship/path failure.
+
+Безопасный порядок: сохранить console/snapshot/evidence; не удалять контейнеры/логи до понимания причины; проверить Panel Torrent reports/Plugin state и локальные container/resource signals; проверить unexpected public listeners; проверить признаки root compromise без публикации секретов. При реальном compromise локальному checker на скомпрометированном root не доверять — rebuild clean VPS и rotate затронутые credentials. Не отвечать на suspend отключением UFW/Fail2ban, `nft flush ruleset` или открытием новых портов.
+
+Не включать packet-content logging пользователей и не собирать лишние персональные данные. Если провайдер требует mitigation, она должна соответствовать ToS и конкретной доказанной причине инцидента.

@@ -168,6 +168,7 @@ class CleanupTests(unittest.TestCase):
             code='set -Eeuo pipefail\nSTATE='+repr(d)+'; INSTALLER_VERSION=2.1.2; DIGEST=test; REALITY_KEYS_FILE='+repr(keyfile)+'\n'
             code+='python3(){ printf "cleanup deferred\\n"; return 0; }\n'
             code+='helper(){ : > "$REALITY_KEYS_FILE"; chmod 0600 "$REALITY_KEYS_FILE"; }\n'
+            code+='stage(){ :; }\nvk_rkn_activate(){ return 1; }\n'
             # Only replace the diagnostic executable path, retaining shell strict mode.
             final=final.replace('/usr/local/sbin/vkarmani-node-check','test_check')
             for rc in (1,0):

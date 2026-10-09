@@ -1,0 +1,88 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "dns": {
+    "servers": [
+      "1.1.1.1",
+      "8.8.8.8"
+    ],
+    "queryStrategy": "UseIPv4"
+  },
+  "inbounds": [
+    {
+      "tag": "VK_RAW_REALITY_REPLACE_WITH_NODE_TAG",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none",
+        "flow": "xtls-rprx-vision"
+      },
+      "sniffing": {
+        "enabled": true,
+        "routeOnly": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "target": "/dev/shm/nginx.sock",
+          "xver": 1,
+          "minClientVer": "0.0.0",
+          "spiderX": "/",
+          "serverNames": [
+            "node.example.com"
+          ],
+          "privateKey": "REPLACE_WITH_PRIVATE_KEY_FROM_NODE",
+          "shortIds": [
+            "REPLACE_WITH_SHORT_ID_FROM_NODE"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "DIRECT",
+      "protocol": "freedom",
+      "settings": {
+        "domainStrategy": "UseIPv4"
+      }
+    },
+    {
+      "tag": "BLOCK",
+      "protocol": "blackhole"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPOnDemand",
+    "rules": [
+      {
+        "type": "field",
+        "ip": [
+          "0.0.0.0/8",
+          "10.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "169.254.0.0/16",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "224.0.0.0/4",
+          "240.0.0.0/4",
+          "203.0.113.10/32",
+          "::/0",
+          "198.51.100.20/32"
+        ],
+        "outboundTag": "BLOCK"
+      }
+    ]
+  }
+}

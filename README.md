@@ -1,132 +1,147 @@
-# 🚀 VKarmani Node Install 2.4.3
+# VKarmani Node Install 2.5.5
 
-
-> **2.4.3: исправлен release-manifest для Git checkout.** В архиве 2.4.2 три сохранённых CI evidence-файла имели CRLF, а `.gitattributes` с `* text=auto` при commit/checkout нормализовал их в LF. Из-за этого `sha256sum --check SHA256SUMS` закономерно падал до запуска тестов на всех runner-ах. В 2.4.3 эти три текстовых evidence-файла нормализованы в LF, manifest пересобран по canonical Git bytes и добавлена regression-проверка, запрещающая CR/CRLF в UTF-8 text entries из `SHA256SUMS`. Production installer logic, NET_ADMIN, Nginx/Selfsteal, cert-deploy, firewall, SSH и Docker policy не изменены.
+> **Релиз-кандидат · 09.10.2026 · выделенная Remnawave Node · Ubuntu 22.04/24.04/26.04 или Debian 12/13.**
 >
-> **2.4.2: исправлен CI-контракт fragmented TLS / PROXY v1 без изменения production transport.** После публикации 2.4.1 все три GitHub Actions runner-а (Ubuntu 22.04, 24.04 и Ubuntu 26 userspace) одинаково выявили ошибку только в `test_large_fragmented_clienthello_and_proxy_header`: тест искусственно разрезал саму строку PROXY v1 по 7 байт. Nginx при чтении неполной строки корректно закрывает соединение как `broken header`, поэтому результат зависел от того, успеет ли локальный UNIX-stream склеить куски до первого чтения. В 2.4.2 PROXY v1 header отправляется тестом целиком, затем делается короткая пауза, а **большой TLS ClientHello по-прежнему принудительно фрагментируется** по 37 байт с паузами между чанками. Это делает проверку детерминированной и соответствует фактической Xray fallback-логике: Xray формирует PROXY v1 в отдельном буфере и записывает его до копирования fallback payload. `install.sh` production transport, Nginx config, NET_ADMIN, firewall, SSH, сертификатный deploy и runtime dependencies не менялись.
+> Один публичный IPv4, один активный клиентский TCP/443, VLESS+RAW+REALITY+Vision **или** VLESS+XHTTP+REALITY. Nginx Selfsteal работает на хосте, вне Docker. IPv6 отключается. UFW, Fail2ban, Docker Compose, Let's Encrypt, мониторинг, backup, rollback, RKN Guard и диагностика сохраняются.
 >
+> **Статус:** локальные проверки и тесты ≠ подтверждённый production. Прежде чем раскатывать на все серверы, нужен canary на отдельной VPS с реальным подключением панели и клиента.
 
-> **2.4.1: стабилизирована проверка активации сертификата после graceful reload Nginx.** GitHub Actions на Ubuntu 24.04 выявил гонку: одного успешного `--target-only` probe недостаточно, пока старый worker ещё может кратковременно перекрываться с новым. Deploy-hook теперь требует **4 последовательных успешных TLS-проверки** нового leaf-сертификата; любая промежуточная неудача сбрасывает серию. Это не ослабление проверки и не `sleep`-костыль: подтверждение стало строже. Интеграционный cleanup также ждёт устойчивого возврата исходного сертификата, чтобы тесты не загрязняли друг друга. Production transport, NET_ADMIN, Docker/Nginx layout, firewall и SSH policy не менялись.
->
-> **2.4.0: `NET_ADMIN` включён по умолчанию для RemnaNode.** Это необходимо для функций, которым нужен доступ к сетевому состоянию хоста, включая используемый в панели «Обозреватель сессий». В генерируемом Compose теперь всегда есть `cap_add: [NET_ADMIN]`; состояние `allow_net_admin=true` сохраняется в конфигурации, а локальный checker требует совпадения state и фактической capability. `NET_RAW` по-прежнему сброшен, `no-new-privileges` и read-only Selfsteal mount сохранены. Изменение повышает blast radius контейнера при `network_mode: host`, поэтому оно отдельно задокументировано в [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md). Остальные контракты 2.3.0 — password-only SSH, Selfsteal/TLS checks, Vision, IPv4-only и ровно три поля — сохранены.
->
-> GitHub этой поставкой не изменён. Команда загрузки из `main` ниже намеренно остановится по SHA256, пока проверенный `install.sh` 2.4.3 не опубликован. Для локальной проверки используйте файл из полного архива. Архив выпуска не содержит `.git`: при обновлении clone сохраняйте свою Git-историю; исторические актуальные документы 2.3.0, 2.4.0, 2.4.1 и 2.4.2 сохранены в `docs/history`; исходный архив 2.4.2 не изменяется.
+## Оглавление
 
-Production-установщик выделенной Remnawave-ноды: **VLESS + RAW + REALITY + Vision**, Selfsteal через **Nginx на хосте**, IPv4-only, UFW, Fail2ban, Docker Compose, Let's Encrypt, BBR/fq при поддержке ядром, диагностика, backup и контролируемое обновление образа.
+1. [Назначение и модель ответственности](#1-назначение-и-модель-ответственности)
+2. [Подготовка VPS и обязательный backup](#2-подготовка-vps-и-обязательный-backup)
+3. [Запуск установки](#3-запуск-установки)
+4. [Архитектура, Nginx и Selfsteal](#4-архитектура-nginx-и-selfsteal)
+5. [Настройка Remnawave Panel](#5-настройка-remnawave-panel)
+6. [Полный профиль RAW+REALITY+Vision](#6-полный-профиль-rawrealityvision)
+7. [Полный профиль XHTTP+REALITY](#7-полный-профиль-xhttpreality)
+8. [Ручная смена inbound без изменения VPS](#8-ручная-смена-inbound-без-изменения-vps)
+9. [Стабильность, DNS, routing и уменьшение наблюдаемости](#9-стабильность-dns-routing-и-уменьшение-наблюдаемости)
+10. [Версии Xray и безопасные обновления](#10-версии-xray-и-безопасные-обновления)
+11. [RKN Guard: автоматическое обновление списков](#11-rkn-guard-автоматическое-обновление-списков)
+12. [Обслуживание и диагностика](#12-обслуживание-и-диагностика)
+13. [Расположение конфигурации и секретов](#13-расположение-конфигурации-и-секретов)
+14. [Полная приёмка, сбои и rollback](#14-полная-приёмка-сбои-и-rollback)
+15. [Тестирование, ограничения, исходники](#15-тестирование-ограничения-исходники)
 
-> **Запускать только на отдельной чистой VPS-нode, не на сервере Remnawave-панели или БД.**
-> До установки сделайте snapshot VPS, проверьте консоль/recovery хостера и убедитесь, что действующий пароль администратора действительно работает. Установщик меняет SSH, UFW, системные параметры и GRUB. После успешных локальных preboot-проверок `2.4.3` по умолчанию планирует **одну автоматическую перезагрузку через 30 секунд**. Для запрета используйте `--no-reboot`.
+## 1. Назначение и модель ответственности
 
----
+Установщик **только готовит выделенную VPS RemnaNode**. Он проверяет окружение, настраивает ОС/SSH/UFW, ставит Docker и Nginx, выпускает сертификат и создаёт конфигурацию ноды и **два приватных шаблона** для Remnawave. Он **не создаёт** Panel Node, Config Profile, Host, Internal Squad, подписки и пользователей через API и **не изменяет** их автоматически.
 
-## ⚡ Установка
+- **Работающий конфиг Xray** приходит из Remnawave Panel. Локальные `profile.json` и `profile-xhttp.json` — **примеры импорта**, а не автоматически включённые inbounds.
+- **RAW:** `network=raw`, VLESS `flow=xtls-rprx-vision`, REALITY + Selfsteal.
+- **XHTTP:** `network=xhttp`, VLESS `flow=""`, `xhttpSettings.host/path/mode`, REALITY + тот же Selfsteal.
+- На каждой ноде выбирается **один из этих inbound на TCP/443**. Другой слушатель на 443 не создаётся.
+- Cover/REALITY **не гарантируют** защиты от DPI, обнаружения узла, блокировки IPv4, ASN или провайдера.
+- Смена транспорта сама по себе не снимает блокировку IP/ASN/провайдера и **не гарантирует невидимости для DPI**. Для реальной отказоустойчивости нужны резервные IP/ASN, подходящие клиенты и внешние измерения.
 
-### Рекомендуемый запуск с GitHub
+Если предыдущая версия уже работает в production — **не запускайте первичную установку заново** ради добавления XHTTP. Используйте специальный `--prepare-xhttp`, предварительный backup и canary.
 
-Блок ниже сначала скачивает **весь `install.sh`**, проверяет SHA256 именно выпуска `2.4.3`, затем Bash-синтаксис и номер версии — и только после этого запускает установку. Живой поток `curl | bash` не используется.
+## 2. Подготовка VPS и обязательный backup
+
+### Поддерживаемый профиль сервера
+
+- Чистая **отдельная** VPS (не Panel, БД, бот, общий хост с чужими контейнерами).
+- Ubuntu **22.04, 24.04, 26.04** / Debian **12, 13** на поддерживаемой архитектуре; реально проверенная ранее перезагрузка относится к Ubuntu 24.04, **не ко всем комбинациям**.
+- Root/sudo, доступ к **консоли/recovery хостера** и заведомо рабочий пароль SSH **до начала**.
+- Рекомендован запас RAM, CPU и диска; минимальные требования RemnaNode см. [официальные требования](https://docs.rw/install/requirements/). Инсталлятор выполняет собственные preflight-проверки.
+- `node.example.com` в примерах — **не рабочий адрес**: свой домен должен иметь **одну A-запись** на публичный IPv4 VPS, **без AAAA**, а в Cloudflare — **DNS only** (серое облако), без проксирования REALITY через CDN.
+- Доступные порты: **TCP/80** (ACME и HTTP redirect), **TCP/443** (Xray), **TCP/2222** либо заданный Node API port **только с IPv4 панели**, плюс существующие TCP-порты SSH. Не открывайте 2222 для всего Интернета.
+- На сервере не должно быть чужого сервиса, владеющего 443, UFW/Nginx/iptables или сетевой политикой; preflight **останавливается**, а не удаляет неизвестные ресурсы.
+
+### Почему нужен snapshot
+
+Установка меняет **SSH, UFW, Fail2ban, Docker, Nginx, сертификаты, GRUB, sysctl, NTP, systemd**. Она может отключить SSH-вход по ключу в соответствии с текущей password-only политикой проекта; аккаунты/пароли не создаёт. После успешной проверки **по умолчанию планируется одна перезагрузка через 30 секунд**; используйте `--no-reboot` для ручного контроля. Встроенные откаты частичны и **не заменяют snapshot VPS**.
+
+Безопасная последовательность: snapshot → проверить восстановление/консоль → убедиться, что второй SSH-login возможен → запуск → тест → reboot → повторный тест.
+
+## 3. Запуск установки
+
+### Приоритетный способ — полный проверенный архив
+
+**История Git:** вложенная `.git` унаследована от исходного ZIP и может указывать на устаревший commit; она не является фиксацией релиза 2.5.5. Перед GitHub-публикацией используйте отдельную проверенную ветку, сравнение с актуальным `main`, полный манифест и зелёный CI; не выполняйте `git push --force` из распакованного архива.
+
+Новая версия **не опубликована автоматически** в `SUXARIK-GITHUB/Node_Install/main`. Пока там другая версия, не используйте старую инструкцию `curl raw/main/install.sh`, не правьте SHA «чтобы заработало». Распакуйте именно `Node_Install_2.5.5.zip` и выполните:
 
 ```bash
-sudo bash <<'INSTALL'
-set -Eeuo pipefail
-set +x
-umask 077
-command -v curl >/dev/null || { echo 'Нужен curl; другой вариант — install.sh из полного архива.' >&2; exit 1; }
-work=$(mktemp -d /root/vkarmani-install.XXXXXXXX)
-cd "$work"
-curl --fail --show-error --silent --location \
-  --proto '=https' --proto-redir '=https' --tlsv1.2 \
-  --connect-timeout 15 --max-time 180 --retry 3 \
-  'https://raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/main/install.sh' \
-  --output install.sh
-if ! printf '%s  install.sh\n' \
-  '13ad6888aa8ec2f46013f24a639c9931c46720c08f85de98f5a8af68e28ab18c' \
-  | sha256sum --check; then
-    echo 'STOP: файл GitHub не совпадает с выпуском 2.4.3. Не запускаю; нужен новый install.sh в main либо файл из архива 2.4.3.' >&2
-    exit 1
-fi
-bash -n install.sh
-[[ $(bash install.sh --version) == 2.4.3 ]] || { echo 'STOP: неверная версия установщика.' >&2; exit 1; }
-exec bash install.sh
-INSTALL
-```
-
-Если в ветке `main` опубликован другой файл, проверка SHA256 должна остановить запуск. **Не заменяйте ожидаемый хеш на хеш случайно скачанного файла только ради прохождения проверки.** Контрольная сумма подтверждает соответствие файла этому README, но не заменяет доверие к источнику самого README.
-
-Репозиторий: [SUXARIK-GITHUB/Node_Install](https://github.com/SUXARIK-GITHUB/Node_Install) · прямой файл: [install.sh](https://raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/main/install.sh)
-
-### Установка из полного архива
-
-Распакуйте release в отдельную папку, перейдите в `Node_Install`, проверьте manifest и только затем запускайте:
-
-```bash
+cd Node_Install
 sha256sum --check SHA256SUMS
 bash -n install.sh
-sudo bash install.sh
+bash install.sh --version               # 2.5.5
+sudo bash install.sh --no-reboot         # рекомендуемый первый canary
 ```
 
-На первой чистой установке задаются **ровно три значения, именно в таком порядке**:
+На чистой VPS скрипт запрашивает **ровно три значения**: `SECRET_KEY` ноды из панели, домен ноды, публичный IPv4 панели (адрес технички, **не IP этой ноды**). Собственный IPv4 VPS определяется по проверенным локальным адресам и DNS. Для ввода нужен интерактивный терминал; если подключились без PTY, используйте SSH с `-t`.
 
-1. `SECRET_KEY` RemnaNode из вашей Remnawave-панели;
-2. домен ноды, например `node.example.com`;
-3. публичный **исходящий IPv4 backend панели**, с которого панель подключается к Node API.
-
-IPv4 самой ноды установщик **не спрашивает**. Он проверяет DNS и выбирает тот публичный IPv4, который одновременно указан в A-записи домена и реально назначен интерфейсу VPS.
-
-После успешной preboot-приёмки `2.4.3`:
-
-- сохраняет ту же рабочую REALITY-пару и ShortID в `/root/reality-keys.txt` с правами `root:0600`;
-- выводит в терминал `PrivateKey`, `PublicKey` и `ShortID`;
-- не дублирует `PrivateKey` в `/var/log/vkarmani-node-install.log`;
-- создаёт `INSTALL_COMPLETE` только после успешных локальных проверок;
-- по умолчанию ставит одноразовый reboot через transient systemd unit с задержкой 30 секунд.
-
-Если перед reboot нужно вручную проверить новую SSH-сессию:
+Другие параметры:
 
 ```bash
-sudo bash install.sh --no-reboot
+sudo bash install.sh                     # обычный режим, с одной reboot после успеха
+sudo bash install.sh --weekly-reboot     # отдельно включить еженедельную перезагрузку
+sudo bash install.sh --image 'remnawave/node:3.4.2' # осознанно выбранная официальная версия
 ```
 
-Не закрывая старую SSH-сессию, откройте **новую** парольную сессию, убедитесь, что доступ работает, после чего выполните:
+`--image` — только для новой/допустимой незавершённой установки; **не обновление запущенной ноды**. После получения образа Compose использует сохранённый **digest**. Не используйте скрипт установки как механизм принудительного скачивания неизвестного `latest` Xray.
+
+### Если узел уже установлен
 
 ```bash
-sudo reboot
+sudo bash install.sh --check
+sudo bash install.sh --backup
+sudo bash install.sh --prepare-xhttp    # готовит только приватный XHTTP-шаблон
 ```
 
----
+`--prepare-xhttp` работает только для поддерживаемых завершённых версий 2.5.2+; проверяет **реальный `rw-core` внутри контейнера** через `run -test`, не изменяет панель, Docker Compose, UFW или слушатели. Если тест Core не прошёл, шаблон не должен считаться готовым и RAW остаётся как был.
 
-## 🧩 Что сделать в Remnawave после установки
+## 4. Архитектура, Nginx и Selfsteal
 
-Установщик намеренно **не авторизуется в административном API панели** и не создаёт объекты Panel/Node/Profile/Host/Squad. Введённый `SECRET_KEY` — это не администраторский API-token панели.
+```text
+VPN-клиент / обычный HTTPS-проверяющий
+            |
+       публичный IPv4:443  (TCP; UDP/443 не открывается)
+            |
+    RemnaNode -> один Xray inbound
+        /                \\
+ RAW+Vision          XHTTP+REALITY
+          \          /
+    REALITY недоверенный TLS/не-VLESS
+            |
+  target=/dev/shm/nginx.sock, xver=1
+            |
+  Docker bind-mount read-only (/dev/shm в контейнере)
+            |
+  /run/vkarmani-selfsteal/nginx.sock (Unix socket на хосте)
+            |
+  host Nginx: TLS 1.3 + HTTP/2 + PROXY protocol v1
+            |
+  статический сайт + настоящий Let's Encrypt
+```
 
-Готовая инструкция конкретной ноды создаётся здесь:
+**Что уже правильно сделано и сохраняется:** Xray владеет TCP/443; Nginx слушает только приватный Unix-сокет для TLS Selfsteal; HTTP/80 выделен под ACME HTTP-01 и HTTP-redirect; сайт выдаёт настоящий контент, неизвестные хосты/пути отклоняются; Nginx проверяется через `nginx -t`, затем выполняется graceful reload. Certbot обновляет сертификат с отдельной проверкой фактически принятого leaf и HTTPS-ответа.
+
+**Не делайте** одновременно `listen 443 ssl` у Nginx и `VLESS port 443` у Xray; не прокидывайте внешний proxy protocol на Xray inbound — `xver=1` относится **только к внутреннему REALITY → Nginx**. Не переводите Cloudflare orange-cloud в расчёте на прозрачный REALITY. Не меняйте `xver` без одновременной правки Nginx `proxy_protocol`, не переносите REALITY target на случайный внешний домен.
+
+Локальный Selfsteal probe проверяет **TLS 1.3 с верификацией сертификата**, ALPN `h2` и `http/1.1`, настоящие HTTP/2 DATA и точное тело страницы. Это проверка локального таргета; дополнительно нужен внешний HTTPS-тест **через Xray:443** и проверка неизвестного SNI. Приватные сертификаты Let's Encrypt **не передаются контейнеру**; Nginx читает их на хосте.
+
+## 5. Настройка Remnawave Panel
+
+После установки прочитайте **локальную** инструкцию:
 
 ```bash
 sudo cat /etc/vkarmani-node/PANEL-SETUP.txt
 ```
 
-Сгенерированный профиль находится здесь:
+Дальше в Remnawave Panel: **Nodes → Management** создайте Node, внесите `SECRET_KEY`/Node Address/Node Port, выберите **один** Config Profile, активируйте **один нужный inbound**, настройте **Hosts** с правильным `inboundTag`, затем Internal Squads/пользователей и выдачу подписок. В разных версиях панели названия меню могут различаться.
 
-```text
-/etc/vkarmani-node/profile.json
-```
+Для любой конфигурации сохраняйте точные значения **этой VPS**: `tag`, `port`, `serverNames`, `privateKey`, `shortIds`, `target=/dev/shm/nginx.sock`, `xver=1`; для XHTTP — дополнительно уникальный `path` и `host`. **Не заменяйте ключи из настоящей ноды тестовыми значениями из README.** Действующие файлы с приватными ключами не отправляйте в публичный Git/чат/логи.
 
-> `profile.json` содержит **приватный REALITY-ключ**. Это секретный файл. Не отправляйте его в публичный issue, чат, screenshot или лог.
+**Клиент:** Host/Subscription должны содержать адрес ноды, `SNI`, REALITY `publicKey` (публичная половина ключа), `shortId`, ALPN/fingerprint согласно поддерживаемому Core. Для XHTTP нужны совпадающие `host`/`path`/`mode` и **нет Vision flow**. Клиент, не поддерживающий XHTTP, нельзя «вылечить» только обновлением серверного inbound. Sing-box-генератор подписок в некоторых версиях Remnawave не поддерживает XHTTP — проверяйте используемый клиентский формат и не выдавайте несовместимый профиль.
 
-### Правильный порядок в панели
+## 6. Полный профиль RAW+REALITY+Vision
 
-Для принятой в проекте схемы **одна нода → один профиль → один отдельный inbound**:
+**Это полный JSON по текущему генератору установщика, но с *публикационно безопасными заглушками*.** `node.example.com`, `203.0.113.10` и `198.51.100.20` — учебные значения, не существующие адреса вашей инфраструктуры. `privateKey`, `shortIds`, `tag` должны быть взяты **из `/etc/vkarmani-node/profile.json` на своей VPS**. Именно этот локальный файл уже содержит корректные параметры и реальные секреты, его проще импортировать целиком, не копируя значения из примера. `clients: []` штатно заполняются Remnawave.
 
-1. **Config Profiles** — создайте профиль этой ноды и вставьте её JSON.
-2. **Node / Management** — `Address` = домен ноды либо другой публичный IPv4, реально назначенный этой же VPS; `Node Port = 2222`; выберите профиль и его inbound.
-3. **Host** — выберите тот же inbound; `Address` = домен ноды; `Port = 443`. Advanced Options лучше оставить **DEFAULT**, если нет конкретной причины для override. SNI в нормальной схеме наследуется из REALITY inbound.
-4. **Internal Squads** — разрешите новый inbound нужной группе пользователей. Если этот шаг забыть, Node может быть online, но пользователи не получат новый Host в подписке.
-5. Обновите подписку в клиенте и проверьте реальное подключение извне.
-
-Если для dedicated Host используете поле `Nodes`, выбирайте **только соответствующую ноду**. Не добавляйте вручную SNI/ALPN/Security Layer/MUX/SockOpt без необходимости: Host override может заменить корректное значение, уже заданное в inbound.
-
-### Пример JSON для Remnawave без реальных секретов
-
-Ниже безопасный шаблон. Он не содержит боевых ключей. Заменяйте только явные placeholders данными, сгенерированными **на этой же ноде**. Не переносите PrivateKey/ShortID одного сервера на другой, если используете per-node профили.
+<!-- BEGIN RAW FULL EXAMPLE -->
 
 ```json
 {
@@ -142,7 +157,7 @@ sudo cat /etc/vkarmani-node/PANEL-SETUP.txt
   },
   "inbounds": [
     {
-      "tag": "VK_RAW_REALITY_NODE_EXAMPLE",
+      "tag": "VK_RAW_REALITY_REPLACE_WITH_NODE_TAG",
       "listen": "0.0.0.0",
       "port": 443,
       "protocol": "vless",
@@ -172,9 +187,9 @@ sudo cat /etc/vkarmani-node/PANEL-SETUP.txt
           "serverNames": [
             "node.example.com"
           ],
-          "privateKey": "REPLACE_WITH_PRIVATE_KEY_FROM_THIS_NODE",
+          "privateKey": "REPLACE_WITH_PRIVATE_KEY_FROM_NODE",
           "shortIds": [
-            "REPLACE_WITH_SHORT_ID_FROM_THIS_NODE"
+            "REPLACE_WITH_SHORT_ID_FROM_NODE"
           ]
         }
       }
@@ -208,9 +223,9 @@ sudo cat /etc/vkarmani-node/PANEL-SETUP.txt
           "192.168.0.0/16",
           "224.0.0.0/4",
           "240.0.0.0/4",
-          "NODE_PUBLIC_IPV4/32",
-          "PANEL_BACKEND_IPV4/32",
-          "::/0"
+          "203.0.113.10/32",
+          "::/0",
+          "198.51.100.20/32"
         ],
         "outboundTag": "BLOCK"
       }
@@ -219,488 +234,325 @@ sudo cat /etc/vkarmani-node/PANEL-SETUP.txt
 }
 ```
 
-Этот пример сохраняет архитектурную политику локального шаблона `2.3.0`: **VLESS + RAW + REALITY + Vision**, собственный домен в `serverNames`, Selfsteal `target=/dev/shm/nginx.sock`, `xver=1`, без VLESS fallbacks, плюс блокировка private/special диапазонов и адресов ноды/панели от проксируемого outbound-доступа.
+<!-- END RAW FULL EXAMPLE -->
 
-#### Единая политика minClientVer в 2.3.0
+Особенности RAW: `streamSettings.network="raw"`; `settings.flow="xtls-rprx-vision"`; `security="reality"`; Selfsteal: Unix-сокет и `xver=1`. `sniffing.routeOnly=true` и IPv4 routing сохраняются. **Ни `xhttpSettings`, ни отдельного inbound на 443 тут нет.**
 
-Генератор, локальный validator, `PANEL-SETUP.txt` и export ключей используют **одну константу**:
+## 7. Полный профиль XHTTP+REALITY
+
+**Это второй полный JSON, а не «вставьте три поля куда-нибудь».** Для реальной ноды используйте результат `--prepare-xhttp`: `/etc/vkarmani-node/profile-xhttp.json`. Он использует **те же X25519/private/public/ShortID, inbound tag, routing, DNS и socket**, что существующий RAW, а HTTP-path детерминированно выводится локально из ключа и домена без публикации самого ключа. Два профиля являются **альтернативами** на TCP/443.
+
+<!-- BEGIN XHTTP FULL EXAMPLE -->
 
 ```json
-"minClientVer": "0.0.0"
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "dns": {
+    "servers": [
+      "1.1.1.1",
+      "8.8.8.8"
+    ],
+    "queryStrategy": "UseIPv4"
+  },
+  "inbounds": [
+    {
+      "tag": "VK_RAW_REALITY_REPLACE_WITH_NODE_TAG",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none",
+        "flow": ""
+      },
+      "sniffing": {
+        "enabled": true,
+        "routeOnly": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "target": "/dev/shm/nginx.sock",
+          "xver": 1,
+          "minClientVer": "0.0.0",
+          "spiderX": "/",
+          "serverNames": [
+            "node.example.com"
+          ],
+          "privateKey": "REPLACE_WITH_PRIVATE_KEY_FROM_NODE",
+          "shortIds": [
+            "REPLACE_WITH_SHORT_ID_FROM_NODE"
+          ]
+        },
+        "xhttpSettings": {
+          "host": "node.example.com",
+          "path": "/REPLACE_WITH_NODE_GENERATED_XHTTP_PATH",
+          "mode": "auto"
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "DIRECT",
+      "protocol": "freedom",
+      "settings": {
+        "domainStrategy": "UseIPv4"
+      }
+    },
+    {
+      "tag": "BLOCK",
+      "protocol": "blackhole"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPOnDemand",
+    "rules": [
+      {
+        "type": "field",
+        "ip": [
+          "0.0.0.0/8",
+          "10.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "169.254.0.0/16",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "224.0.0.0/4",
+          "240.0.0.0/4",
+          "203.0.113.10/32",
+          "::/0",
+          "198.51.100.20/32"
+        ],
+        "outboundTag": "BLOCK"
+      }
+    ]
+  }
+}
 ```
 
-Это устраняет расхождение выпуска 2.1.2 с выбранной оператором политикой live-профилей. Значение снимает нижний version-gate, но не добавляет старому клиенту отсутствующую поддержку REALITY/RAW/Vision. Отсутствующее поле, число `0`, строка `"0"` и `"1.0.0"` не проходят новую локальную policy.
+<!-- END XHTTP FULL EXAMPLE -->
 
-Новый checker не пропускает `profile-check` для 2.1.2/2.1.3/2.2.0/2.3.0/2.4.0/2.4.1/2.4.2/2.4.3. Неизвестная версия отмечается FAIL; историческая версия/отсутствие marker — явным NOT_VERIFIED, без выдуманной проверки.
+Особенности XHTTP: `flow=""` на inbound и у клиентов, `network="xhttp"`, `xhttpSettings.mode="auto"`, `host` равен домену ноды, `path` совпадает между сервером и клиентом. `xtls-rprx-vision` **не применяется вместе с XHTTP**. Для начала не настраивайте экспериментальные заголовки, `XMUX`, нестандартный padding, HTTP/3 и UDP/443: в текущей схеме остаёмся на TCP и проверяем производительность отдельно.
 
-`profile-check` теперь дополнительно проверяет форму DNS-полей, `UseIPv4`, ссылки routing/outbounds и запрещает ожидание входящего PROXY protocol на прямом RAW/REALITY listener. Допускается один служебный локальный API inbound RemnaNode с корректным `api.tag` и первым API routing-rule. Это не разрешение на второй VPN-протокол.
+**Важно:** реальное поведение XHTTP зависит от версии `rw-core`, клиента, режима XHTTP и Host/subscription. Само наличие правильного JSON на диске не доказывает успешного соединения пользователя.
 
-**Проверка supplied JSON не делает сетевых запросов и не читает core memory.** Корректный общий `settings.flow` с пустыми пользовательскими `flow` допускается без изменения файла. Полный security-аудит конечных TCP/UDP назначений и `xray run -test` не подменяются строкой PASS.
+## 8. Ручная смена inbound без изменения VPS
 
-**Начиная с 2.3.0 новый generated template содержит `settings.flow="xtls-rprx-vision"`.** Это согласует его с выбранной RAW/REALITY/Vision-схемой. Пустые `clients[].flow` допустимы при общем flow. Рабочий профиль панели автоматически не меняется, массив пользователей не переписывается. Перед импортом нового шаблона нужен отдельный клиентский тест и сохранённые назначения Profile/Host/Squad.
+Это именно желаемый сценарий, **без таймера/демона автоматического переключения**:
 
-**DNS/routing генератора оставлены как в 2.1.2** (`DIRECT`/`BLOCK`, `IPOnDemand`, явные закрытые диапазоны и IP ноды/панели); это не копия действующих custom live-профилей `internet`/`block`/`AsIs`. Блок всего IP панели также блокирует пользовательские сервисы на том же IP через этот outbound. Не импортируйте шаблон поверх работающего custom-профиля без отдельной проверки нужного доступа. В 2.3.0 политика выхода не расширялась и `finalRules` не добавлялись.
+1. Сохраните резервную копию Config Profile и Host **в панели**, сделайте snapshot или `--backup` ноды.
+2. На ноде: `sudo bash install.sh --prepare-xhttp` → убедитесь, что `XHTTP_TEMPLATE=PASS; XRAY_SYNTAX=PASS`.
+3. В **существующем** Config Profile замените поля одного VLESS inbound из локального приватного `profile-xhttp.json`. **Tag, ключи REALITY, порт, адрес, Host и Internal Squads сохраняются.** Не создавайте одновременно две VLESS-записи на 443.
+4. Проверьте серверную конфигурацию в панели, примените её; при необходимости выполните **штатный рестарт RemnaNode**, а **не reboot всей VPS**.
+5. Проверьте локальную доступность, `sudo vkarmani-node-check --require-xray`, внешнюю страницу-прикрытие через 443, затем обновите подписку совместимого клиента и проверьте авторизованный трафик.
+6. Для возврата используйте **сохранённый RAW JSON** с `network=raw`, `flow=xtls-rprx-vision`, удалив XHTTP-настройки; примените и перезапустите ноду тем же способом.
 
-### Проверка после назначения профиля
+**Предупреждение о downtime:** RemnaNode при изменении базовой конфигурации останавливает предыдущий процесс Xray перед запуском нового. Ошибочная конфигурация может оставить клиентов без сервиса. **Автоматического бесшовного rollback в панели этот установщик не обеспечивает.** Храните копию заведомо работающего профиля **до** переключения и вначале тестируйте одну ноду.
 
-На VPS:
+## 9. Стабильность, DNS, routing и уменьшение наблюдаемости
+
+### Проверенные настройки по умолчанию
+
+- IPv4-only: `dns.queryStrategy=UseIPv4`, `freedom.domainStrategy=UseIPv4`, `routing.domainStrategy=IPOnDemand`, блокирование loopback/RFC1918/CGNAT/link-local/multicast/IPv6, собственных IP и управляющего IPv4 панели. Установщик не меняет MTU и маршруты вслепую.
+- Nginx выдаёт **настоящий HTTPS**, TLS 1.3/h2, корректный сертификат, фиксированную статическую страницу, неизвестный SNI/Host обрабатывает предсказуемо. Не следует рандомизировать TLS-fingerprint сервера или менять заголовки «для невидимости» без измерений.
+- Производительность зависит от реального RTT/потерь/CPU/сервера/клиента. BBR/fq включается только там, где ядро поддерживает его и значения проходят локальную проверку; это не универсальная гарантия скорости.
+- Сканирование и пассивные сигнатуры могут выдавать наличие прокси; **ни REALITY, ни XHTTP, ни Selfsteal не обещают абсолютной незаметности и защиты от IP/ASN-блокировки**.
+
+### Необязательное развитие DNS (только после `rw-core run -test`)
+
+В современных Xray есть параметры `serveStale`, `disableCache`, `serveExpiredTTL` и `enableParallelQuery`. Их пример:
+
+```json
+{
+  "dns": {
+    "servers": ["1.1.1.1", "1.0.0.1", "8.8.8.8"],
+    "queryStrategy": "UseIPv4",
+    "disableCache": false,
+    "serveStale": true,
+    "serveExpiredTTL": 3600,
+    "enableParallelQuery": true
+  }
+}
+```
+
+**Это только JSON-фрагмент `dns` для включения в полный профиль после теста**, а не отдельный готовый Xray Config Profile. Больше одновременных DNS-запросов ≠ автоматически меньше RTT; `serveStale` может временно возвращать устаревшие IP. Поэтому в установленном профиле сохраняются прежние проверенные значения. Не включайте DoH/DoT/удалённый DNS/proxying без понимания сетевой маршрутизации и доступности DNS из этого VPS.
+
+### BitTorrent, дополнительные outbound `finalRules`, геоданные
+
+В твоём примере есть `routing.protocol=["bittorrent"]`, `geosite:private`, `geoip:private`, `freedom.settings.finalRules`. Эти функции могут быть полезны, но **не автоматически эквивалентны** текущему профилю. При `sniffing.destOverride=["http","tls","quic"]` правило BitTorrent нельзя считать гарантированным детектором всего торрент-трафика; нужны поддержка sniffing, соответствующая policy, валидные geoip/geosite, правильный порядок правил и проверка фактического поведения. Не копируйте чужой полный routing в production без отдельной приёмки.
+
+В штатном профиле уже предусмотрено блокирование обращений к приватным сетям и собственным IP, без добавления внешних списков и сервисов. Дополнительные `finalRules` проверяйте на staging с конкретным bundled Core. Если в панели меняются routing/внутренний API inbound, убедитесь, что правило сервисного API остаётся корректным и не блокируется.
+
+### Метрики, помогающие найти причину «бана»
+
+Проверяйте отдельно: доступность IPv4 из целевой сети; TCP SYN/SYN-ACK; TLS/SNI+реальный Selfsteal; согласованный реальный VLESS-клиент; DNS/Cloudflare; `conntrack`, PSI/CPU/RAM/disk, TCP retransmits; логи RemnaNode/Xray без секретов. Это позволяет отличать DPI/IP-блокировку от падения контейнера, ошибки сертификата или подписки. Мониторинг извне нельзя заменить командой `docker ps`.
+
+## 10. Версии Xray и безопасные обновления
+
+**Новое с 2.5.5: проверка версий в один вызов, без изменений на сервере:**
 
 ```bash
-sudo vkarmani-node-check --require-xray
+sudo bash install.sh --xray-versions           # установленный Core + свежие GitHub Releases
+sudo bash install.sh --xray-versions --offline # только текущий Core, без сети
+sudo bash install.sh --refresh-image           # ОБНОВЛЕНИЕ ОБРАЗА, отдельная операция с рисками
+sudo bash install.sh --rollback-image          # ОТКАТ ОБРАЗА, если разрешает transaction state
 ```
 
-После этого отдельно проверьте:
+Проверка сравнивает `rw-core version` из контейнера с публичными метаданными GitHub и отдельно показывает **новейший опубликованный релиз, в том числе pre-release**, и `latest` стабильного канала. При ошибке GitHub выводит `NOT_VERIFIED`; она **никогда** не скачивает и не запускает исполняемый файл. Не путайте version-check с security audit и не предполагайте, что newest upstream автоматически совместим с RemnaNode.
 
-- Node online в Remnawave;
-- правильные Profile/inbound у Node;
-- правильный Host/inbound;
-- наличие inbound в Internal Squad;
-- обновлённую подписку клиента;
-- реальный VPN-клиент из внешней сети;
-- обычный `https://node.example.com` — должна открываться локальная Selfsteal-страница.
+Официальный RemnaNode уже имеет **нативный механизм** `geodata.core = {url, sha256}`: он скачивает *сырой исполняемый файл по HTTPS*, сверяет SHA256, проверяет версию и управляет symlink `rw-core`. Удаление override возвращает встроенный Core. Для его применения нужны управляемая публикация проверенного бинарника и изменения **в Panel Xray Config Profile**, которых наш установщик без доступа к панели **не делает**.
 
-Локальный `PASS` **не доказывает** panel mTLS, назначение Host/Squad или пользовательский VPN-трафик.
+**Не используйте** `docker exec ... wget latest > /usr/local/bin/rw-core`, монтирование случайного host-файла поверх `rw-core`, автоматическую загрузку непроверенного pre-release или подмену Core до тестирования обоих инбаундов, Node Plugins, геоданных и отката. Детально: [docs/XRAY_CORE_UPDATES_2.5.5.md](docs/XRAY_CORE_UPDATES_2.5.5.md).
 
----
+## 11. RKN Guard: автоматическое обновление списков
 
-## 🗺️ Как устроена нода
+Встроена **наша совместимая реализация** сканер-фильтра на `ipset`/UFW, источник сетей — `shadow-netlab/traffic-guard-lists`, связанный с проектом [Flecksis/rkn-guard](https://github.com/Flecksis/rkn-guard). Данные обновляются **раз в сутки** (`systemd timer`, `Persistent=true`). Код стороннего репозитория **не запускается и не обновляется автоматически от root**. Перед каждым будущим релизом нужно сверять upstream-код и обновления источника.
 
-```text
-Интернет / IPv4
-    ├── SSH на сохранённых портах → sshd (только пароль) + Fail2ban
-    ├── TCP/80 → host Nginx → HTTP-01 ACME / HTTPS redirect
-    └── TCP/443 → Xray внутри RemnaNode (network_mode: host)
-                     ├── аутентифицированный VLESS/RAW/Vision → routing/outbound
-                     └── HTTPS / Selfsteal → target=/dev/shm/nginx.sock, xver=1
-                                               │ read-only bind отдельного каталога
-                                               ▼
-                                  /run/vkarmani-selfsteal/nginx.sock
-                                               │
-                                    host Nginx / свой TLS / статический сайт
-
-Публичный egress IPv4 backend панели → UFW source allowlist → rw-node TCP/2222
-
-TLS-target требуется для установления REALITY; Nginx не является HTTP-прокси
-всего аутентифицированного пользовательского VPN-трафика.
+```bash
+sudo bash install.sh --enable-rkn-guard # на завершённой совместимой ноде
+sudo bash install.sh --rkn-status
+sudo bash install.sh --rkn-update       # внеплановая синхронизация списка
+sudo bash install.sh --rkn-sync-panel   # перечитать IPv4 панели из config.json
+sudo bash install.sh --rkn-disable     # отключить только нашу фильтрацию
+systemctl list-timers --all | grep vkarmani-rkn
 ```
 
-Ключевые границы:
+Фильтр затрагивает **только новые входящие TCP/80 и TCP/443**, SSH и TCP/2222 не блокирует; IPv4 панели читается из `panel_ipv4` текущего состояния, а не жёстко вшит в скрипт. При ошибке получения списка сохраняется last-known-good; при сбое подготовки должен сохраняться доступ (fail-open узкой функции).
 
-- **Публичный TCP/443 принадлежит Xray.** Host Nginx не должен конкурировать за этот порт.
-- Nginx обслуживает Selfsteal через Unix socket, а не через публичный `443`.
-- RemnaNode работает в `network_mode: host`; Docker `ports:` для него не используются.
-- В контейнер read-only монтируется только отдельный каталог Selfsteal socket; приватные ключи Let's Encrypt в Xray-контейнер не монтируются.
-- `NET_ADMIN` по умолчанию выдаётся RemnaNode для функций управления/наблюдения сетевых соединений, включая «Обозреватель сессий»; `NET_RAW` остаётся сброшен, `no-new-privileges` включён.
-- `2222` — управляющий API ноды, **не клиентский порт**.
-- Наличие listener на `2222` не доказывает, что панель успешно прошла mTLS.
+**Важно:** основной UFW ACL порта 2222 существует **отдельно** от исключений RKN. Если внешний адрес панели изменился, недостаточно обновить RKN: потребуется согласованно изменить UFW/провайдерский firewall по отдельной безопасной процедуре с backup и rollback. Блокировка трафика HTTP-01 на TCP/80 может помешать Certbot renew — проверяйте снаружи до и после включения фильтра. Подробности и инциденты: [docs/RKN_GUARD_2.5.3.md](docs/RKN_GUARD_2.5.3.md).
 
----
+## 12. Обслуживание и диагностика
 
-## 🔑 Три значения и откуда их брать
-
-| Вопрос установщика | Что вводить | Что не вводить |
+| Команда | Назначение | Побочные действия |
 |---|---|---|
-| `SECRET_KEY` | Полный `SECRET_KEY` RemnaNode, выданный вашей панелью | API-token панели, SSH-пароль, случайный ключ, секрет другой панели |
-| Домен ноды | Например `node.example.com`; одна публичная A-запись на IPv4 этой VPS | `https://...`, путь, порт, домен панели, проксируемую CDN-запись |
-| IPv4 технички | Публичный **egress IPv4 backend панели**, с которого backend идёт на Node API | домашний IP администратора, Cloudflare IP, Docker private IP, IPv4 самой ноды |
+| `sudo bash install.sh --check` | базовый локальный acceptance | Только диагностика |
+| `sudo vkarmani-node-check --require-xray` | Xray TCP/443 + внешний путь к Selfsteal | Только диагностика; требует live inbound |
+| `sudo bash install.sh --diagnose-resources` | CPU/RAM/PSI/disk/conntrack/TCP | Только диагностика |
+| `sudo bash install.sh --xray-versions [--offline]` | текущий Core / публичные релизы | Только чтение; network только без `--offline` |
+| `sudo bash install.sh --prepare-xhttp` | создаёт root-only XHTTP-шаблон | Только файл-шаблон, **не** panel switch |
+| `sudo bash install.sh --backup` | конфигурационный архив с SHA | Создаёт закрытый backup |
+| `sudo bash install.sh --refresh-image` | транзакционное обновление RemnaNode Docker image | Остановка/пересоздание контейнера возможны |
+| `sudo bash install.sh --rollback-image` | откат закреплённого image | Ограниченный rollback image/Compose |
+| `sudo bash install.sh --update-cover` | обновление статического Selfsteal-сайта | Заменяет сайт с собственным rollback |
+| `sudo bash install.sh --rollback-cover` | возвращает сайт | Не восстанавливает все данные VPS |
+| `sudo bash install.sh --rkn-status` | информация о списке и исключениях | Только диагностика |
+| `sudo bash install.sh --rkn-update` | загрузка и замена `ipset` | Изменяет правила фильтрации |
+| `sudo bash install.sh --rkn-disable` | выключить управляемую фильтрацию | Изменяет узкие правила |
 
-Ввод `SECRET_KEY` скрыт. Установщик проверяет структуру секрета/сертификатов, не печатая сам секрет.
+Дополнительно доступны **узкие legacy-режимы** `--repair-network`, `--repair-node` (завершённые 1.3.x) и `--repair-acceptance` (строго определённый незавершённый 2.5.0); **не используйте их как универсальный upgrade**. `--allow-net-admin` оставлен для совместимости; `NET_ADMIN` уже включён для RemnaNode по умолчанию в нашей схеме. При `network_mode: host` это увеличивает права контейнера по отношению к хосту.
 
-На multi-IP VPS A-запись может указывать на любой публичный IPv4, реально назначенный серверу; он не обязан быть default-source адресом. Management Address ноды в Remnawave при необходимости тоже может использовать другой локальный публичный IPv4, тогда как клиентский Host/SNI остаётся доменом ноды.
-
----
-
-## ✅ Требования к VPS и DNS
-
-| Область | Требование |
-|---|---|
-| ОС | Чистая Ubuntu `22.04`, `24.04`, `26.04` или Debian `12`, `13` |
-| Ubuntu 26.04 | Адаптация реализована, но перед массовым rollout нужна отдельная полная VPS-приёмка |
-| Архитектура | `amd64` или `arm64` |
-| Виртуализация | Полноценная VM/выделенный сервер с управляемым ядром; не LXC/OpenVZ/Docker |
-| Загрузка | systemd + GRUB, `update-grub`, `/boot/grub/grub.cfg`, `/etc/default/grub` |
-| RAM | >= 900 MiB; для Ubuntu 26.04 >= 1536 MiB; это порог допуска, не оценка пользовательской ёмкости |
-| Диск | >= 6 GiB свободно перед установкой; для образов/backups нужен дополнительный запас |
-| Сеть | Прямой публичный IPv4 назначен интерфейсу; NAT-only и IPv6-only ноды не поддерживаются |
-| DNS | Ровно одна A-запись на локальный публичный IPv4; AAAA отсутствует; домен ноды — DNS-only, не CDN/proxy |
-| SSH | Существующая IPv4 SSH-сессия и рабочий локальный пароль root/sudo-пользователя |
-| Recovery | Проверенная console/recovery хостера + snapshot до изменений |
-| Чистота сервера | Нет чужих контейнеров, web/firewall stack или конфликтующих Docker-пакетов без отдельного аудита |
-
-При неподдерживаемом или неоднозначном состоянии установщик должен остановиться, а не делать `ufw reset`, переписывать netplan/маршруты, переустанавливать загрузчик или удалять чужие пакеты «чтобы продолжить».
-
-### Порты
-
-| Порт | Назначение | Источник | Назначение |
-|---|---|---|---|
-| существующие SSH TCP-порты | администрирование | любой IPv4, кроме временных Fail2ban-банов | SSH listeners VPS |
-| `80/tcp` | Let's Encrypt HTTP-01 + redirect | любой IPv4 | выбранный IPv4 домена ноды |
-| `443/tcp` | VLESS RAW REALITY / Selfsteal | любой IPv4 | выбранный IPv4 домена ноды |
-| `2222/tcp` | RemnaNode management API | только заданный backend IPv4 панели | локальные публичные IPv4 ноды |
-
-UFW по умолчанию запрещает входящий/маршрутизируемый трафик и разрешает исходящий. Provider security groups, upstream ACL, anti-DDoS, DNS и Cloudflare находятся **вне управления установщика**.
-
----
-
-## ⚙️ Что установщик делает по порядку
-
-| Этап | Что происходит | Защитная логика |
-|---|---|---|
-| Preflight | ОС, arch, GRUB, RAM/disk, systemd, dpkg, SSH, чужое состояние | STOP до опасных изменений на неподдерживаемой системе |
-| Три значения | SECRET_KEY, домен, backend IPv4 | скрытый ввод секрета; Node IPv4 не спрашивается |
-| Первичный backup | сохраняются важные исходные конфиги | закрытый каталог + SHA256 manifest; это не полный snapshot VPS |
-| Базовые пакеты | необходимые подписанные APT-пакеты | без full-upgrade и без autoremove |
-| APT coordination | ожидание штатных `apt/dpkg/unattended-upgrades` locks | lock-файлы не удаляются, пакетные процессы не убиваются |
-| DNS/SECRET | проверка домена/секрета и выбор Node IPv4 | NAT/чужой/неоднозначный IPv4 не угадывается |
-| Время | сохраняется поддерживаемый timesyncd/Chrony | установленный time-daemon не удаляется только ради замены другим |
-| Ядро/сеть | консервативные sysctl, BBR/fq при поддержке, MTU probing | MTU/routes/netplan не переписываются; fallback явно виден |
-| IPv6 | runtime disable + GRUB `ipv6.disable=1` | полная проверка socket-level только после reboot |
-| SSH/UFW | password-only SSH, key login off, сохранение портов, API allowlist | backup фазы + временный rollback guard + `sshd` validation |
-| Fail2ban | баны только по SSH | нет постоянного SSH allowlist панели/администратора |
-| Docker | официальный repo, Engine, Compose | проверка signing-key fingerprint и daemon config |
-| Nginx/ACME | host Nginx, socket, сертификат, renewal | `nginx -t` → reload → TLS-only проверка; dry-run с deploy hook и новым receipt; полная проверка сайта отдельно |
-| RemnaNode | официальный image, host network, restart policy | после pull image закрепляется точным digest |
-| REALITY | постоянная X25519-пара + ShortID + RAW/REALITY profile | пара валидируется; при resume ключи не генерируются заново |
-| Завершение | helpers, panel guide, postboot, export ключей | `INSTALL_COMPLETE` только после local acceptance; reboot ставится последним |
-
-### SSH
-
-**2.3.0 отключает вход по SSH-ключам** и оставляет только метод `password`: `PasswordAuthentication yes`, `PubkeyAuthentication no`, `AuthenticationMethods password`, `KbdInteractiveAuthentication no`, `HostbasedAuthentication no`, `GSSAPIAuthentication no`, `PermitEmptyPasswords no`. Порты сохраняются; постоянного source-IP allowlist нет.
-
-Пароль администратора уже должен работать **до запуска**. Установщик не спрашивает его четвёртым полем, не меняет пароль/аккаунт, не разблокирует root и не удаляет `authorized_keys`. Проверяется локальная запись пароля, её срок и login shell; `Match`, ограничения пользователей и нестандартные Include требуют ручного аудита. Проверки `sshd -t/-T` не являются реальным входом: после установки с `--no-reboot` откройте вторую парольную сессию, не закрывая первую. Для TECH политика SSH не меняется — этот установщик туда не предназначен.
-
-Это сознательный компромисс. Нужен длинный уникальный случайный пароль и доступ к console/recovery. Fail2ban снижает риск bruteforce, но не делает слабый/повторно используемый пароль безопасным.
-
-### Сеть, BBR и MTU
-
-Запрашиваются BBR + fq, но установка проверяет фактически принятые sysctl. Если ядро не поддерживает нужный режим, рабочий fallback сохраняется и диагностируется, а не выдаётся за BBR.
-
-Установщик **не** уменьшает MTU «на всякий случай», не переписывает routes/netplan, не меняет NIC offloads, не ставит сторонний kernel/«BBR plus». `net.ipv4.tcp_mtu_probing=1` используется для TCP black-hole recovery вместо универсального hardcoded MTU.
-
-### Синхронизация времени
-
-Уже установленный поддерживаемый `systemd-timesyncd` или Chrony сохраняется. Установщик не удаляет timesyncd только потому, что раньше в списке пакетов был Chrony. Состояние `active` само по себе недостаточно — должна подтверждаться реальная синхронизация.
-
-### APT/dpkg locks
-
-На свежем образе `unattended-upgrades` часто уже держит package-manager locks. Установщик ждёт настоящих владельцев lock в пределах bounded deadline и показывает прогресс. Он **не** удаляет `/var/lib/dpkg/lock*`, не убивает `apt/dpkg/unattended-upgrade` и не отключает security updates ради скорости.
-
----
-
-## 🛠️ Полезные команды
-
-### Основная приёмка
+Операционные команды без изменений:
 
 ```bash
-# Обычная локальная проверка после reboot:
-sudo vkarmani-node-check
-
-# До первого reboot, когда GRUB-параметр IPv6 ещё не активен:
-sudo vkarmani-node-check --preboot
-
-# Требовать Xray TCP/443 + ожидаемый Selfsteal через REALITY path:
-sudo vkarmani-node-check --require-xray
-
-# Не перепроверять внешний DNS, сохранив остальные локальные проверки:
-sudo vkarmani-node-check --local
-
-# Отдельно management API TLS и Selfsteal:
-sudo vkarmani-node-tls-check
-sudo vkarmani-selfsteal-check --target-only
-sudo vkarmani-selfsteal-check
-```
-
-Коды диагностики: `0` — запрошенные локальные условия выполнены; `1` — локальная ошибка; `2` — неверные аргументы либо strict Xray/Selfsteal ещё не подтверждён. Код `0` **не означает**, что панель авторизовалась и пользовательский VPN уже работает.
-
-### Сервисы и listeners
-
-```bash
-sudo systemctl --failed --no-pager
-sudo systemctl status docker containerd nginx fail2ban systemd-timesyncd --no-pager
-sudo systemctl status vkarmani-node-postboot.service --no-pager
-sudo systemctl list-timers --all --no-pager
-sudo ss -4 -lntp
-sudo docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Networks}}\t{{.Ports}}'
-```
-
-Если выбран Chrony, не предполагайте наличие `systemd-timesyncd`:
-
-```bash
-sudo cat /etc/vkarmani-node/time-provider
-sudo systemctl status chrony.service --no-pager
-```
-
-### Firewall и SSH
-
-```bash
-sudo ufw status verbose
-sudo ufw status numbered
-sudo /usr/sbin/sshd -t
-sudo /usr/sbin/sshd -T | grep -E '^(port|addressfamily|passwordauthentication|permitrootlogin|pubkeyauthentication|authenticationmethods) '
-sudo fail2ban-client ping
-sudo fail2ban-client status sshd
-```
-
-Снять только подтверждённый ошибочный SSH-бан можно точечно:
-
-```bash
-# sudo fail2ban-client set sshd unbanip A.B.C.D
-```
-
-Не отключайте UFW и не открывайте `2222/tcp` всему Интернету как «временную диагностику».
-
-### Логи
-
-```bash
-sudo tail -n 120 /var/log/vkarmani-node-install.log
-sudo tail -n 120 /var/log/vkarmani-node-postboot.log
-sudo journalctl -u nginx.service -n 100 --no-pager
-sudo journalctl -u docker.service -n 100 --no-pager
-sudo journalctl -u fail2ban.service -n 100 --no-pager
-```
-
-Логи могут содержать IP/имена пользователей. Перед публикацией редактируйте персональные данные. Финальный PrivateKey-блок специально не пишется в общий install log.
-
-### Nginx / сертификат / Selfsteal
-
-```bash
+sudo systemctl status nginx --no-pager
 sudo nginx -t
-sudo test -S /run/vkarmani-selfsteal/nginx.sock
-sudo docker exec remnanode test -S /dev/shm/nginx.sock
-sudo vkarmani-selfsteal-check --target-only
-sudo vkarmani-selfsteal-check
+sudo docker compose -f /opt/vkarmani-node/compose.yaml ps
+sudo docker exec remnanode rw-core version
+sudo ss -H -lntp
+sudo ufw status numbered
+sudo systemctl --failed --no-pager
+sudo journalctl -u nginx -n 60 --no-pager
+sudo journalctl -u vkarmani-node-postboot -n 80 --no-pager
+sudo systemctl list-timers --all --no-pager
 ```
 
-Отдельная активная ACME-проверка, только в согласованном окне: обращается к staging CA, может запускать hooks и выполнять временные действия. Это **не read-only** сборщик.
+Не публикуйте вывод переменных окружения контейнера, `SECRET_KEY`, приватные REALITY-ключи или полные профили с ключами. Запросы `curl -k`, `wget --no-check-certificate`, `docker prune` в штатном продакшн-обслуживании не рекомендуются.
 
-```bash
-sudo certbot renew --dry-run --non-interactive
-```
+## 13. Расположение конфигурации и секретов
 
-### Backup и image maintenance
-
-```bash
-# Закрытый configuration backup + checksums:
-sudo vkarmani-node-maintain backup
-
-# Явное обновление образа в maintenance window:
-sudo vkarmani-node-maintain refresh-image
-
-# Возврат предыдущего pinned image, если transaction state это допускает:
-sudo vkarmani-node-maintain rollback-image
-```
-
-Эквивалентные entry points через проверенный `install.sh`:
-
-```bash
-sudo bash install.sh --backup
-sudo bash install.sh --refresh-image
-sudo bash install.sh --rollback-image
-```
-
-Не используйте Docker prune в штатном обслуживании: предыдущий image может понадобиться для rollback.
-
-### Только cover-site
-
-```bash
-# Обновить только статическую Selfsteal-страницу:
-sudo bash install.sh --update-cover
-
-# Вернуть только страницу из сохранённой копии:
-sudo bash install.sh --rollback-cover
-```
-
-Это не обновление всей ноды.
-
-### Read-only срез ресурсов
-
-```bash
-sudo bash install.sh --diagnose-resources
-sudo bash install.sh --diagnose-resources --seconds 5
-```
-
-### Версия и справка
-
-```bash
-bash install.sh --version
-bash install.sh --help
-```
-
-### Флаги первой установки и специальные режимы
-
-| Флаг / режим | Назначение | Важно |
-|---|---|---|
-| `--no-reboot` | отключить одноразовый reboot после успешной установки | удобно для ручной проверки второй SSH-сессии |
-| `--reboot` | явно оставить auto-reboot включённым | совместимый explicit-флаг; это и так default `2.4.3` |
-| `--weekly-reboot` | включить регулярный reboot по понедельникам в `04:00` МСК | по умолчанию выключен |
-| `--allow-net-admin` | совместимый флаг старых команд | в `2.4.3` ничего дополнительно не включает: `NET_ADMIN` уже является default; риск host networking описан в SECURITY |
-| `--image remnawave/node:TAG` или `@sha256:DIGEST` | задать допустимый официальный image для новой/незавершённой установки | это флаг, а не четвёртый вопрос |
-| `--check` | вызвать установленную локальную диагностику | завершённая нода не переустанавливается |
-| `--backup` | configuration backup | не заменяет provider snapshot |
-| `--refresh-image` | обновить только RemnaNode image | без APT/SSH/UFW/Nginx/kernel reconfigure |
-| `--rollback-image` | вернуть предыдущий image, если transaction state позволяет | не full VPS rollback |
-| `--update-cover` | обновить только статический cover-site | поддерживается для завершённых reviewed project-owned версий вплоть до `2.4.3`; system fixes этим не ставятся |
-| `--rollback-cover` | откатить только cover-site | не откатывает ноду/OS/image |
-| `--diagnose-resources` | read-only срез CPU/RAM/PSI/swap/TCP/disk | не меняет sysctl/MTU/services |
-| `--repair-network` | узкий legacy-repair для поддерживаемого завершённого `1.3.x` state | не миграция на `2.4.3` |
-| `--repair-node` | узкий legacy-repair для поддерживаемого завершённого `1.3.x` state | не миграция на `2.4.3` |
-
-### Повторный запуск и resume
-
-- Незавершённую `2.4.3` продолжайте тем же `2.4.3`: сохранённые три значения, REALITY keys, `allow_net_admin=true` и выбранный image digest переиспользуются, а не генерируются заново.
-- Незавершённую `2.1.0`/`2.1.1`/`2.1.2`/`2.1.3`/`2.2.0`/`2.3.0`/`2.4.0`/`2.4.1`/`2.4.2` не «превращайте» в `2.4.3` ручной заменой markers. Используйте исходный installer той же версии либо восстановите snapshot.
-- На завершённой project-owned установке обычный повторный запуск не должен заново выполнять APT/UFW/SSH/ACME/image pull; он переходит к установленной диагностике.
-- Cross-version resume по умолчанию запрещён. Историческое узкое исключение для конкретного раннего `2.0.2` package-stage описано отдельно в [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md); не обобщайте его на другие состояния.
-
-### Автозапуск и плановое обслуживание
-
-- Контейнер RemnaNode использует Docker `restart: always`; отдельный wrapper не должен конкурировать с Docker как второй supervisor.
-- Каталог Selfsteal socket восстанавливается через systemd-tmpfiles после boot.
-- Сертификаты обслуживает `certbot.timer`; renewal должен сохранять доступный TCP/80 для HTTP-01.
-- Cleanup ограничен APT-cache и старыми журналами; backups, volumes, images, containers и packages автоматически не prune-ятся.
-- Weekly reboot не включён без `--weekly-reboot`.
-
----
-
-## 🔄 Обновление image и rollback
-
-Первая установка получает допустимый официальный RemnaNode image и записывает **точный digest** в Compose/state. Уже установленная нода не должна бесконтрольно следовать за moving `latest` при каждом restart.
-
-`refresh-image` — отдельная maintenance-транзакция, а не повторная установка. Она не перенастраивает APT/SSH/UFW/Nginx/kernel. Перед apply проверяется локальное состояние, создаётся backup, сохраняются before/after Compose/digest и поддерживается rollback path, когда он однозначен.
-
-Если Docker apply оборвался после того, как daemon мог уже принять запрос, состояние может стать `IMAGE_APPLY=UNKNOWN`. **Не удаляйте pending marker** и не запускайте встречные update/rollback вслепую. Сначала проверьте фактическое состояние Docker.
-
-Rollback image не равен полному rollback VPS. Он не возвращает объекты/БД панели, пакеты ОС, уже потерянный writable layer контейнера, пользовательские сессии или provider firewall. Для whole-system rollback нужен проверенный snapshot хостера.
-
----
-
-## 📂 Где что находится
-
-| Путь | Назначение / чувствительность |
+| Путь | Роль |
 |---|---|
-| `/etc/vkarmani-node/config.json` | проверенные параметры установки; внутренний файл |
-| `/etc/vkarmani-node/remnanode.env` | **SECRET_KEY**, Node Port, timezone; секрет |
-| `/etc/vkarmani-node/reality.json` | **REALITY PrivateKey**, PublicKey, ShortID; секрет из-за PrivateKey |
-| `/etc/vkarmani-node/profile.json` | generated Remnawave/Xray template; **секрет**, содержит PrivateKey |
-| `/etc/vkarmani-node/PANEL-SETUP.txt` | операторская инструкция с параметрами Node/Profile и публичными REALITY-данными |
-| `/usr/local/lib/vkarmani-node/ssh_guard.py` | проверка парольного SSH, без изменения паролей |
-| `/usr/local/lib/vkarmani-node/cert_deploy.py` | применение и проверка сертификата после Certbot |
-| `/var/lib/vkarmani-node/cert-deploy-status.json` | root:0600; последняя фаза/result/fingerprint, не секреты |
-| `/root/reality-keys.txt` | удобный export ключей; **секрет**, `root:0600` |
-| `/etc/vkarmani-node/ssh-ports` | сохранённые SSH TCP-порты |
-| `/etc/vkarmani-node/time-provider` | выбранный проверенный NTP-клиент |
-| `/opt/vkarmani-node/compose.yaml` | управляемый Compose-проект с pinned image |
-| `/run/vkarmani-selfsteal/nginx.sock` | Selfsteal socket на хосте |
-| `/dev/shm/nginx.sock` | тот же endpoint внутри RemnaNode контейнера |
-| `/var/www/vkarmani-node/` | статический local cover + ACME webroot |
-| `/etc/nginx/conf.d/10-vkarmani-http.conf` | HTTP/80 ACME + redirect |
-| `/etc/nginx/conf.d/20-vkarmani-selfsteal.conf` | TLS/PROXY-v1 на Unix socket |
-| `/etc/letsencrypt/` | сертификаты/account data и **приватные TLS-ключи** |
-| `/usr/local/sbin/vkarmani-*` | диагностика, maintenance и recovery helpers |
-| `/var/lib/vkarmani-node/backups/` | закрытые configuration backups; автоматически не чистятся |
-| `/var/lib/vkarmani-node/image-transactions/` | состояние image-транзакций |
-| `/var/lib/vkarmani-node/network-effective.json` | реально принятые BBR/qdisc/fallback параметры |
-| `/var/lib/vkarmani-node/INSTALL_COMPLETE` | завершение локальной установки, **не статус VPN** |
-| `/var/log/vkarmani-node-install.log` | закрытый install log |
-| `/var/log/vkarmani-node-postboot.log` | результаты postboot-проверки |
+| `/etc/vkarmani-node/config.json` | публичный IPv4, домен, `panel_ipv4`, параметры; root-only |
+| `/etc/vkarmani-node/remnanode.env` | **SECRET_KEY**, Node API; секрет |
+| `/etc/vkarmani-node/reality.json` | X25519 private/public и ShortID; **секрет** |
+| `/etc/vkarmani-node/profile.json` | **готовый RAW-шаблон**, содержит PrivateKey |
+| `/etc/vkarmani-node/profile-xhttp.json` | **готовый XHTTP-шаблон**, содержит PrivateKey и путь |
+| `/etc/vkarmani-node/PANEL-SETUP.txt` | локальная инструкция для оператора |
+| `/root/reality-keys.txt` | приватный экспорт параметров REALITY |
+| `/opt/vkarmani-node/compose.yaml` | официальный pinned RemnaNode image |
+| `/run/vkarmani-selfsteal/nginx.sock` | Unix-сокет Nginx на хосте |
+| `/dev/shm/nginx.sock` | доступный контейнеру read-only bind-путь |
+| `/etc/nginx/conf.d/10-vkarmani-http.conf` | TCP/80 ACME и redirect |
+| `/etc/nginx/conf.d/20-vkarmani-selfsteal.conf` | TLS+HTTP/2+PROXY v1 на Unix-сокете |
+| `/var/www/vkarmani-node/` | статический cover + webroot ACME |
+| `/etc/letsencrypt/` | сертификаты и закрытые TLS-ключи |
+| `/var/lib/vkarmani-node/backups/` | конфигурационные backup |
+| `/var/lib/vkarmani-node/image-transactions/` | состояние транзакций Docker image |
+| `/usr/local/lib/vkarmani-node/` | проверочные и эксплуатационные helpers |
+| `/var/log/vkarmani-node-install.log` | журнал установки; root-only |
 
-Секретные файлы не публикуйте. Полная политика redaction/incident response — в [SECURITY.md](SECURITY.md).
+Полная карта файлов, права, системы восстановления и требования redaction — [SECURITY.md](SECURITY.md), [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
----
+## 14. Полная приёмка, сбои и rollback
 
-## 🧯 Быстрая карта диагностики
+### Минимальная матрица реальной приёмки
 
-| Симптом | Сначала проверить | Чего нельзя заключать автоматически |
-|---|---|---|
-| installer STOP до APT | точный preflight message, ОС/GRUB/virtualization/чужое состояние | что конфликтующие файлы безопасно удалить |
-| Node IPv4 не выбирается | A/AAAA, DNS-only, локальные public IPv4, NAT | что IP с внешнего «what is my IP» обязательно правильный |
-| local TLS `2222` PASS, но Node offline | реальный backend egress IP, provider firewall/ACL, Node Address/Port, route | что local listener доказал panel mTLS |
-| во время попытки панели на `2222` на интерфейсе `0 packets` | upstream/provider path либо panel-side route/source | что UFW/container уже успели отбросить пакет |
-| Xray `443` не слушает | доставка live profile, Node connection, выбранный Profile/inbound, Xray errors | что host Nginx должен занять public 443 |
-| Selfsteal socket PASS, public cover FAIL | REALITY `target`, `xver`, `serverNames`, live profile, Host/SNI overrides | что socket/Nginx обязательно сломан |
-| пользователи не видят Host | Internal Squad, Host visibility, inbound assignment, subscription refresh | что Node online автоматически выдаёт доступ пользователю |
-| новые клиенты работают, старые нет | `minClientVer`, поддержка REALITY/RAW старым core, fingerprint/flow | что `0.0.0` добавит отсутствующие функции древнему core |
-| часть сайтов зависает | route/loss/PMTU/CPU/provider limits/client path | что всем VPS нужен один hardcoded MTU |
-| image update оставил pending | transaction state, Docker daemon, previous image | что удаление marker = rollback |
-| после reboot нет сети | provider console, GRUB/kernel log, provider routing | что preboot local PASS гарантировал внешний доступ |
+| Шаг | Ожидаемое |
+|---|---|
+| A. Snapshot и SSH | есть console/recovery, второй SSH-login, backup проверен |
+| B. OS/службы | `nginx -t`, Docker, systemd, UFW, IPv4-only / reboot политика без ошибок |
+| C. Сертификат | ACME HTTP-01 по TCP/80, действительный TLS leaf и корректный renewal |
+| D. Selfsteal | socket/PROXY v1/TLS1.3 HTTP1.1+H2; сайт по публичному Xray TCP/443 |
+| E. Node API | TLS/локальный listener **и внешний** Panel → Node путь с нужным IPv4/ACL |
+| F. RAW | полный импорт, один inbound, действующий клиент с Vision, real egress |
+| G. XHTTP | Xray `run -test`, импорт, клиент без Vision и правильный `path`, real egress |
+| H. Возврат | XHTTP → RAW → клиент/Host/Subscriptions/443/cover без отклонений |
+| I. Защита | RKN timer/списки/исключения, никаких потерь SSH/Panel/ACME |
+| J. Нагрузка | RAM/CPU/retransmits/conntrack/стабильность, мониторинг из нужных сетей |
 
-Подробный регламент: [docs/OPERATIONS.md](docs/OPERATIONS.md) · сетевые/hosting-инциденты: [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md)
+### Типичные симптомы и первичная диагностика
 
----
+| Симптом | Проверка |
+|---|---|
+| Node offline при работающем контейнере | правильный Panel `SECRET_KEY`, реальный source IPv4 панели, TCP/2222 ACL у хостера/UFW, TLS/API сертификат |
+| Xray не слушает 443 | корректный inbound из панели, ошибки Core, docker logs, конфликт слушателя |
+| Selfsteal проходит локально, но снаружи 443 отказ | корректный `target=/dev/shm/nginx.sock`, `xver=1`, SNI/REALITY, host TCP/443 |
+| RAW работает, XHTTP нет | `flow` на всех уровнях, `xhttpSettings.host/path/mode`, актуальный клиент, supported `rw-core` |
+| После XHTTP→RAW нет клиентов | восстановить исходный Profile, тег и привязки Hosts, обновить подписки, проверить Core restart |
+| Списки RKN устарели | `--rkn-status`, доступность upstream, timer, логи; не удалять старый last-known-good |
+| Certbot renew отказал | DNS-only, публичный HTTP/80, UFW/RKN/провайдер/ACME path, Certbot logs |
+| Зависают сайты/скачивания | CPU/RAM, MTU/PMTUD, DNS, conntrack, RTT/потери, используемый client-core |
+| Сбой image update | transaction state `PENDING/UNKNOWN`, pinned digest, предыдущий image; **не удалять markers** |
 
-## 🧪 Что проверено и что остаётся за оператором
+### Порядок безопасного отката
 
-В release-архиве `2.4.3` зафиксировано **557 regression/integration тестов**, локально пройденных от root и UID 1000 без пропусков. CI-инцидент 2.4.1 не скрыт: сохранены журналы всех трёх runner-ов и отдельное воспроизведение Nginx `broken header` для искусственно фрагментированного PROXY v1. Исправленный интеграционный тест отправляет PROXY header целиком и затем детерминированно фрагментирует большой TLS ClientHello. В 2.4.3 дополнительно проверяется canonical LF для manifest text и выполняется release-validation через clean Git round-trip перед публикацией. Preview/site rendering в 2.4.3 не менялись, поэтому новый browser-run не выполнялся; сохранён предыдущий evidence 2.3.0 — 36 PASS (четыре варианта × девять ширин). Это не тест через production REALITY. Проверяются встроенные payload установщика, password-only SSH и его отказы, фазы cert-deploy и реальный локальный Nginx reload, владелец TCP/443, FD/очереди, профиль и Selfsteal HTTP-policy, REALITY key export, отказ от unsafe symlink, terminal-only вывод PrivateKey, default auto-reboot/`--no-reboot`, APT-lock coordination и более ранние сценарии отказов сети/Nginx/SSH/image maintenance.
+1. Сохраните логи/статус **без секретов**, не очищая транзакционные markers.
+2. Если сломалась только смена транспорта — восстановите **сохранённый Panel Config Profile/Host**, верните RAW и проверьте Node/client. Перезагрузка VPS не нужна.
+3. Если отказ вызван обновлением Docker-образа — выполните **предусмотренный** `--rollback-image`, только когда состояние транзакции однозначно.
+4. Если отказ сайта — используйте `--rollback-cover`; он не восстанавливает Node/OS.
+5. Если потеряны SSH/UFW/сеть или повреждена система — консоль провайдера и заранее проверенный provider snapshot. Локальные механизмы не обещают полного отката.
 
-Запуск test suite без установки ноды:
+**Межверсионное resume:** незавершённую первичную установку продолжайте **тем же установщиком того же поколения**, за исключением документированных узких repair-вариантов. Нельзя слепо менять `/var/lib/.../install-version` или `INSTALL_COMPLETE` для «починки» чужой ошибки.
+
+## 15. Тестирование, ограничения, исходники
+
+Для **offline**-тестов исходного архива (без установки ноды на машину с тестами):
 
 ```bash
+bash -n install.sh
 bash tests/run.sh
+sha256sum --check SHA256SUMS
 ```
 
-В зависимости от тестов нужны Python 3.10+, `cryptography`, PyYAML, Nginx/OpenSSL, APT, Git и Node.js. В среде, где внешних инструментов нет, отдельные проверки могут быть явно отмечены как skip; release-validation выполнялась без пропусков.
+Тесты содержат моки Docker, UFW, ошибки сети/прав, TLS/H2/PROXY, idempotence, обновление/откат и валидаторы профилей. **Реальные серверные эффекты и доступность из РФ не подтверждаются offline-тестами.** Прежде чем считать версию production-verified, нужно выполнить отдельный пилот Ubuntu 24.04 и в дальнейшем других OS/arch, матрицу клиентов, Panel→Node и долгосрочное наблюдение.
 
-Локальные тесты не могут доказать за ваш конкретный хостер:
+### Ссылки и источники
 
-- provider firewall/security-group и anti-DDoS;
-- реальный panel→node маршрут и mTLS через Интернет;
-- DNS/Cloudflare propagation вне VPS;
-- поведение Host/Squad/subscription в вашей версии панели;
-- реальный пользовательский VPN и throughput;
-- ёмкость под вашу CPU/RAM/нагрузку/лимиты провайдера;
-- полный Ubuntu 26.04 lifecycle без отдельного pilot;
-- возможность whole-VPS restore из provider snapshot.
+- [Remnawave Node](https://github.com/remnawave/node), [документация Node](https://docs.rw/install/remnawave-node/), [список Nodes/Profiles](https://docs.rw/learn-en/nodes/).
+- [Xray Core](https://github.com/XTLS/Xray-core), [XHTTP](https://github.com/XTLS/Xray-core/discussions/4113), [XHTTP+REALITY reference](https://github.com/XTLS/Xray-examples/tree/main/VLESS-XHTTP-Reality/minimal-steal_others).
+- [RemnaNode CoreLoaderService](https://github.com/remnawave/node/blob/main/src/modules/xray-core/core-loader.service.ts) — официальный механизм `geodata.core` с HTTPS+SHA256.
+- [Flecksis/rkn-guard](https://github.com/Flecksis/rkn-guard), [источник списков](https://github.com/shadow-netlab/traffic-guard-lists).
 
-Production rollout должен оставаться последовательным:
+**Документы проекта:** [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [docs/OPERATIONS.md](docs/OPERATIONS.md) · [docs/TEST_REPORT.md](docs/TEST_REPORT.md) · [docs/TRANSPORT_SWITCHING_2.5.4.md](docs/TRANSPORT_SWITCHING_2.5.4.md) · [docs/RKN_GUARD_2.5.3.md](docs/RKN_GUARD_2.5.3.md) · [docs/XRAY_CORE_UPDATES_2.5.5.md](docs/XRAY_CORE_UPDATES_2.5.5.md) · [docs/history/README_2.5.4.md](docs/history/README_2.5.4.md) — **полная прежняя README сохранена без сокращений**.
 
-```text
-snapshot
-  → одна canary-нода
-  → установка
-  → export REALITY keys
-  → reboot
-  → новый SSH login
-  → vkarmani-node-check
-  → Remnawave Profile / Node / Host / Internal Squad
-  → vkarmani-node-check --require-xray
-  → реальный внешний VPN-клиент
-  → наблюдение под реальной нагрузкой
-  → следующая страна / провайдер
-```
-
----
-
-## 📚 Документация проекта
-
-- [docs/SELFSTEAL_2.2.0.md](docs/SELFSTEAL_2.2.0.md) — точный объём новой серверной части и границы приёмки.
-- [docs/SOURCE_REVIEW_2.2.0.md](docs/SOURCE_REVIEW_2.2.0.md) — Selfsteal / iptables / HAProxy / Nginx, источники и решения.
-- [preview/README.md](preview/README.md) — четыре локальных HTML-preview и браузерные изображения.
-
-- [SECURITY.md](SECURITY.md) — trust boundaries, секреты, firewall/container security, supply chain и incident response.
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — эксплуатация, диагностика, backup, maintenance и recovery.
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — точная матрица тестов и ограничения.
-- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md) — export REALITY keys и auto-reboot.
-- [docs/APT_LOCK_COORDINATION_2.1.1.md](docs/APT_LOCK_COORDINATION_2.1.1.md) — безопасное ожидание dpkg/APT locks.
-- [docs/COVER_SITE.md](docs/COVER_SITE.md) — обновление/rollback cover-site.
-- [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md) — provider restrictions и reachability diagnostics.
-- [docs/UBUNTU_26_04.md](docs/UBUNTU_26_04.md) — статус Ubuntu 26.04 и pilot plan.
-- [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md) — timesyncd/Chrony и границы resume.
-- [docs/UFW_PREFLIGHT_FIX.md](docs/UFW_PREFLIGHT_FIX.md) — почему preflight UFW намеренно строгий.
-- [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — сценарии отказов и остаточные риски.
-- [docs/AUDIT.md](docs/AUDIT.md) — технический аудит и границы архитектуры.
-- [docs/RESEARCH.md](docs/RESEARCH.md) — основания технических решений.
-- [CHANGELOG.md](CHANGELOG.md) — история версий.
-
----
-
-## 🔐 Коротко: чего не делать
-
-- Не запускать installer на панели/БД.
-- Не отключать checksum/preflight/lock guards ради «быстрее поставить».
-- Не открывать `2222/tcp` всему Интернету.
-- Не публиковать `SECRET_KEY`, REALITY PrivateKey, `profile.json`, `reality.json`, `/root/reality-keys.txt`, Let's Encrypt private keys и backups.
-- Не переиспользовать один REALITY PrivateKey/ShortID на разных per-node профилях без осознанного решения.
-- Не закрывать старую SSH-сессию до проверки новой либо provider console.
-- Не считать local PASS доказательством panel connectivity или пользовательского VPN.
-- Не считать image rollback заменой provider snapshot.
-- Не раскатывать новый OS/provider/image массово до полного canary-цикла.
+**Публичная поставка:** новая версия не загружалась в GitHub и не развёртывалась на VPS. При будущей публикации сначала должен совпасть manifest и CI; **только тогда** допустима команда загрузки с `main` с независимым закреплённым SHA. На сервере всегда храните отдельный snapshot, working Profile и plan rollback.

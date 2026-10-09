@@ -1,5 +1,80 @@
-# TEST_REPORT — Node_Install 2.4.3
+# TEST_REPORT — Node_Install 2.5.5
 
+## 2.5.5 release-candidate offline validation — 2026-10-09
+
+- **Root UID 0:** **631/631 PASS**, 0 failures/errors/skips (39.821 s), [`evidence/255-root-tests.txt`](evidence/255-root-tests.txt).
+- **Unprivileged UID 65534:** **631/631 PASS**, 0 failures/errors/skips (39.055 s), [`evidence/255-unprivileged-tests.txt`](evidence/255-unprivileged-tests.txt).
+- По сравнению с 2.5.4 сохранены прежние 620 тестов и добавлены **11 тестов**: 8 для read-only Xray release checker и полноты/согласованности двух JSON, 3 для завершённых версий и маршрутизации без дубликатов.
+- Сначала были обнаружены два старых ожидания (дублирующий CIDR в profile regression и фиксированная формулировка предупреждения про DPI в README). Подтверждённо исправлены оба; **полный повторный прогон** прошёл успешно у двух разных пользователей. Первые FAIL не скрыты и не объявляются PASS.
+- `install.sh --xray-versions --offline` не обращается к GitHub и не заменяет бинарник. Онлайн проверка GitHub метаданных покрыта моками, доступности GitHub **с конкретной VPS не проверяли**.
+- Официальная RemnaNode с `rw-core`, реальные Xray syntax/runtime, panel config switch RAW→XHTTP→RAW, SSL ACME снаружи, истинное подключение клиента и возможная блокировка со стороны РКН **не проверены**. В рабочей среде отсутствует Docker и Xray; offline mocks не равны live acceptance.
+- Никаких изменений серверов, Remnawave Panel, GitHub, SSH, UFW, Nginx, Docker image или сертификатов не выполнялось. Не включён custom Xray auto-update: альтернативный вариант documented/opt-in через Panel `geodata.core` или pinned официальный image.
+
+---
+
+## Сохранённый отчёт: Node_Install 2.5.4
+
+## 2.5.4 release-candidate offline validation — 2026-10-09
+
+- **Root:** 620/620 PASS, 0 failures/errors/skips (38.669 s), [`evidence/254-root-tests.txt`](evidence/254-root-tests.txt).
+- **Unprivileged UID65534:** 620/620 PASS, 0 failures/errors/skips (39.064 s), [`evidence/254-unprivileged-tests.txt`](evidence/254-unprivileged-tests.txt).
+- Добавлены 11 отдельных проверок XHTTP-шаблона, стабильного пути, сохранения ключей, отказа от Vision, совместимости Remnawave API inbound, root:0600, идемпотентности и отказа при имитированном несовместимом Core. Существующие тесты RAW/RKN/ACME/UFW/Docker/SSH/ресурсов сохранены.
+- Полный набор — **локальная offline-симуляция** и проверка синтаксиса файлов, а НЕ проверка запущенной production-ноды, XHTTP-совместимости реального Xray/Core, работы панели и VPN-клиентов.
+- На реальном VPS `--prepare-xhttp` должен выполнить дополнительный `rw-core run -test` по установленному образу. При отказе эта операция не изменяет RAW. Новая установка не ломает RAW из-за необязательного XHTTP.
+- GitHub `main` и действующие VPS не менялись. Требуется canary RAW → XHTTP → RAW, проверка реальных подписок и Selfsteal.
+
+---
+
+## 2.5.3 release-candidate offline validation — 2026-10-09
+
+- Основа: полный пользовательский архив `Node_Install_2.5.2.zip` с сохранением всех исходных файлов. Ветка GitHub main/серверы не изменены.
+- Новое: `integrations/rkn_guard.py` встроен в `install.sh` байт-в-байт (регрессия в `test_rkn_guard_253.py`). IPv4-only UFW TCP/80,443, dynamic `panel_ipv4` для исключения перед blockset DROP, атомарное обновление `ipset` с обработкой неверных CIDR/сбоев HTTPS, ежедневный systemd timer и восстановление ipset до UFW после reboot.
+- **609/609 PASS** root и **609/609 PASS** UID65534 (10 новых RKN offline-проверок, существующая система тестов сохранена). Конкретные файлы доказательств: `evidence/253-root-tests.txt`, `evidence/253-unprivileged-tests.txt`.
+- `bash -n install.sh`, `bash -n tests/run.sh` и compile Python payload — PASS; финальный SHA256 установщика: `432945ee59f53dd9616af55419cf78579f9feb28356c534df2e9b9ece62f5965`.
+- Неподтверждённый UFW rollback теперь останавливает auto-reboot/INSTALL_COMPLETE; после успешной интеграции RKN штатный node preboot acceptance выполняется повторно, и при его отказе фильтр откатывается. Эти ветки покрыты статическими/модульными проверками; реальный VPS не проверялся.
+- **NOT_VERIFIED:** фактический `ipset`/UFW в ядре VPS, boot ordering, HTTPS-доступ к GitHub с ноды, Panel→Node и клиентский VLESS после включения RKN, GitHub CI новой версии и canary на Ubuntu/Debian.
+- Исследован upstream Flecksis/rkn-guard master `34ed9c13bfa1280d32226164084da25b33a4c155`; список берётся из `shadow-netlab/traffic-guard-lists`. Upstream-код не исполняется и не автообновляется; **обязательный код-ревью upstream при КАЖДОМ будущем релизе**: `RKN_GUARD_2.5.3.md`.
+
+---
+
+## 2.5.2 release-candidate validation — 2026-10-06
+
+Baseline remains commit `817b283d813b79bbfa9bde8ced136fc792b48108`; the original uploaded archive and baseline installer SHA256 remain the values recorded by the 2.5.0 specification. 2.5.2 preserves the complete 2.5.0/2.5.1 architecture and adds only listener-acceptance corrections proven on a real Ubuntu 24.04.4 amd64 VPS.
+
+### Real-VPS root causes now covered
+
+- Docker 29.8 canonical `CAP_NET_ADMIN` / `CAP_NET_RAW` inspect representation — fixed in 2.5.1 without widening the exact capability set.
+- iproute2 scoped IPv4 such as `127.0.0.53%lo:53` — fixed in 2.5.1.
+- preboot `rw-node` may own exactly one AF_INET6 wildcard `NODE_PORT` socket while `bindv6only=0`; IPv4 connectivity was proven to both loopback and public IPv4 even though `ss -4` omitted the socket. 2.5.2 accepts only this proof-based exact state.
+- postboot/live `rw-core` legitimately bound `0.0.0.0:443`, matching the generated VLESS profile. 2.5.2 permits public IPv4 or IPv4 wildcard for Xray 443 while retaining process/PID ownership checks; Nginx/80 remains concrete-public-IPv4-only.
+
+### Real Ubuntu 24.04 local reboot canary
+
+The diagnosed node completed install state, rebooted with `ipv6.disable=1`, returned with no IPv6 socket/address/route state, and exposed IPv4 listeners on 22/80/443/2222. After the two 2.5.2 acceptance fixes were applied, full local acceptance passed, `vkarmani-node-postboot.service` rerun completed with `Result=success` and `ExecMainStatus=0`, and `systemctl --failed` reported zero units. `NODE_PLUGINS_PREREQS`, Xray floors, nft runtime, Selfsteal, listener policy and local Node TLS all passed.
+
+This is a **local host/container/reboot canary**, not full production verification. Panel→node external path, Panel Plugin Config assignment, authenticated client traffic, Torrent Blocker detection and regional reachability were not proven by these steps.
+
+### Full local suite
+
+Final suite: **599/599 PASS** as root (33.437 s) and **599/599 PASS** as UID 1000 (33.354 s), with 0 failures / 0 errors / 0 skips in both runs. No baseline test is removed or weakened. New 2.5.2 regressions execute the wildcard-443 rule and the preboot dual-stack NODE_PORT proof path, including negative cases that forbid hiding any other missing listener. Logs: `docs/evidence/252-root-tests.txt` and `docs/evidence/252-uid1000-tests.txt`.
+
+### Static/release gates
+
+- `bash -n install.sh` — PASS;
+- `bash -n tests/run.sh` — PASS;
+- embedded Node Plugins helper compiles — PASS;
+- JSON release metadata validation — PASS;
+- `git diff --check` and final `sha256sum --check SHA256SUMS` are release gates before packaging;
+- ShellCheck — **NOT_RUN_NOT_INSTALLED**;
+- no real installation is executed on the build host.
+
+Current pre-manifest `install.sh` SHA256: `69177096f8d7142ee578a7bcd9f583b0e934ebe8990341d11a4ef07b24dd0523`.
+
+Detailed incident contract: [HOTFIX_2.5.2](HOTFIX_2.5.2.md).
+
+---
+
+## Historical 2.4.3 report (preserved)
 Дата: **2026-10-03**. Статус: **LOCAL_TESTS_PASSED_REMOTE_CI_RERUN_REQUIRED**.
 
 ## Исправление 2.4.3 по фактическому GitHub Actions failure 2.4.2
@@ -85,3 +160,8 @@ HTML/CSS/preview/site rendering в рамках 2.4.3 не изменялись.
 ## Итог
 
 Локальный кодовый/тестовый контракт 2.4.3 подтверждён; удалённый GitHub matrix Ubuntu 22.04/24.04/26 userspace требует нового запуска после публикации 2.4.3. Пользовательские серверы, панель, DNS, Cloudflare, Docker daemon, Nginx, UFW и SSH при подготовке релиза не изменялись. Финальный manifest и ZIP проверяются после фиксации всех файлов; внешняя package-attestation поставляется рядом с архивом, чтобы не создавать self-referential hash внутри самого ZIP.
+
+
+## Node_Install 2.5.4 — RAW / XHTTP templates (2026-10-09)
+
+Added `tests/test_xhttp_254.py` for deterministic XHTTP path, unchanged REALITY keys and routing, preserving a single VLESS listener/tag/443, Vision prohibition on XHTTP, correct Selfsteal PROXY v1 socket, root-only file checks and conflict/idempotence handling. Extended local profile policy for both modes and maintained historical-version checks. No on-VPS LIVE Xray/Remnawave/client/DPI test is available in this environment: the command `--prepare-xhttp` performs a runtime `rw-core run -test` on a real node before making its XHTTP template available; it does not switch the panel. Details: `docs/TRANSPORT_SWITCHING_2.5.4.md`.

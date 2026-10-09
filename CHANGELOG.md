@@ -1,4 +1,64 @@
+## 2.5.5 — 2026-10-09 (reviewed RAW/XHTTP examples, documentation, Xray release advisory)
+
+- **README полностью пересобран**, оглавление + полная процедура установки/приёмки, границы Node/Panel, отдельные полные RAW+REALITY+Vision и XHTTP+REALITY JSON с обезличенными ключами и адресами. Исходная README 2.5.4 целиком сохранена в `docs/history/README_2.5.4.md`.
+- `examples/inbound-raw-full.example.json` и `examples/inbound-xhttp-full.example.json` повторяют структуру **реального генератора** и различаются только transport/flow/XHTTP settings. Эти примеры не содержат пригодных для production приватных ключей; реальные ключи существуют только в приватном каталоге VPS. Оба примера согласованы с README тестами на побайтовое совпадение.
+- Новый **read-only** `sudo bash install.sh --xray-versions [--offline]`: сообщает реальную версию `rw-core` в запущенной RemnaNode и метаданные stable/pre-release официального Xray; ошибок сети не скрывает. Никакой загрузки Xray Core, подмены контейнера, автоматического pre-release, изменения Panel или restart. Подробности и процедура безопасного обновления в `docs/XRAY_CORE_UPDATES_2.5.5.md`.
+- Проверен официальный код RemnaNode `CoreLoaderService`: pinned custom Core через `geodata.core.url + sha256` возможен как **отдельное осознанное изменение Xray Config Profile**, не неявная операция установщика. Основной рекомендованный upgrade path остаётся официальным RemnaNode image digest с проверкой совместимости и откатом.
+- Исправлены пропущенные разрешённые контракты `2.5.5` в операциях `--check` (XHTTP), `--prepare-xhttp`, RKN Guard, обслуживании cover и проверке завершённой установки. Будущие неизвестные версии продолжают отклоняться.
+- Убрано дублирование собственного IPv4/32 в routing запрещённых направлений при совпадении `public_ipv4` и локального интерфейса. Политика блокировки, DNS по умолчанию и внешние сетевые правила не менялись.
+- Новые статические/симуляционные тесты Xray release feed, отказ при невалидных данных, Docker probe, полнота и согласованность full examples, повторный запуск, запрет Vision в XHTTP, межверсионные ACL/gates и отсутствие дубликатов CIDR.
+- **Не менялись:** действующие SSH/UFW, Docker image, Nginx Selfsteal/ACME/PROXY v1/H2, REALITY identity, RKN timer, Node Plugins, конфигурация Remnawave Panel и live inbound. Локальный offline PASS не означает подтверждения баностойкости или HTTPS/VPN доступности из РФ.
+- При **следующей сборке** обязательно сверить новые коммиты `Flecksis/rkn-guard` и источник `shadow-netlab/traffic-guard-lists`, а также changelog/security Xray и RemnaNode, не обновляя непроверенный исполняемый код автоматически.
+
+## 2.5.4 — 2026-10-09
+
+- Реализована поддержка **альтернативного** XHTTP+REALITY inbound вместо RAW+REALITY+Vision, без одновременной работы на одном публичном TCP/443 и без добавления фонового механизма переключения. Выбор inbound полностью вручную в Remnawave Panel, далее штатное применение/рестарт RemnaNode, не reboot Ubuntu.
+- Новая установка продолжит безопасную настройку RAW, даже если дополнительный XHTTP-синтаксис не поддерживается текущим образом; XHTTP будет явно NOT_READY до успешного `--prepare-xhttp`.
+- Два локальных защищённых импортных шаблона (RAW и XHTTP), одинаковые теги/REALITY ключи/ShortID, один host Nginx Selfsteal Unix-socket PROXY v1 TLS/H2, те же DNS/routing и профильные проверки. XHTTP пустой `flow`, отдельный стабильный HMAC path.
+- Команда `sudo bash install.sh --prepare-xhttp` готовит/верифицирует XHTTP-файл на завершённой 2.5.2/2.5.3/2.5.4 ноде без изменения действующего профиля, firewall, Docker Compose, Nginx, RemnaNode или ключей; синтаксис проверяется установленным `rw-core` на staging-file в контейнере. Файл не перезаписывается при отличии от ожидаемого.
+- Уточнена read-only проверка профиля с Remnawave API inbound и политика для двух транспортов; старые RAW проверки остаются.
+- Полный runbook: [TRANSPORT_SWITCHING_2.5.4](docs/TRANSPORT_SWITCHING_2.5.4.md). Отсутствие реального VPN-canary указано явно; баностойкость не гарантируется.
+- Функциональность и ежедневные обновления RKN Guard 2.5.3, UFW/SSH/Nginx/certbot, Docker image management и пр. сохраняются.
+
+## 2.5.3 — 2026-10-09 (RKN data integration, 609 offline tests)
+
+- `Flecksis/rkn-guard` review: вместо небезопасного `curl | bash`/замены чужих UFW правил использован встроенный IPv4-only `ipset` + маркированный UFW hook, источники CIDR — из `shadow-netlab/traffic-guard-lists` согласно upstream.
+- Ежедневное `systemd` обновление CIDR по HTTPS с валидацией, атомарным `ipset swap`, сохранением последней успешной загрузки и сохранением существующих правил при сетевых ошибках.
+- Исключения IP панели динамические: чтение `panel_ipv4` из конфигурации при загрузке и при каждом обновлении, без закреплённого IP в скрипте.
+- Фильтрация только входящих новых TCP/80,443, без IPv6, SSH, Node API 2222, Docker/Nginx/Xray и чужих user.rules. Дополнительные команды: `--enable-rkn-guard`, `--rkn-update`, `--rkn-sync-panel`, `--rkn-status`, `--rkn-disable`.
+- Boot-порядок UFW через отдельную `vkarmani-rkn-prepare.service`, UFW before.rules atomic backup/reload/rollback; отдельный runbook [`docs/RKN_GUARD_2.5.3.md`](docs/RKN_GUARD_2.5.3.md).
+- Обязательный просмотр репозитория upstream на **каждом будущем релизе** (новые коммиты/версия/новый источник данных). **Автообновление upstream исполняемого кода запрещено**.
+- Release status: локальные offline-тесты; реальный VPS/UFW/SSH/Panel→Node/VLESS canary ещё НЕ ПРОВЕРЕН.
+
 # Изменения
+
+## 2.5.2 — 2026-10-06
+
+- Исправлен реальный preboot false-negative: RemnaNode `NODE_PORT` может временно быть AF_INET6 wildcard dual-stack socket до reboot; acceptance принимает его только при exact `rw-node` ownership/PID, `net.ipv6.bindv6only=0` и успешном IPv4 connect к loopback и public IPv4.
+- Исправлен postboot false-negative: generated RAW+REALITY profile штатно разрешает `0.0.0.0:443`; public-listener audit теперь разрешает Xray 443 на public IPv4 или IPv4 wildcard, сохраняя строгую проверку owner/PID. TCP/80 остаётся только на конкретном public IPv4.
+- Реальная Ubuntu 24.04 нода после reboot подтвердила IPv6 kernel disable, `2222` на IPv4, `rw-core` на `0.0.0.0:443`, `NODE_PLUGINS_PREREQS=PASS`, full local acceptance и успешный postboot systemd service. Panel path и authenticated client не объявляются проверенными.
+
+
+## 2.5.1 — 2026-10-06
+
+- Исправлен реальный false-negative `NODE_CAPABILITY_POLICY` на Docker Engine 29.8.x: `docker inspect` может возвращать canonical `CAP_NET_ADMIN` / `CAP_NET_RAW`; checker теперь нормализует только допустимый `CAP_` prefix и по-прежнему требует exact `NET_ADMIN` add, exact `NET_RAW` drop и `no-new-privileges`. Дополнительные capabilities не разрешены.
+- Исправлен `PUBLIC_TCP_LISTENERS_POLICY FAIL NOT_VERIFIED INVALID_LOCAL_DATA` на Ubuntu 24.04: `ss` может печатать loopback `systemd-resolved` как `127.0.0.53%lo:53`; parser теперь отделяет display scope `%iface`, игнорирует настоящий loopback и продолжает строго проверять non-loopback listeners.
+- Добавлен explicit `--repair-acceptance` только для exact незавершённого 2.5.0 final-acceptance failure (`INSTALL_FAILED rc=1 line=6412` + exact reviewed helper SHA). Repair делает private backup, staging, syntax/post-check и rollback; не запускает APT, не меняет SSH/UFW/Nginx/GRUB/sysctl, не restart/recreate Docker/RemnaNode, не меняет Panel и не переписывает исходную `install-version=2.5.0`.
+- Реальный Ubuntu 24.04 запуск 2.5.0 теперь зафиксирован как **failed canary evidence**, а не как production verification. Post-fix 2.5.1 VPS canary остаётся обязательным.
+
+[Hotfix detail](docs/HOTFIX_2.5.1.md) · [Node Plugins base contract](docs/NODE_PLUGINS_2.5.0.md) · [Operations](docs/OPERATIONS.md).
+
+## 2.5.0 — 2026-10-06
+
+- Исправлена первопричина acceptance-version bug: одна reviewed contract classification для modern/legacy/unreviewed; 2.4.1–2.4.3 снова используют `ssh_guard.py check` и strict Selfsteal target check, future/malformed versions fail closed.
+- До системных изменений добавлен kernel `>=5.7` preflight; `nftables` добавлен в signed distro package plan без запуска сервиса или управления `/etc/nftables.conf`.
+- Profile validator защищает sniffing `enabled/routeOnly/http+tls+quic` и существующие TCP/443 RAW+REALITY+Vision+Selfsteal invariants.
+- Acceptance проверяет Xray functional floor `26.3.27`, reviewed security floor `26.7.11`, effective `NET_ADMIN`, read-only `ip remnanode` structure и публичную TCP surface. Panel Plugin Config и реальный Torrent detection остаются честно `NOT_VERIFIED`.
+- `--diagnose-resources` расширен conntrack, disk/inode percentages, reboot marker и threshold hints без auto-tuning.
+- Добавлены reference-only Node Plugin policy, external-path taxonomy/control-vantage runbook, safe replacement и provider-abuse incident guidance. Никаких RST/community auto-blocklists, custom Xray, fingerprint/SNI rotation, нового daemon/container/cron или Panel API mutation.
+- Real VPS canary в локальном build environment не выполняется и не должен объявляться `production verified`.
+
+[Node Plugins](docs/NODE_PLUGINS_2.5.0.md) · [Survivability](docs/SURVIVABILITY_2.5.0.md) · [External diagnostics](docs/EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md) · [Replacement](docs/NODE_REPLACEMENT_2.5.0.md).
 
 ## 2.4.3 — 2026-10-03
 

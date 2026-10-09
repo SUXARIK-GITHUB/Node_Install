@@ -1,5 +1,48 @@
 # Эксплуатация, диагностика и восстановление
 
+## Выпуск 2.5.5 — RAW/XHTTP профили, версии Core, безопасное обслуживание
+
+**Режим переключения:** вручную заменить действующий VLESS inbound в Remnawave Panel (сохранить `tag`, `443`, REALITY identity, приватный Unix-socket target `/dev/shm/nginx.sock`, `xver: 1`), применить конфиг и при необходимости перезапустить **только RemnaNode/Xray**, не Ubuntu. RAW использует `network:raw` + Vision, XHTTP `network:xhttp` + пустой flow и `xhttpSettings.host/path/mode`. После switch необходимы обновление подписок и реальный client+Selfsteal canary. Никаких дополнительных listening TCP/443 или Nginx на публичном 443.
+
+**Подготовка для завершённой ноды:** `sudo bash install.sh --backup`, затем `sudo bash install.sh --prepare-xhttp` для генерации root-only шаблона и проверки установленным `rw-core`. Новый установщик НЕ должен запускаться повторно как способ неявного обновления Core. Права `root:0600`, существующие ключи и шаблон RAW сохраняются.
+
+**Версии без изменений:** `sudo bash install.sh --xray-versions` или `--xray-versions --offline`. Отказ связи с GitHub — не причина менять Core; версия установленного image — источник истины, `latest stable` может быть старее bundled Core. Решения: [Xray update runbook](XRAY_CORE_UPDATES_2.5.5.md). Отдельная транзакция обновления официального Docker image: `--refresh-image` (только после backup/canary) и `--rollback-image` (с проверенным transaction state). Нативная загрузка custom Core по `geodata.core.url + sha256` производится через Panel, без исполнения произвольного upstream install.sh.
+
+**Приватные данные:** реальные REALITY-ключи никогда не копировать в README, Git/CI, логи, отчёты, публичные чаты. Полные **обезличенные** JSON-профили находятся в `examples/` и README; приватные, пригодные для конкретной ноды — только `/etc/vkarmani-node/profile.json` / `profile-xhttp.json` с ограниченным доступом.
+
+**Что проверять после любой смены:** TCP/443 из целевых сетей, fallback HTTPS/TLS1.3/H2/PROXY v1, авторизованный клиент, Node API TCP/2222 с IPv4 панели, Certbot HTTP-01 TCP/80, UFW/RKN panel exceptions, `docker exec remnanode rw-core version`, RSS/conntrack, сохранность и проверку rollback. Смена протокола не гарантирует исчезновения блока IP провайдером.
+
+Полная инструкция: [README.md](../README.md), [docs/TRANSPORT_SWITCHING_2.5.4.md](TRANSPORT_SWITCHING_2.5.4.md), [docs/XRAY_CORE_UPDATES_2.5.5.md](XRAY_CORE_UPDATES_2.5.5.md).
+
+## Текущий выпуск 2.5.2 — real-VPS acceptance hardening
+
+2.5.2 сохраняет все исправления 2.5.1 и добавляет два контракта, подтверждённых реальной Ubuntu 24.04 нодой: preboot dual-stack `NODE_PORT` допускается только при verified `rw-node` ownership, `bindv6only=0` и успешном IPv4 connect к loopback/public IPv4; postboot `rw-core` на `0.0.0.0:443` считается корректным, если generated profile разрешает wildcard и PID принадлежит remnanode core. Nginx/80 по-прежнему обязан слушать конкретный public IPv4. Реальный локальный reboot-canary после fixes прошёл; Panel→node и authenticated client остаются отдельными проверками.
+
+
+## Предыдущий выпуск 2.5.1 — acceptance hotfix
+
+2.5.1 исправляет два false-negative, найденных реальной установкой 2.5.0 на Ubuntu 24.04 / Docker 29.8.2: canonical capability names `CAP_NET_ADMIN`/`CAP_NET_RAW` и iproute2 scope-notation `127.0.0.53%lo:53`. Политика не ослаблена: capability set остаётся exact, а public non-loopback listeners по-прежнему проверяются строго. Подробности: [HOTFIX_2.5.1](HOTFIX_2.5.1.md).
+
+Для **точно известного незавершённого 2.5.0**, остановившегося на `INSTALL_FAILED rc=1 line=6412`, используйте только новый explicit repair:
+
+```bash
+sudo bash install.sh --repair-acceptance
+```
+
+Repair сначала проверяет exact SHA старых acceptance-файлов и checkpoint, затем делает private backup, atomic replacement и `vkarmani-node-check --preboot`. При ошибке старые файлы восстанавливаются. APT, SSH, UFW, Nginx, Docker image/container lifecycle, GRUB/sysctl и Panel не меняются; `install-version=2.5.0` сохраняется, создаётся отдельный receipt. После PASS repair **сам не reboot-ит**: проверьте provider console и вторую SSH-сессию, затем выполните один `sudo reboot` и после входа проверьте `sudo vkarmani-node-check --postboot`.
+
+Для completed 2.5.0/2.4.x `--repair-acceptance` не является updater и должен отказать. Обычный повтор завершённого installer остаётся диагностикой.
+
+## База 2.5.0 — Node Plugins readiness и survivability
+
+2.5.0 сохраняет RAW+REALITY+Vision+Selfsteal и node-only границу, но делает prerequisites и диагностику явным контрактом. Перед host mutation kernel должен быть `>=5.7`; signed package plan включает `nftables`, однако его systemd service/config installer не включает. После установки используйте `sudo vkarmani-node-check`; после ручного назначения Profile/Plugin Config — `sudo vkarmani-node-check --require-xray`. Только strict режим требует подтверждённую структуру `table ip remnanode`; до Panel sync это `NOT_VERIFIED`, не PASS.
+
+`--diagnose-resources` теперь также показывает conntrack, disk/inode percentages и reboot-required marker. WARN/CRITICAL thresholds не запускают tuning. Не увеличивайте conntrack, MTU/buffers, swap/limits и не меняйте firewall без отдельного evidence-driven change.
+
+Публичная TCP surface проверяется по фактическим IPv4 listeners и ownership: SSH, 80/Nginx, 443/Xray (когда live), NODE_PORT/RemnaNode. Неожиданный public listener — повод расследовать сервис/compromise, а не открыть UFW шире.
+
+Panel policy и ограничения: [NODE_PLUGINS_2.5.0](NODE_PLUGINS_2.5.0.md). Внешний path нельзя диагностировать с VPS одной командой: [EXTERNAL_PATH_DIAGNOSTICS_2.5.0](EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md). При подтверждённо непригодном IP/path или compromise: [NODE_REPLACEMENT_2.5.0](NODE_REPLACEMENT_2.5.0.md). Обычный повтор installer завершённой 2.4.x ноды остаётся диагностикой и не является скрытой миграцией checker/helpers.
+
 ## Текущий выпуск 2.4.3 — Git-canonical release manifest
 
 2.4.3 не требует никаких действий на уже работающих нодах. Изменение касается release bytes/manifest и CI validation: три CRLF evidence-файла приведены к canonical LF, а release теперь проверяется через clean Git round-trip. Production Selfsteal socket/Nginx config, Xray REALITY `xver=1`, cert-deploy convergence logic, NET_ADMIN default, Docker/firewall/SSH/network policy не менялись. Если 2.4.2 уже установлен и работает, обновлять сервер только ради этого CI-fix не нужно.
@@ -453,3 +496,15 @@ sudo journalctl -b -u chrony.service -n 60 --no-pager
 Свежая Ubuntu может запустить `apt-daily-upgrade` / `unattended-upgrades` во время установки. 2.1.1 ждёт фактические lock до 30 минут и выводит `APT_WAIT` раз в 30 секунд. Не удаляйте `/var/lib/dpkg/lock*`, не завершайте package-manager процессы и не запускайте `dpkg --configure -a`, пока lock принадлежит живой операции.
 
 Если установленный лимит истёк, установка останавливается без убийства чужого процесса. Дождитесь завершения системного APT, затем проверьте `dpkg --audit`. Незавершённую установку продолжайте **той же версией установщика**; межверсионные markers не подменяйте. Детали: [APT_LOCK_COORDINATION_2.1.1](APT_LOCK_COORDINATION_2.1.1.md).
+
+
+## 2.5.3 — RKN-Guard CIDR maintenance / panel exception
+
+**Runbook, команды, backup/rollback и обязательная проверка GitHub upstream перед каждым следующим выпуском:** [`RKN_GUARD_2.5.3.md`](RKN_GUARD_2.5.3.md).
+
+Кратко: `sudo vkarmani-rkn-guard status`, `sudo vkarmani-rkn-guard update`, `sudo vkarmani-rkn-guard prepare`; `systemctl list-timers --all vkarmani-rkn-update.timer`; `journalctl -u vkarmani-rkn-update.service -n 100 --no-pager`. На узле уже должен быть установлен 2.5.3-модуль. При ошибке источника CIDR последнее проверенное содержимое сохраняется. При смене `panel_ipv4` вызовите `--rkn-sync-panel` и **отдельно** проверьте ACL UFW/хостера на TCP/2222. Автообновления исполняемого кода upstream **нет**. Реальная VPS/reboot/Panel→Node/client-приёмка необходима отдельно.
+
+
+## Node_Install 2.5.4: RAW / XHTTP inbound replacement
+
+No automatic detection: edit one inbound in the Remnawave Panel, keeping the same `tag` and REALITY identity. Stop using Vision (`flow:""`) and select `network:xhttp` with the generated `path`; reverse to `raw` + `xtls-rprx-vision` for rollback. Do not run two VLESS listeners on the same 443 or add a public Nginx listener. Host Selfsteal PROXY v1 TLS/H2 and all firewall/certbot settings stay unchanged. On an existing Node_Install 2.5.2/2.5.3 VPS from the checked release archive run `sudo bash install.sh --prepare-xhttp`, which only builds/validates `/etc/vkarmani-node/profile-xhttp.json` against the installed core; it never changes the live panel. Save and verify backups before Panel switch, test the subscription and TLS site from outside, and if necessary restart RemnaNode not the whole VPS. See `docs/TRANSPORT_SWITCHING_2.5.4.md`.

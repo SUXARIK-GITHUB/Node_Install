@@ -25,11 +25,15 @@ def component_commands(provider, fail_simulation=False):
                        'with open(os.environ["APT_TRACE"], "a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
                        'sys.exit(100 if os.environ["FAIL_SIM"]=="1" and "--simulate" in sys.argv else 0)\n')
         spy.chmod(0o700)
+        nft = root / 'nft'
+        nft.write_text('#!/bin/sh\nprintf \'nftables v1.0.0\\n\'\n')
+        nft.chmod(0o700)
         preamble = '''set -Eeuo pipefail
 stage(){ :; }
 vk_write_time_helper(){ :; }
 vk_setup_docker_repository(){ :; } # signed repository I/O is outside this isolated solver fixture
 vk_apt_run(){ "$@"; }
+die(){ printf '%s\n' "$*" >&2; return 1; }
 python3(){ printf '%s\\n' "$TEST_PROVIDER"; }
 LIB="$TEST_LIB"
 APT=(apt-get -y --no-remove --no-install-recommends -o DPkg::Lock::Timeout=15 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
@@ -74,9 +78,9 @@ class PackageCommandTests(unittest.TestCase):
     def test_component_install_keeps_every_non_time_dependency(self):
         p, commands = component_commands('systemd-timesyncd')
         packages = commands[1][commands[1].index('install') + 1:]
-        self.assertEqual(set(packages), {'openssh-server', 'ufw', 'fail2ban', 'nginx', 'certbot',
+        self.assertEqual(set(packages), {'openssh-server', 'ufw', 'ipset', 'fail2ban', 'nginx', 'certbot',
                          'systemd-timesyncd', 'logrotate', 'unattended-upgrades', 'ethtool', 'kmod',
-                         'util-linux', 'procps', 'dbus', 'python3-systemd'})
+                         'util-linux', 'procps', 'dbus', 'python3-systemd', 'nftables'})
         self.assertEqual(len(packages), len(set(packages)))
 
 
