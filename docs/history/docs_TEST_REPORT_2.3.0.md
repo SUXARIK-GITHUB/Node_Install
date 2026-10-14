@@ -16,7 +16,7 @@
 | Итоговая 2.3.0, root | 554 | 20.653 s | 0 / 0 / 0 |
 | Итоговая 2.3.0, UID 1000 | 554 | 19.547 s | 0 / 0 / 0 |
 
-Журналы: [база 2.2.0](evidence/230-baseline-220-tests.txt), [root 2.3.0](evidence/230-root-tests.txt), [UID 1000 2.3.0](evidence/230-uid1000-tests.txt). Это отдельные прогоны одного набора, а не 1108 разных тестов. Тесты не отключались ради успешного результата.
+Журналы: [база 2.2.0](../evidence/230-baseline-220-tests.txt), [root 2.3.0](../evidence/230-root-tests.txt), [UID 1000 2.3.0](../evidence/230-uid1000-tests.txt). Это отдельные прогоны одного набора, а не 1108 разных тестов. Тесты не отключались ради успешного результата.
 
 Финальная проверка уже упакованного Git-дерева и архивный manifest выполняются после фиксации отчётов. Их самостоятельная аттестация поставляется рядом с ZIP (`Node_Install_2.3.0_PACKAGE_VALIDATION.json` и `Node_Install_2.3.0_GIT_TESTS.txt`), чтобы исключить циклический self-hash. GitHub push/Actions не выполнялись.
 
@@ -52,13 +52,13 @@ APT solver работает с искусственными локальными
 - Site tool менялся только для допуска версии 2.3.0; рендеринг четырёх вариантов сохранён. Network/Chrony/APT-clean/socket payloads и package plan сохранены.
 - `.github/workflows/check.yml`, `.gitignore`, `.gitattributes` сохранены. Семь прежних актуальных документов дополнительно сохранены побайтово в `docs/history`.
 
-Детали: [статическая проверка](evidence/230-static-validation.json), [машиночитаемый отчёт](RELEASE_VALIDATION.json).
+Детали: [статическая проверка](../evidence/230-static-validation.json), [машиночитаемый отчёт](../RELEASE_VALIDATION.json).
 
 ## Браузер
 
 **36 случаев PASS**: четыре существующие темы × девять ширин 320, 375, 390, 620, 768, 900, 1024, 1440, 1920. Проверены переполнение, позиционирование, keyboard focus, переход по якорю, reduced motion, отсутствие JS, внешних запросов и browser errors. Chromium 144.0.7559.96. Два свежих снимка дополнительно просмотрены визуально: Orbit desktop, Fold mobile.
 
-[Новый браузерный отчёт](evidence/230-browser-report.json). Рендеринг выполнен в памяти с HTML/CSS из генератора, не через публичный Xray. HTTPS/MIME/cache/security headers проверяются отдельными Nginx-тестами. Старые preview и снимки 2.2.0 сохранены; оформление не менялось.
+[Новый браузерный отчёт](../evidence/230-browser-report.json). Рендеринг выполнен в памяти с HTML/CSS из генератора, не через публичный Xray. HTTPS/MIME/cache/security headers проверяются отдельными Nginx-тестами. Старые preview и снимки 2.2.0 сохранены; оформление не менялось.
 
 ## Ограничения приёмки
 

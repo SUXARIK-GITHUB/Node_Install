@@ -63,7 +63,7 @@ class RKNGuardTests(unittest.TestCase):
         self.assertIn('Requires=vkarmani-rkn-prepare.service', payload('VK_RKN_UFW_DEP'))
         self.assertIn('--enable-rkn-guard', SCRIPT)
         self.assertIn('--rkn-update', SCRIPT)
-        self.assertIn('panel) exec /usr/local/sbin/vkarmani-rkn-guard sync-panel', SCRIPT)
+        self.assertIn('panel) /usr/local/sbin/vkarmani-rkn-guard sync-panel', SCRIPT)
         self.assertIn("args.action == 'sync-panel'", self.source)
         self.assertIn('NODE_PACKAGES=(openssh-server ufw ipset', SCRIPT)
 
@@ -138,6 +138,13 @@ class RKNGuardTests(unittest.TestCase):
             elif args[:2] == ('ipset', 'swap'):
                 a, b = args[2:]
                 memberships[a], memberships[b] = memberships[b], memberships[a]
+            elif args[:2] == ('ipset', 'save'):
+                # Report the *actual mocked kernel members*. 2.5.9 rightly
+                # rejects an update if the daemon says swap succeeded but
+                # ipset save does not reflect the new members.
+                name = args[2]
+                return ''.join('add ' + name + ' ' + value + '\n'
+                               for value in memberships.get(name, []))
             elif args[:2] == ('ufw', 'status'):
                 return 'Status: active\n'
             return ''
@@ -197,7 +204,8 @@ class RKNGuardTests(unittest.TestCase):
               patch.object(self.m, 'run', side_effect=fake_run),
               contextlib.redirect_stderr(io.StringIO())):
             self.assertFalse(self.m.prepare())
-        self.assertIn(('ipset', 'flush', self.m.BLOCK_SET), calls)
+        self.assertEqual(self.m.UFW_FILE.read_text(), self.baseline)
+        self.assertNotIn(('ufw', 'disable'), calls)
 
     def test_downloader_error_never_deletes_last_good_data(self):
         self.m.ROOT.mkdir()

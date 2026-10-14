@@ -1,5 +1,5 @@
-"""Protect reviewed network/cover/profile policy against incidental NTP hotfix edits.
-Hashes are from release 2.5.5 source commit 8780852ac1adc15293758aae2d8ce1b7584b0380.
+"""Protect unaffected reviewed contracts and pin the corrected 2.5.9 RKN bytes. Intentionally modified RKN/Xray/Selfsteal helper
+have a pinned checksum for this exact candidate; all unrelated checks remain active.
 """
 import hashlib
 import unittest
@@ -7,11 +7,11 @@ from common import ROOT, SCRIPT, payload
 
 PAYLOADS = {
     'VK_PAYLOAD_VK_WRITE_TLS_CHECK': '831f03f01d9a8358db413c4fa3a95f5f8a3e04cb01a7264f77c4ec99c53947c6',
-    'VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK': '8cd3c88a79614c70e76b71c5c3d44a935f6f83ef97150aa0d6550b1b021db509',
+    'VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK': '164d9470afb93849f6439bad6dc7672cca667e55477ba7bf009426a6fe86beab',
     'VK_PAYLOAD_VK_WRITE_NETWORK_UNIT': '5741b7a7e1890683f4d0c0d1bc17609fbabdc9d71cdf654b88a3e47da142dd54',
     'VK_PAYLOAD_VK_WRITE_NGINX_DROPIN': 'a58d43d99d8d3dde7e2f0dfd6f042d4dbe247171ee5a2a5f5dfcdff73bb4cacf',
     'VK_CERT_DEPLOY_PY': '0351ad1008fbff4297549c74aac4a47c6db9991b63b82a23990106a3030f0c7d',
-    'VK_RKN_GUARD_PY': '89470f5b6c20a990757d64531483ffd7d0ca69095f6f6a44875fa819fbe982f7',
+    'VK_RKN_GUARD_PY': '6ee94729acb61e54c831b6f5539d75b8a3029411b9dfefb6d432f01bfdff425d',
     'VK_RKN_COMPILE': 'f409db5442884d00859ac56ee661a25188f2041bb0c66ac170d5f931e418da0e',
     'VK_RKN_WRAPPER': 'd41efb951f90d1d2eba5926d90aab0e1d612dd73cd49e007f8338c2f397ca664',
     'VK_RKN_PREPARE_UNIT': '6d8e88ae67955961f2589beb334e433c3a8cddde29630f0cd2e8386e62023cb3',
@@ -21,12 +21,12 @@ PAYLOADS = {
     'PY_NGINX_MAIN': '851d93085f915475247bf88c651e6fc9d2fd46b7821d7b5e7a7f46ed62b457f0',
 }
 FILES = {
-    'integrations/rkn_guard.py': '89470f5b6c20a990757d64531483ffd7d0ca69095f6f6a44875fa819fbe982f7',
+    'integrations/rkn_guard.py': '6ee94729acb61e54c831b6f5539d75b8a3029411b9dfefb6d432f01bfdff425d',
     'integrations/xhttp_profile.py': 'dfbd7de45c65695d43d1b033f481978489b3ea15144cab944ce5a923cc0f2d20',
-    'integrations/xray_versions.py': 'c5087fcd35c0a8bfefaccadf3ff6f79ac8adf8235d9b000c3d41c044fd04d8b0',
+    'integrations/xray_versions.py': '244b15d369e8658202b05dfc55f286608d2ae0eb0fe6c0f5538a6005a3cd0ede',
     'examples/inbound-raw-full.example.json': 'e967d9d8eafcb7738c52882eb6c05d9b281242a671b36e759d5d9f709e6cd10e',
     'examples/inbound-xhttp-full.example.json': '074a792c147831ff73f35531ad4934db0f6de30bcc3c48955c7c4c633e7b6586',
-    '.github/workflows/check.yml': 'f02047981f2d6a49b9c14b3b6297fec10d52710450e46a8428e730f0a7fc8f52',
+    '.github/workflows/check.yml': 'b438d42132f00e315d426f6a4009559b16012c23397c2c2456d46d7b6454c2f0',
 }
 
 class PreservedPolicy256(unittest.TestCase):

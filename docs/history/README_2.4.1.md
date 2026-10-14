@@ -3,7 +3,7 @@
 
 > **2.4.1: стабилизирована проверка активации сертификата после graceful reload Nginx.** GitHub Actions на Ubuntu 24.04 выявил гонку: одного успешного `--target-only` probe недостаточно, пока старый worker ещё может кратковременно перекрываться с новым. Deploy-hook теперь требует **4 последовательных успешных TLS-проверки** нового leaf-сертификата; любая промежуточная неудача сбрасывает серию. Это не ослабление проверки и не `sleep`-костыль: подтверждение стало строже. Интеграционный cleanup также ждёт устойчивого возврата исходного сертификата, чтобы тесты не загрязняли друг друга. Production transport, NET_ADMIN, Docker/Nginx layout, firewall и SSH policy не менялись.
 >
-> **2.4.0: `NET_ADMIN` включён по умолчанию для RemnaNode.** Это необходимо для функций, которым нужен доступ к сетевому состоянию хоста, включая используемый в панели «Обозреватель сессий». В генерируемом Compose теперь всегда есть `cap_add: [NET_ADMIN]`; состояние `allow_net_admin=true` сохраняется в конфигурации, а локальный checker требует совпадения state и фактической capability. `NET_RAW` по-прежнему сброшен, `no-new-privileges` и read-only Selfsteal mount сохранены. Изменение повышает blast radius контейнера при `network_mode: host`, поэтому оно отдельно задокументировано в [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md). Остальные контракты 2.3.0 — password-only SSH, Selfsteal/TLS checks, Vision, IPv4-only и ровно три поля — сохранены.
+> **2.4.0: `NET_ADMIN` включён по умолчанию для RemnaNode.** Это необходимо для функций, которым нужен доступ к сетевому состоянию хоста, включая используемый в панели «Обозреватель сессий». В генерируемом Compose теперь всегда есть `cap_add: [NET_ADMIN]`; состояние `allow_net_admin=true` сохраняется в конфигурации, а локальный checker требует совпадения state и фактической capability. `NET_RAW` по-прежнему сброшен, `no-new-privileges` и read-only Selfsteal mount сохранены. Изменение повышает blast radius контейнера при `network_mode: host`, поэтому оно отдельно задокументировано в [NET_ADMIN_2.4.0](../NET_ADMIN_2.4.0.md). Остальные контракты 2.3.0 — password-only SSH, Selfsteal/TLS checks, Vision, IPv4-only и ровно три поля — сохранены.
 >
 > GitHub этой поставкой не изменён. Команда загрузки из `main` ниже намеренно остановится по SHA256, пока проверенный `install.sh` 2.4.1 не опубликован. Для локальной проверки используйте файл из полного архива. Архив выпуска не содержит `.git`: при обновлении clone сохраняйте свою Git-историю; исторические актуальные документы 2.3.0 и 2.4.0 сохранены в `docs/history`; исходный архив 2.4.0 не изменяется.
 
@@ -545,7 +545,7 @@ bash install.sh --help
 - Незавершённую `2.4.1` продолжайте тем же `2.4.1`: сохранённые три значения, REALITY keys, `allow_net_admin=true` и выбранный image digest переиспользуются, а не генерируются заново.
 - Незавершённую `2.1.0`/`2.1.1`/`2.1.2`/`2.1.3`/`2.2.0`/`2.3.0`/`2.4.0` не «превращайте» в `2.4.1` ручной заменой markers. Используйте исходный installer той же версии либо восстановите snapshot.
 - На завершённой project-owned установке обычный повторный запуск не должен заново выполнять APT/UFW/SSH/ACME/image pull; он переходит к установленной диагностике.
-- Cross-version resume по умолчанию запрещён. Историческое узкое исключение для конкретного раннего `2.0.2` package-stage описано отдельно в [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md); не обобщайте его на другие состояния.
+- Cross-version resume по умолчанию запрещён. Историческое узкое исключение для конкретного раннего `2.0.2` package-stage описано отдельно в [docs/TIME_SYNC_FIX.md](../TIME_SYNC_FIX.md); не обобщайте его на другие состояния.
 
 ### Автозапуск и плановое обслуживание
 
@@ -599,7 +599,7 @@ Rollback image не равен полному rollback VPS. Он не возвр
 | `/var/log/vkarmani-node-install.log` | закрытый install log |
 | `/var/log/vkarmani-node-postboot.log` | результаты postboot-проверки |
 
-Секретные файлы не публикуйте. Полная политика redaction/incident response — в [SECURITY.md](SECURITY.md).
+Секретные файлы не публикуйте. Полная политика redaction/incident response — в [SECURITY.md](../../SECURITY.md).
 
 ---
 
@@ -619,7 +619,7 @@ Rollback image не равен полному rollback VPS. Он не возвр
 | image update оставил pending | transaction state, Docker daemon, previous image | что удаление marker = rollback |
 | после reboot нет сети | provider console, GRUB/kernel log, provider routing | что preboot local PASS гарантировал внешний доступ |
 
-Подробный регламент: [docs/OPERATIONS.md](docs/OPERATIONS.md) · сетевые/hosting-инциденты: [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md)
+Подробный регламент: [docs/OPERATIONS.md](../OPERATIONS.md) · сетевые/hosting-инциденты: [docs/HOSTING_AND_INCIDENTS.md](../HOSTING_AND_INCIDENTS.md)
 
 ---
 
@@ -667,24 +667,24 @@ snapshot
 
 ## 📚 Документация проекта
 
-- [docs/SELFSTEAL_2.2.0.md](docs/SELFSTEAL_2.2.0.md) — точный объём новой серверной части и границы приёмки.
-- [docs/SOURCE_REVIEW_2.2.0.md](docs/SOURCE_REVIEW_2.2.0.md) — Selfsteal / iptables / HAProxy / Nginx, источники и решения.
-- [preview/README.md](preview/README.md) — четыре локальных HTML-preview и браузерные изображения.
+- [docs/SELFSTEAL_2.2.0.md](../SELFSTEAL_2.2.0.md) — точный объём новой серверной части и границы приёмки.
+- [docs/SOURCE_REVIEW_2.2.0.md](../SOURCE_REVIEW_2.2.0.md) — Selfsteal / iptables / HAProxy / Nginx, источники и решения.
+- [preview/README.md](../../preview/README.md) — четыре локальных HTML-preview и браузерные изображения.
 
-- [SECURITY.md](SECURITY.md) — trust boundaries, секреты, firewall/container security, supply chain и incident response.
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — эксплуатация, диагностика, backup, maintenance и recovery.
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — точная матрица тестов и ограничения.
-- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md) — export REALITY keys и auto-reboot.
-- [docs/APT_LOCK_COORDINATION_2.1.1.md](docs/APT_LOCK_COORDINATION_2.1.1.md) — безопасное ожидание dpkg/APT locks.
-- [docs/COVER_SITE.md](docs/COVER_SITE.md) — обновление/rollback cover-site.
-- [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md) — provider restrictions и reachability diagnostics.
-- [docs/UBUNTU_26_04.md](docs/UBUNTU_26_04.md) — статус Ubuntu 26.04 и pilot plan.
-- [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md) — timesyncd/Chrony и границы resume.
-- [docs/UFW_PREFLIGHT_FIX.md](docs/UFW_PREFLIGHT_FIX.md) — почему preflight UFW намеренно строгий.
-- [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — сценарии отказов и остаточные риски.
-- [docs/AUDIT.md](docs/AUDIT.md) — технический аудит и границы архитектуры.
-- [docs/RESEARCH.md](docs/RESEARCH.md) — основания технических решений.
-- [CHANGELOG.md](CHANGELOG.md) — история версий.
+- [SECURITY.md](../../SECURITY.md) — trust boundaries, секреты, firewall/container security, supply chain и incident response.
+- [docs/OPERATIONS.md](../OPERATIONS.md) — эксплуатация, диагностика, backup, maintenance и recovery.
+- [docs/TEST_REPORT.md](../TEST_REPORT.md) — точная матрица тестов и ограничения.
+- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](../REALITY_KEYS_AUTOREBOOT_2.1.2.md) — export REALITY keys и auto-reboot.
+- [docs/APT_LOCK_COORDINATION_2.1.1.md](../APT_LOCK_COORDINATION_2.1.1.md) — безопасное ожидание dpkg/APT locks.
+- [docs/COVER_SITE.md](../COVER_SITE.md) — обновление/rollback cover-site.
+- [docs/HOSTING_AND_INCIDENTS.md](../HOSTING_AND_INCIDENTS.md) — provider restrictions и reachability diagnostics.
+- [docs/UBUNTU_26_04.md](../UBUNTU_26_04.md) — статус Ubuntu 26.04 и pilot plan.
+- [docs/TIME_SYNC_FIX.md](../TIME_SYNC_FIX.md) — timesyncd/Chrony и границы resume.
+- [docs/UFW_PREFLIGHT_FIX.md](../UFW_PREFLIGHT_FIX.md) — почему preflight UFW намеренно строгий.
+- [docs/FAILURE_AUDIT.md](../FAILURE_AUDIT.md) — сценарии отказов и остаточные риски.
+- [docs/AUDIT.md](../AUDIT.md) — технический аудит и границы архитектуры.
+- [docs/RESEARCH.md](../RESEARCH.md) — основания технических решений.
+- [CHANGELOG.md](../../CHANGELOG.md) — история версий.
 
 ---
 

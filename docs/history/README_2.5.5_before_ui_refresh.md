@@ -412,7 +412,7 @@ sudo bash install.sh --rollback-image          # ОТКАТ ОБРАЗА, есл
 
 Официальный RemnaNode уже имеет **нативный механизм** `geodata.core = {url, sha256}`: он скачивает *сырой исполняемый файл по HTTPS*, сверяет SHA256, проверяет версию и управляет symlink `rw-core`. Удаление override возвращает встроенный Core. Для его применения нужны управляемая публикация проверенного бинарника и изменения **в Panel Xray Config Profile**, которых наш установщик без доступа к панели **не делает**.
 
-**Не используйте** `docker exec ... wget latest > /usr/local/bin/rw-core`, монтирование случайного host-файла поверх `rw-core`, автоматическую загрузку непроверенного pre-release или подмену Core до тестирования обоих инбаундов, Node Plugins, геоданных и отката. Детально: [docs/XRAY_CORE_UPDATES_2.5.5.md](docs/XRAY_CORE_UPDATES_2.5.5.md).
+**Не используйте** `docker exec ... wget latest > /usr/local/bin/rw-core`, монтирование случайного host-файла поверх `rw-core`, автоматическую загрузку непроверенного pre-release или подмену Core до тестирования обоих инбаундов, Node Plugins, геоданных и отката. Детально: [docs/XRAY_CORE_UPDATES_2.5.5.md](../XRAY_CORE_UPDATES_2.5.5.md).
 
 ## 11. RKN Guard: автоматическое обновление списков
 
@@ -429,7 +429,7 @@ systemctl list-timers --all | grep vkarmani-rkn
 
 Фильтр затрагивает **только новые входящие TCP/80 и TCP/443**, SSH и TCP/2222 не блокирует; IPv4 панели читается из `panel_ipv4` текущего состояния, а не жёстко вшит в скрипт. При ошибке получения списка сохраняется last-known-good; при сбое подготовки должен сохраняться доступ (fail-open узкой функции).
 
-**Важно:** основной UFW ACL порта 2222 существует **отдельно** от исключений RKN. Если внешний адрес панели изменился, недостаточно обновить RKN: потребуется согласованно изменить UFW/провайдерский firewall по отдельной безопасной процедуре с backup и rollback. Блокировка трафика HTTP-01 на TCP/80 может помешать Certbot renew — проверяйте снаружи до и после включения фильтра. Подробности и инциденты: [docs/RKN_GUARD_2.5.3.md](docs/RKN_GUARD_2.5.3.md).
+**Важно:** основной UFW ACL порта 2222 существует **отдельно** от исключений RKN. Если внешний адрес панели изменился, недостаточно обновить RKN: потребуется согласованно изменить UFW/провайдерский firewall по отдельной безопасной процедуре с backup и rollback. Блокировка трафика HTTP-01 на TCP/80 может помешать Certbot renew — проверяйте снаружи до и после включения фильтра. Подробности и инциденты: [docs/RKN_GUARD_2.5.3.md](../RKN_GUARD_2.5.3.md).
 
 ## 12. Обслуживание и диагностика
 
@@ -491,7 +491,7 @@ sudo systemctl list-timers --all --no-pager
 | `/usr/local/lib/vkarmani-node/` | проверочные и эксплуатационные helpers |
 | `/var/log/vkarmani-node-install.log` | журнал установки; root-only |
 
-Полная карта файлов, права, системы восстановления и требования redaction — [SECURITY.md](SECURITY.md), [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Полная карта файлов, права, системы восстановления и требования redaction — [SECURITY.md](../../SECURITY.md), [docs/OPERATIONS.md](../OPERATIONS.md).
 
 ## 14. Полная приёмка, сбои и rollback
 
@@ -553,6 +553,6 @@ sha256sum --check SHA256SUMS
 - [RemnaNode CoreLoaderService](https://github.com/remnawave/node/blob/main/src/modules/xray-core/core-loader.service.ts) — официальный механизм `geodata.core` с HTTPS+SHA256.
 - [Flecksis/rkn-guard](https://github.com/Flecksis/rkn-guard), [источник списков](https://github.com/shadow-netlab/traffic-guard-lists).
 
-**Документы проекта:** [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [docs/OPERATIONS.md](docs/OPERATIONS.md) · [docs/TEST_REPORT.md](docs/TEST_REPORT.md) · [docs/TRANSPORT_SWITCHING_2.5.4.md](docs/TRANSPORT_SWITCHING_2.5.4.md) · [docs/RKN_GUARD_2.5.3.md](docs/RKN_GUARD_2.5.3.md) · [docs/XRAY_CORE_UPDATES_2.5.5.md](docs/XRAY_CORE_UPDATES_2.5.5.md) · [docs/history/README_2.5.4.md](docs/history/README_2.5.4.md) — **полная прежняя README сохранена без сокращений**.
+**Документы проекта:** [SECURITY.md](../../SECURITY.md) · [CHANGELOG.md](../../CHANGELOG.md) · [docs/OPERATIONS.md](../OPERATIONS.md) · [docs/TEST_REPORT.md](../TEST_REPORT.md) · [docs/TRANSPORT_SWITCHING_2.5.4.md](../TRANSPORT_SWITCHING_2.5.4.md) · [docs/RKN_GUARD_2.5.3.md](../RKN_GUARD_2.5.3.md) · [docs/XRAY_CORE_UPDATES_2.5.5.md](../XRAY_CORE_UPDATES_2.5.5.md) · [docs/history/README_2.5.4.md](README_2.5.4.md) — **полная прежняя README сохранена без сокращений**.
 
 **Публичная поставка:** новая версия не загружалась в GitHub и не развёртывалась на VPS. При будущей публикации сначала должен совпасть manifest и CI; **только тогда** допустима команда загрузки с `main` с независимым закреплённым SHA. На сервере всегда храните отдельный snapshot, working Profile и plan rollback.

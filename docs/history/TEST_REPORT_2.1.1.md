@@ -52,4 +52,4 @@ VLESS RAW REALITY, Selfsteal, Nginx, UFW/Fail2ban, SSH, Docker Compose layout и
 
 Сначала одна чистая Ubuntu 24.04 VPS: snapshot/консоль → установка 2.1.1 → reboot → `vkarmani-node-check` → подключение панели → реальный VLESS RAW REALITY клиент. Отдельно желательно воспроизвести ситуацию, когда `apt-daily-upgrade` уже держит lock, и подтвердить `APT_WAIT` без вмешательства в чужую транзакцию.
 
-Подробности алгоритма: [APT_LOCK_COORDINATION_2.1.1](APT_LOCK_COORDINATION_2.1.1.md).
+Подробности алгоритма: [APT_LOCK_COORDINATION_2.1.1](../APT_LOCK_COORDINATION_2.1.1.md).

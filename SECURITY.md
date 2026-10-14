@@ -1,3 +1,5 @@
+> **2.5.9 (локальный непубликованный staging):** сохранены HSTS/TLS 1.2/1.3/HTTP 301 версии 2.5.8; устранены дефекты отката UFW, проверки kernel scanner/panel-ipset и повреждённого состояния ночного таймера. NODE_PORT остаётся закрытым UFW для всех, кроме IPv4 панели; это должно быть дополнительно подтверждено с внешних IP. См. [RKN_FAILSAFE_2.5.9](docs/RKN_FAILSAFE_2.5.9.md) и [EDGE_HARDENING_2.5.8](docs/EDGE_HARDENING_2.5.8.md). Ранее установленные VPS автоматически не мигрируются.
+
 <div align="center">
 
 # 🔐 VKARMANI · SECURITY POLICY

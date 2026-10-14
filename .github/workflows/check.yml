@@ -32,6 +32,7 @@ jobs:
           git rev-parse --is-inside-work-tree
           git rev-parse HEAD
           sha256sum --check SHA256SUMS
+          python3 scripts/verify_release.py
       - name: Test embedded payloads; NEVER install a node on the runner
         run: |
           export PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
@@ -78,6 +79,7 @@ jobs:
           git rev-parse --is-inside-work-tree
           git rev-parse HEAD
           sha256sum --check SHA256SUMS
+          python3 scripts/verify_release.py
       - name: Embedded helpers, protocols and synthetic failure paths only
         run: |
           export PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"

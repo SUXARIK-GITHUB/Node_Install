@@ -28,11 +28,11 @@
 
 Логи:
 
-- [baseline root](evidence/profile-baseline-root.txt)
-- [новые регрессии](evidence/profile-targeted-213.txt)
-- [полный root](evidence/profile-213-root.txt)
-- [полный UID 1000](evidence/profile-213-uid1000.txt)
-- [сохранённые payloads и политика](evidence/profile-policy-preserved-2.1.3.json)
+- [baseline root](../evidence/profile-baseline-root.txt)
+- [новые регрессии](../evidence/profile-targeted-213.txt)
+- [полный root](../evidence/profile-213-root.txt)
+- [полный UID 1000](../evidence/profile-213-uid1000.txt)
+- [сохранённые payloads и политика](../evidence/profile-policy-preserved-2.1.3.json)
 
 ## Что проверяют 37 новых тестов
 

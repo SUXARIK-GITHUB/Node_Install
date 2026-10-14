@@ -39,6 +39,9 @@ CHECKED = ROOT / 'last-check.json'
 MAX_BYTES = 4 * 1024 * 1024
 MAX_ENTRIES = 65536
 MIN_ENTRIES = 100
+# Age affects the *diagnostic readiness*, not the basic UFW service. A
+# verified older list remains installed when the network is unavailable.
+MAX_CHECKPOINT_AGE = dt.timedelta(hours=72)
 
 
 class GuardError(Exception):
@@ -78,6 +81,8 @@ def require_node():
 
 def panel_ips():
     cfg = json.loads(owned_file(CONFIG))
+    if not isinstance(cfg, dict):
+        raise GuardError('INVALID_NODE_CONFIG_ROOT')
     if cfg.get('installation_mode') != 'secret-key-only':
         raise GuardError('UNSUPPORTED_NODE_CONFIGURATION')
     raw = cfg.get('panel_ipv4')
@@ -176,6 +181,66 @@ def atomic(path, data, mode=0o600):
             os.unlink(tmp)
 
 
+def restore_record(path, original):
+    """Reinstate a previously captured state file, including absence of file.
+
+    A failed atomic() may have *published* its new bytes before raising on the
+    directory fsync. Never assume that a failed write left the old file intact.
+    """
+    if path.is_symlink():
+        raise GuardError('UNSAFE_ROLLBACK_SYMLINK')
+    if original is None:
+        if path.exists():
+            if not path.is_file():
+                raise GuardError('UNSAFE_ROLLBACK_TARGET')
+            path.unlink()
+            dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        if path.exists():
+            raise GuardError('ROLLBACK_FILE_STILL_EXISTS')
+    elif not path.exists() or owned_file(path) != original:
+        atomic(path, original)
+        if owned_file(path) != original:
+            raise GuardError('ROLLBACK_BYTES_MISMATCH')
+
+
+def restore_ufw_file(original, *, must_be_active):
+    """Restore verified UFW bytes and sync runtime policy when it is active."""
+    if owned_file(UFW_FILE) != original:
+        atomic(UFW_FILE, original, mode=0o644)
+    if owned_file(UFW_FILE) != original:
+        raise GuardError('UFW_ROLLBACK_BYTES_MISMATCH')
+    active = 'Status: active' in run('ufw', 'status').splitlines()
+    if must_be_active and not active:
+        raise GuardError('UFW_INACTIVE_DURING_ROLLBACK')
+    if active:
+        run('ufw', 'reload', timeout=50)
+        check_ufw_active()
+
+
+def checked_freshness(meta, now=None):
+    """Explicit data-age diagnosis; no filesystem or firewall mutation."""
+    if not isinstance(meta, dict):
+        return 'INVALID'
+    timestamp = meta.get('checked_at_utc')
+    if not isinstance(timestamp, str):
+        return 'UNKNOWN'
+    try:
+        when = dt.datetime.fromisoformat(timestamp)
+    except ValueError:
+        return 'INVALID'
+    if when.tzinfo is None:
+        return 'INVALID'
+    now = now or dt.datetime.now(dt.timezone.utc)
+    elapsed = now - when
+    if elapsed < -dt.timedelta(minutes=5):
+        return 'FUTURE'
+    return 'STALE' if elapsed > MAX_CHECKPOINT_AGE else 'PASS'
+
+
 def ipset_exists(name):
     proc = subprocess.run(['ipset', 'list', name], capture_output=True, text=True, timeout=12)
     if proc.returncode:
@@ -213,35 +278,60 @@ def panel_refresh():
     return ips
 
 
-def prepare():
-    """Offline, safe before UFW: provision sets even when source is unavailable."""
-    require_node()
-    ROOT.mkdir(parents=True, mode=0o700, exist_ok=True)
-    new_block = not ipset_exists(BLOCK_SET)
-    if new_block:
-        ipset_create(BLOCK_SET)
-    if not ipset_exists(PANEL_SET):
-        ipset_create(PANEL_SET)
-    try:
-        panel = panel_refresh()
-    except (GuardError, ValueError, OSError) as exc:
-        # Safe failure: never enforce an unexempted scanner list on the panel.
-        run('ipset', 'flush', BLOCK_SET)
-        print('RKN_PREPARE=FAIL_OPEN PANEL_CONFIG: ' + str(exc), file=sys.stderr)
-        return False
-    if new_block:
+def _prepare_degraded(reason):
+    """Keep the base UFW service bootable when optional ipset is unavailable.
+
+    Never remove foreign rules. During boot UFW is not active yet; a validated
+    owned-block removal prevents it loading rules that reference missing sets.
+    Any failure to validate/restore this file remains fatal (manual console).
+    """
+    original = owned_file(UFW_FILE)
+    revised = edit_ufw(original, False)
+    if revised != original:
+        run('iptables-restore', '--test', data=revised, timeout=20)
         try:
+            atomic(UFW_FILE, revised, mode=0o644)
+            # At boot UFW is inactive; on a live node we MUST reload to make
+            # the in-kernel policy agree with the rewritten file.
+            status = run('ufw', 'status')
+            if 'Status: active' in status.splitlines():
+                run('ufw', 'reload', timeout=50)
+        except (GuardError, OSError) as exc:
+            try:
+                restore_ufw_file(original, must_be_active=False)
+            except (GuardError, OSError) as rollback_exc:
+                raise GuardError('PREPARE_DEGRADED_UFW_ROLLBACK_UNCONFIRMED') from rollback_exc
+            raise
+    print('RKN_PREPARE=DEGRADED BASE_UFW_PRESERVED REASON=' + reason, file=sys.stderr)
+    return False
+
+
+def prepare():
+    """Prepare all ipsets before UFW or remove our dependent firewall fragment.
+
+    A failed ipset create/restore must not block the base firewall from booting.
+    If the owned block cannot be removed safely, fail explicitly rather than
+    claiming an operational firewall.
+    """
+    require_node()
+    try:
+        ROOT.mkdir(parents=True, mode=0o700, exist_ok=True)
+        new_block = not ipset_exists(BLOCK_SET)
+        if new_block:
+            ipset_create(BLOCK_SET)
+        if not ipset_exists(PANEL_SET):
+            ipset_create(PANEL_SET)
+        panel = panel_refresh()
+        if new_block:
             saved = restore_cached()
             if saved:
                 ipset_stage(BLOCK_STAGE, saved)
                 run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
-        except (GuardError, OSError, ValueError) as exc:
-            run('ipset', 'flush', BLOCK_SET)
-            print('RKN_PREPARE=FAIL_OPEN CACHE: ' + str(exc), file=sys.stderr)
-            return False
+    except (GuardError, OSError, ValueError) as exc:
+        # Do not rely on `ipset flush`: the set may not even exist.
+        return _prepare_degraded(type(exc).__name__)
     print('RKN_PREPARE=PASS PANEL_IPS=' + str(len(panel)))
     return True
-
 
 def ufw_fragment():
     return ('\n' + BEGIN + '\n'
@@ -323,8 +413,7 @@ def apply_ufw(enable):
             check_ufw_jump()
         return
     # Validate the exact resulting restore input without applying it to kernel.
-    if enable:
-        run('iptables-restore', '--test', data=revised, timeout=20)
+    run('iptables-restore', '--test', data=revised, timeout=20)
     snapshot = ROOT / ('ufw-before-pre-rkn' if enable else 'ufw-before-pre-disable')
     atomic(snapshot, original)
     try:
@@ -334,12 +423,11 @@ def apply_ufw(enable):
             check_ufw_jump()
         else:
             run('iptables', '-S', 'ufw-before-input')
-    except GuardError as exc:
-        atomic(UFW_FILE, original, mode=0o644)
+    except (GuardError, OSError) as exc:
         try:
-            run('ufw', 'reload', timeout=50)
-        except GuardError:
-            raise GuardError('UFW_RELOAD_AND_ROLLBACK_UNCONFIRMED') from exc
+            restore_ufw_file(original, must_be_active=True)
+        except (GuardError, OSError) as rollback_exc:
+            raise GuardError('UFW_RELOAD_AND_ROLLBACK_UNCONFIRMED') from rollback_exc
         raise
 
 
@@ -355,21 +443,40 @@ def update():
         raise GuardError('SUSPICIOUS_NETWORK_COUNT_CHANGE')
     # Reconcile the active kernel set daily even when the source contents
     # are unchanged (e.g. a third-party flush or lost ipset membership).
+    previous_kernel = live_block_set()
+    previous_cache = owned_file(CACHE) if CACHE.exists() else None
+    previous_checkpoint = owned_file(CHECKED) if CHECKED.exists() else None
     ipset_stage(BLOCK_STAGE, new)
-    run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+    swapped = False
     try:
+        run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+        swapped = True
         if new != old:
             atomic(CACHE, ''.join(item + '\n' for item in new))
-    except (OSError, GuardError):
-        run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+        stamp = {'checked_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
+                 'source': SOURCE, 'count_ipv4': len(new),
+                 'sha256': hashlib.sha256((''.join(s + '\n' for s in new)).encode()).hexdigest(),
+                 'changed': new != old, 'code_upstream': UPSTREAM,
+                 'code_auto_update': False}
+        atomic(CHECKED, json.dumps(stamp, sort_keys=True, ensure_ascii=False, indent=2) + '\n')
+        check_ufw_jump()
+        active_after = live_block_set()
+        if len(active_after) != len(new) or set(active_after) != set(new):
+            raise GuardError('RKN_KERNEL_SET_UPDATE_MISMATCH')
+    except (GuardError, OSError) as exc:
+        # Reverse kernel swap AND both disk records, including a record that
+        # atomic() published before reporting a directory fsync failure.
+        try:
+            if swapped:
+                run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+                restored = live_block_set()
+                if len(restored) != len(previous_kernel) or set(restored) != set(previous_kernel):
+                    raise GuardError('RKN_KERNEL_ROLLBACK_MISMATCH')
+            restore_record(CACHE, previous_cache)
+            restore_record(CHECKED, previous_checkpoint)
+        except (GuardError, OSError) as rollback_exc:
+            raise GuardError('RKN_UPDATE_ROLLBACK_UNCONFIRMED') from rollback_exc
         raise
-    stamp = {'checked_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
-             'source': SOURCE, 'count_ipv4': len(new),
-             'sha256': hashlib.sha256((''.join(s + '\n' for s in new)).encode()).hexdigest(),
-             'changed': new != old, 'code_upstream': UPSTREAM,
-             'code_auto_update': False}
-    atomic(CHECKED, json.dumps(stamp, sort_keys=True, ensure_ascii=False, indent=2) + '\n')
-    check_ufw_jump()
     print('RKN_UPDATE=PASS IPV4_NETWORKS=' + str(len(new)) + ' CHANGED=' + str(new != old))
 
 
@@ -379,31 +486,149 @@ def enable():
     ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
     if not prepare():
         raise GuardError('PANEL_LIST_INVALID_RKN_NOT_ENABLED')
+    was_enabled = BEGIN in owned_file(UFW_FILE)
     apply_ufw(True)
-    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_EXCEPTION=DYNAMIC')
     try:
         update()
     except (GuardError, OSError, ValueError) as exc:
-        # Network outage/invalid source never rolls back the healthy UFW/SSH setup.
-        print('RKN_DATA=PENDING_TIMER_RETRY ' + str(exc), file=sys.stderr)
+        # A valid old list may remain active when GitHub/network is unavailable.
+        # Check the actual cached bytes against the recorded successful stamp;
+        # a parseable but never-verified list is NOT proof of scanner protection.
+        verified = False
+        fallback_freshness = 'UNKNOWN'
+        try:
+            old = restore_cached()
+            meta = json.loads(owned_file(CHECKED))
+            digest = hashlib.sha256((''.join(x + '\n' for x in old)).encode()).hexdigest()
+            verified = bool(old and isinstance(meta, dict) and
+                            meta.get('sha256') == digest and
+                            meta.get('count_ipv4') == len(old))
+            if verified:
+                # An existing iptables jump is NOT evidence of populated
+                # active kernel sets. Repair from signed-off local data only.
+                active = live_block_set()
+                if len(active) != len(old) or set(active) != set(old):
+                    ipset_stage(BLOCK_STAGE, old)
+                    run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+                    active = live_block_set()
+                    if len(active) != len(old) or set(active) != set(old):
+                        raise GuardError('RKN_KERNEL_CACHE_RESTORE_MISMATCH')
+                if set(live_panel_set()) != set(panel_ips()):
+                    raise GuardError('RKN_ACTIVE_PANEL_EXCLUSION_MISMATCH')
+                fallback_freshness = checked_freshness(meta)
+        except (GuardError, OSError, ValueError, TypeError, KeyError):
+            verified = False
+        if not verified:
+            # This is safe only when THIS invocation installed the block.
+            # For an existing filter, preserve state for operator recovery.
+            if not was_enabled:
+                apply_ufw(False)
+            raise GuardError('RKN_NO_VERIFIED_LIST_INITIAL_ACTIVATION') from exc
+        print('RKN_DATA=DEGRADED_USING_VERIFIED_CACHE FRESHNESS=' + fallback_freshness,
+              file=sys.stderr)
+        if fallback_freshness != 'PASS':
+            if not was_enabled:
+                apply_ufw(False)
+            raise GuardError('RKN_CACHE_FRESHNESS_' + fallback_freshness) from exc
+    # Print success only after a fresh update or independently verified cache.
+    check_ufw_jump()
+    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_EXCEPTION=DYNAMIC')
+
+
+def live_block_set():
+    """Read the installed IPv4 set; a matching on-disk cache is not enough."""
+    raw = run('ipset', 'save', BLOCK_SET, timeout=20)
+    active = []
+    for line in raw.splitlines():
+        if line.startswith('add '):
+            words = line.split()
+            if len(words) != 3 or words[1] != BLOCK_SET:
+                raise GuardError('ACTIVE_BLOCK_SET_UNEXPECTED_ENTRY')
+            try:
+                active.append(str(ipaddress.IPv4Network(words[2], strict=False)))
+            except ValueError as exc:
+                raise GuardError('ACTIVE_BLOCK_SET_MALFORMED_IPV4') from exc
+    return active
+
+
+def live_panel_set():
+    """Validate real kernel members, never infer panel bypass from rule text."""
+    raw = run('ipset', 'save', PANEL_SET, timeout=20)
+    addresses = []
+    for line in raw.splitlines():
+        if not line.startswith('add '):
+            continue
+        fields = line.split()
+        if len(fields) != 3 or fields[1] != PANEL_SET:
+            raise GuardError('ACTIVE_PANEL_SET_UNEXPECTED_ENTRY')
+        try:
+            ip = ipaddress.IPv4Address(fields[2])
+        except ipaddress.AddressValueError as exc:
+            raise GuardError('ACTIVE_PANEL_SET_INVALID_IPV4') from exc
+        if not ip.is_global or str(ip) != fields[2]:
+            raise GuardError('ACTIVE_PANEL_SET_UNSAFE_IPV4')
+        addresses.append(str(ip))
+    if len(addresses) != len(set(addresses)):
+        raise GuardError('ACTIVE_PANEL_SET_DUPLICATES')
+    return addresses
 
 
 def status():
     require_node()
-    print('RKN_ENABLED=' + str(BEGIN in owned_file(UFW_FILE)))
+    enabled = BEGIN in owned_file(UFW_FILE)
+    print('RKN_ENABLED=' + str(enabled))
     print('RKN_SOURCE=' + SOURCE)
     print('RKN_UPSTREAM=' + UPSTREAM + ' (manual code review per release)')
+    panel_valid = True
+    expected_panel = None
     try:
-        print('RKN_PANEL_FROM_CONFIG=' + ','.join(panel_ips()))
+        expected_panel = panel_ips()
+        print('RKN_PANEL_FROM_CONFIG=' + ','.join(expected_panel))
     except (ValueError, GuardError, OSError):
         print('RKN_PANEL_FROM_CONFIG=INVALID')
+        panel_valid = False
     if CHECKED.exists():
         print('RKN_LAST_CHECK=' + owned_file(CHECKED))
     else:
         print('RKN_LAST_CHECK=NEVER')
-    if BEGIN in owned_file(UFW_FILE):
+    if enabled:
         check_ufw_jump()
-        print('RKN_FIREWALL=PASS')
+        print('RKN_FIREWALL_RULES=PASS')
+        try:
+            active_panel = live_panel_set()
+            if expected_panel is None or set(active_panel) != set(expected_panel):
+                raise GuardError('ACTIVE_PANEL_SET_CONFIG_MISMATCH')
+            print('RKN_PANEL_SET_MATCH=PASS ACTIVE_IPV4=' + str(len(active_panel)))
+        except (GuardError, OSError, ValueError) as exc:
+            print('RKN_PANEL_SET_MATCH=FAIL REASON=' + type(exc).__name__)
+            panel_valid = False
+        try:
+            cached = restore_cached()
+            if not cached:
+                raise GuardError('NO_VALID_CACHE')
+            mark = json.loads(owned_file(CHECKED))
+            if not isinstance(mark, dict):
+                raise GuardError('INVALID_CHECKPOINT_ROOT')
+            expected = hashlib.sha256((''.join(x + '\n' for x in cached)).encode()).hexdigest()
+            if mark.get('sha256') != expected or mark.get('count_ipv4') != len(cached):
+                raise GuardError('CACHE_AND_CHECKPOINT_MISMATCH')
+            active = live_block_set()
+            if len(active) != len(cached) or set(active) != set(cached):
+                raise GuardError('KERNEL_SET_CACHE_MISMATCH')
+            print('RKN_DATA_INTEGRITY=PASS ACTIVE_IPV4_NETWORKS=' + str(len(active)))
+            fresh = checked_freshness(mark)
+            print('RKN_FRESHNESS=' + fresh)
+            if fresh != 'PASS':
+                print('RKN_DATA=DEGRADED REASON=FRESHNESS_' + fresh)
+                return 1
+            print('RKN_DATA=PASS ACTIVE_IPV4_NETWORKS=' + str(len(active)))
+        except (GuardError, ValueError, OSError, KeyError, TypeError) as exc:
+            print('RKN_DATA=DEGRADED REASON=' + type(exc).__name__)
+            return 1
+    else:
+        print('RKN_FIREWALL_RULES=DISABLED')
+        print('RKN_PANEL_SET_MATCH=NOT_APPLICABLE')
+    return 0 if panel_valid else 1
 
 
 def disable():
@@ -421,8 +646,7 @@ def main():
         LOCK.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     try:
         if args.action == 'status':
-            status()
-            return 0
+            return status()
         with open(LOCK, 'a', encoding='utf-8') as stream:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
             if args.action == 'prepare':

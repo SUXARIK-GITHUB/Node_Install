@@ -1,76 +1,64 @@
 {
-  "version": "2.5.6",
-  "date": "2026-10-09",
-  "status": "OFFLINE_TESTED_RELEASE_CANDIDATE; NEW_VPS_INSTALLATION_NOT_VERIFIED",
-  "base": {
-    "commit": "8780852ac1adc15293758aae2d8ce1b7584b0380",
-    "version": "2.5.5",
-    "installer_sha256": "ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40",
-    "independently_rerun_baseline_tests": 637,
-    "baseline_rc": 0,
-    "prior_complete_validation": "docs/history/RELEASE_VALIDATION_2.5.5.json"
+  "version": "2.5.9",
+  "date": "2026-10-15",
+  "status": "INCOMPLETE_STAGING_ONLY; NOT_PRODUCTION_VALIDATED; NOT_PUBLISHED",
+  "source": {
+    "base_version": "2.5.8",
+    "commit": "e0e076678d92daa074daa8289db2df3a3a395a42",
+    "source_snapshot": "Node_Install_2.5.8-edge-staging_edge-20261014T201907Z.zip",
+    "old_release_validation": "docs/history/RELEASE_VALIDATION_2.5.6.json"
   },
-  "installer_sha256": "da745235274cee2ea89d5986e7107b5848d0ef2a8fa2767d3fba2a253b40041b",
-  "test_environment": {
-    "os": "Debian GNU/Linux 13 container userspace",
-    "python": "Python 3.13.5",
-    "kernel_scope": "container host, not a target VPS",
-    "test_only_dependency_note": "PyYAML from existing environment provided via PYTHONPATH to system Python; no new runtime package or project dependency was added"
-  },
-  "tests": [
-    {
-      "uid": 0,
-      "tests": 695,
-      "seconds": 23.19,
-      "failures": 0,
-      "errors": 0,
-      "skips": 0,
-      "log": "docs/evidence/256-root-tests.txt"
-    },
-    {
-      "uid": 65534,
-      "tests": 695,
-      "seconds": 23.682,
-      "failures": 0,
-      "errors": 0,
-      "skips": 0,
-      "log": "docs/evidence/256-unprivileged-tests.txt"
-    }
+  "changes": [
+    "RKN systemd/UFW shutdown order+error propagation",
+    "RKN boot degradation for ipset failure (keep base UFW)",
+    "local Docker Unix socket boundary with isolated Docker CLI config",
+    "strict no-new-privileges SecurityOpt audit",
+    "profile method/network alias audit correction",
+    "ordinary-node nightly container restart 03:00-03:59 Europe/Moscow",
+    "relative docs/history links corrected",
+    "HSTS max-age=300 always for own HTTPS Selfsteal site (no includeSubDomains/preload)",
+    "Verified local Selfsteal TLS 1.2+1.3 and HSTS response contract",
+    "Public 443 acceptance requires TLS 1.2/1.3 and HSTS at exact domain; HTTP80 exact Location",
+    "RKN advisory scope documentation without touching live inbounds",
+    "QA-01/02 safe rollback and strict panel JSON config-root",
+    "QA-03/04 kernel scanner and panel exceptions verified on RKN status/enable",
+    "QA-05 checkpoint/cache/kernel transactional rollback on write failure",
+    "QA-06/07 fail-closed nightly marker and locked disable",
+    "QA-08 explicit 72h CIDR freshness classification",
+    "QA-09 NFC release filename validation",
+    "QA-10 negative post-restart verification regression"
   ],
-  "targeted_cases": {
-    "ntp": "replayed first probe before NTP source reappears; deadline; persistent outage; non-IPv4; invalid/ignored/zero-packet response; InvocationID changes; two stable samples; all acceptance modes",
-    "finalization": "private snapshot hashes; no checkpoint/old version refused; drift and symlinks; mocked services; NTP failure retry; RKN failure and rollback failure; checked/commit/cleanup interruption; idempotence; quiet key export; descendant timeout; no package installation during finish",
-    "resources": "nested partial verified=false surfaces; optional strict exit=2; stopped container critical; real provided resource JSON replay returns review-required"
+  "tests": {
+    "source_baseline_2_5_6": "695 passed on original unpacked archive; not new build proof",
+    "current_offline": "Must be verified from exact 2.5.9 ZIP; no VPS verification",
+    "safety_regressions": "tests/test_r2_critical.py; tests/test_edge_security_258.py; tests/test_259_fault_regressions.py",
+    "release_integrity": "tests/test_release_packaging_r2.py; scripts/verify_release.py"
   },
-  "preserved_policy": {
-    "checked": true,
-    "embedded_payload_count": 13,
-    "static_files_count": 6,
-    "regression_test": "tests/test_preserved_policy_256.py",
-    "nginx_selfsteal_transport": "unchanged",
-    "full_raw_xhttp_examples": "unchanged",
-    "rkn_guard_python_and_units": "unchanged",
-    "ssh_firewall_ipv4_policy": "unchanged"
-  },
-  "upstream_review": {
-    "Flecksis/rkn-guard": "34ed9c13bfa1280d32226164084da25b33a4c155",
-    "shadow-netlab/traffic-guard-lists": "7b9623238d7420cbb31feaa149610738feb45fd5",
-    "changed_since_previous_review": false,
-    "auto_update_executable_code": false
+  "no_auto_upgrades_on_installed_hosts": true,
+  "source_code_published_to_github": false,
+  "scope": {
+    "ordinary": "code changes + offline mock tests; fresh VPS not verified",
+    "cascade_entry": "NOT_IMPLEMENTED",
+    "cascade_exit": "NOT_IMPLEMENTED"
   },
   "not_verified": [
-    "Initiator of the repeated timesyncd service starts in the original VPS log",
-    "New 2.5.6 clean VPS install/reboot under Ubuntu or Debian",
-    "Live ipset/iptables/UFW failure and rollback on a real server",
-    "Actual Panel-to-Node authentication or a real RAW/XHTTP client",
-    "New production certificate issuance/renewal or daily RKN timer execution",
-    "New GitHub Actions run before publishing this archive"
+    "live two-host VLESS/REALITY cascade and fail-closed DNS",
+    "REALITY using own Selfsteal on both cascade servers",
+    "Nginx TCP stream/reverse proxy in all roles",
+    "six additional distinct cover websites",
+    "real UFW/systemd/netfilter rollback and full reboot",
+    "live Docker daemon and RemnaNode API or client connectivity",
+    "public TLS certificates renewal; public websites",
+    "24h load/soak and link download via client browser",
+    "a GitHub Actions run for this unpublished local candidate",
+    "IPv4 firewall external tests, SSH reentry, ARM64 VPS",
+    "public TLS 1.2 and TLS 1.3 through real Xray REALITY on deployed VPS",
+    "independent external test of RemnaNode Node Port panel-IP allow/deny",
+    "VM-fault-injection on actual kernel after RKN rollback; kernel sets and panel exceptions"
   ],
-  "deployment_scope": {
-    "existing_working_2_5_5": "Do not reinstall. Original node was already recovered independently. Replacing repository files does not upgrade installed helpers.",
-    "resume_command": "bash install.sh --finish-install",
-    "resume_eligibility": "ONLY a recorded finalization checkpoint created by 2.5.6, not arbitrary older incomplete installs",
-    "resume_reboots": false,
-    "rollback": "Verified provider snapshot for the whole VPS; scoped RKN rollback for finalization; private checkpoint is not an OS/package rollback"
+  "test_claim_policy": "Results for exact produced ZIP are external; do not infer production from CRC or unit tests",
+  "previous_release_validation_metadata": {
+    "version": "2.5.6",
+    "date": "2026-10-09"
   }
 }

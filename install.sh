@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.6. Read README.md before running as root.
+# VKarmani Node 2.5.9 (RKN reliability staged candidate). Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -257,7 +257,8 @@ class DeadlineSocket:
         self.close()
 
 
-def connect(domain, alpn, path=SOCKET, cafile=None, deadline=None, expected_leaf=None):
+def connect(domain, alpn, path=SOCKET, cafile=None, deadline=None, expected_leaf=None,
+            tls_version=ssl.TLSVersion.TLSv1_3):
     raw = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     deadline = deadline if deadline is not None else time.monotonic() + 20
     remaining = deadline - time.monotonic()
@@ -269,7 +270,9 @@ def connect(domain, alpn, path=SOCKET, cafile=None, deadline=None, expected_leaf
         raw.connect(path)
         raw.sendall(b'PROXY TCP4 127.0.0.1 127.0.0.1 54321 443\r\n')
         ctx = ssl.create_default_context(cafile=cafile)
-        ctx.minimum_version = ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+        if tls_version not in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
+            raise ValueError('UNSUPPORTED_PROBE_TLS_VERSION')
+        ctx.minimum_version = ctx.maximum_version = tls_version
         ctx.set_alpn_protocols([alpn])
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -427,7 +430,8 @@ class Assets(HTMLParser):
 
 
 def http1_request(domain, path, cafile, deadline, expected_leaf,
-                  uri='/', method='GET', host=None, etag=None):
+                  uri='/', method='GET', host=None, etag=None,
+                  tls_version=ssl.TLSVersion.TLSv1_3):
     if (not re.fullmatch(r'/[A-Za-z0-9_./-]*', uri) or method not in ('GET', 'HEAD', 'POST')
             or '\r' in (host or domain) or '\n' in (host or domain)
             or etag is not None and not re.fullmatch(r'"[0-9a-f-]{1,80}"', etag)):
@@ -437,7 +441,8 @@ def http1_request(domain, path, cafile, deadline, expected_leaf,
         request += 'If-None-Match: ' + etag + '\r\n'
     if method == 'POST':
         request += 'Content-Length: 0\r\n'
-    with connect(domain, 'http/1.1', path, cafile, deadline, expected_leaf) as c:
+    with connect(domain, 'http/1.1', path, cafile, deadline, expected_leaf,
+                 tls_version=tls_version) as c:
         c.sendall((request + '\r\n').encode('ascii'))
         data = bytearray()
         while True:
@@ -478,6 +483,10 @@ def security_headers(headers):
             or headers.get('referrer-policy') != 'strict-origin-when-cross-origin'
             or any(part not in headers.get('content-security-policy', '') for part in required)):
         raise ValueError('COVER_SECURITY_HEADERS_MISSING')
+    # HSTS must be sent by the real HTTPS server on success AND errors;
+    # reject missing/misleading or broad unintended domain policies.
+    if headers.get('strict-transport-security') != 'max-age=300':
+        raise ValueError('COVER_HSTS_NOT_EFFECTIVE')
     if re.search(r'nginx/[0-9]', headers.get('server', ''), re.I):
         raise ValueError('COVER_SERVER_VERSION_EXPOSED')
 
@@ -517,6 +526,11 @@ def check_web_contract(domain, path, site, content, cafile, deadline, expected_l
     if status != 200 or headers.get('content-length') != str(len(content)):
         raise ValueError('COVER_HEAD_CONTRACT_FAILED')
     security_headers(headers)
+    # Check a full verified HTTP response over TLS 1.2, not only TLS handshake.
+    tls12_status, tls12_headers, tls12_body = request(tls_version=ssl.TLSVersion.TLSv1_2)
+    if tls12_status != 200 or tls12_body != content:
+        raise ValueError('COVER_TLS12_HTTP_CONTENT_FAILED')
+    security_headers(tls12_headers)
     if 'no-cache' not in headers.get('cache-control', ''):
         raise ValueError('COVER_HTML_CACHE_POLICY_FAILED')
     parser = Assets()
@@ -581,8 +595,11 @@ def target_tls(domain, path=SOCKET, cafile=None, timeout=15.0, expected_leaf=Non
     if not 0 < timeout <= 20:
         raise ValueError('INVALID_PROBE_BUDGET')
     deadline = time.monotonic() + timeout
-    for alpn in ('http/1.1', 'h2'):
-        with connect(domain, alpn, path, cafile, deadline, expected_leaf):
+    for alpn, tls_version in (('http/1.1', ssl.TLSVersion.TLSv1_2),
+                              ('http/1.1', ssl.TLSVersion.TLSv1_3),
+                              ('h2', ssl.TLSVersion.TLSv1_3)):
+        with connect(domain, alpn, path, cafile, deadline, expected_leaf,
+                     tls_version=tls_version):
             pass
 
 
@@ -636,13 +653,14 @@ def main():
         domain, path, expected_leaf = load_target()
         if args.target_only:
             target_tls(domain, path=path, expected_leaf=expected_leaf)
-            print('SELFSTEAL_TARGET_TLS=PASS; WEB_CONTENT=NOT_TESTED')
+            print('SELFSTEAL_TARGET_TLS12_TLS13=PASS; HSTS=NOT_TESTED; WEB_CONTENT=NOT_TESTED')
             print('SELFSTEAL_SCOPE=LOCAL_TARGET_ONLY; AUTHENTICATED_VLESS_CLIENT=NOT_TESTED')
             return 0
         reject = nginx_sni_reject_supported()
         check(domain, path=path, expected_leaf=expected_leaf,
               extended=True, reject_unknown_sni=reject)
-        print('SELFSTEAL_TLS13_HTTP1_HTTP2=PASS')
+        print('SELFSTEAL_TLS12_TLS13_HTTP1_HTTP2=PASS')
+        print('SELFSTEAL_HSTS_MAX_AGE_300=PASS')
         print('SELFSTEAL_STATIC_ASSETS_HEADERS_NEGATIVE_HTTP=PASS')
         print('SELFSTEAL_SNI_REJECT=' + ('PASS' if reject else 'NOT_SUPPORTED_BY_LEGACY_NGINX'))
         print('SELFSTEAL_SCOPE=LOCAL_TARGET_ONLY; AUTHENTICATED_VLESS_CLIENT=NOT_TESTED')
@@ -909,8 +927,8 @@ After=docker.service systemd-tmpfiles-setup.service
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/vkarmani-node
-ExecStart=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml up -d
-ExecStop=/usr/bin/docker compose -f /opt/vkarmani-node/compose.yaml stop
+ExecStart=/usr/local/sbin/vkarmani-docker-local compose -f /opt/vkarmani-node/compose.yaml up -d
+ExecStop=/usr/local/sbin/vkarmani-docker-local compose -f /opt/vkarmani-node/compose.yaml stop
 TimeoutStartSec=120
 TimeoutStopSec=90
 # Intentionally no [Install] / WantedBy. restart: always is the sole boot owner.
@@ -1039,7 +1057,7 @@ import subprocess
 import sys
 
 ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}
-DOCKER = ['docker', '--host', 'unix:///var/run/docker.sock']
+DOCKER = ['/usr/local/sbin/vkarmani-docker-local']
 PLUGIN_FLOOR = (26, 3, 27)
 SECURITY_FLOOR = (26, 7, 11)
 REQUIRED_SETS = {'ingress-filter-ip', 'torrent-blocker', 'egress-filter-ip', 'egress-filter-port'}
@@ -1435,6 +1453,7 @@ set -uo pipefail
 set +x
 umask 077
 export LC_ALL=C PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+docker() { /usr/local/sbin/vkarmani-docker-local "$@"; }
 [[ $EUID -eq 0 ]] || { echo 'Run as root: sudo vkarmani-node-check'; exit 1; }
 MODE=${1:---normal}
 [[ $# -le 1 ]] || { echo 'Too many arguments to node-check' >&2; exit 2; }
@@ -1480,7 +1499,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1520,7 +1539,7 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 ]]; then
         if [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
             if helper profile-check "$ETC/profile-xhttp.json"; then
                 pass XHTTP_IMPORT_PROFILE_POLICY
@@ -1791,7 +1810,12 @@ if normalized_caps(cap_add) != ['NET_ADMIN']:
     raise SystemExit(1)
 if normalized_caps(cap_drop) != ['NET_RAW']:
     raise SystemExit(1)
-if not isinstance(security, list) or not any(isinstance(x, str) and x.startswith('no-new-privileges') for x in security):
+# A prefix match is NOT a security check: Docker may return
+# no-new-privileges:false or an explicitly malformed/contradictory value.
+if not isinstance(security, list) or any(not isinstance(x, str) for x in security):
+    raise SystemExit(1)
+values = [x.strip().lower() for x in security if x.strip().lower().startswith('no-new-privileges')]
+if len(values) != 1 or values[0] not in ('no-new-privileges', 'no-new-privileges:true', 'no-new-privileges=true'):
     raise SystemExit(1)
 PY_CAPS
         then
@@ -1877,7 +1901,7 @@ import re
 import subprocess
 import sys
 
-DOCKER = ['docker', '--host', 'unix:///var/run/docker.sock']
+DOCKER = ['/usr/local/sbin/vkarmani-docker-local']
 ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}
 
 
@@ -1977,6 +2001,23 @@ else
 fi
 [[ -S "$SELFSTEAL_SOCKET" ]] && pass SELFSTEAL_SOCKET || fail SELFSTEAL_SOCKET
 nginx -t >/dev/null 2>&1 && pass NGINX_CONFIG || fail NGINX_CONFIG
+# HTTP/80 must redirect only this exact domain (ACME challenge remains routable).
+REDIRECT_HEAD=$(mktemp "$STATE/.http-redirect.XXXXXX") || exit 1
+HTTP80_CODE=''
+if HTTP80_CODE=$(curl --noproxy '*' -4 --silent --show-error --max-redirs 0 --head \
+    --connect-timeout 5 --max-time 10 --resolve "$DOMAIN:80:$PUBLIC_IP" \
+    -D "$REDIRECT_HEAD" -o /dev/null -w '%{http_code}' "http://$DOMAIN/" 2>/dev/null); then :; else HTTP80_CODE=''; fi
+if [[ "$HTTP80_CODE" == 301 ]] &&
+   [[ $(tr -d '\r' < "$REDIRECT_HEAD" | grep -Fxc "Location: https://$DOMAIN/") -eq 1 ]]; then
+    pass HTTP80_301_FIXED_DOMAIN
+else
+    if [[ "$MODE" == --postboot || "$MODE" == --require-xray ]]; then
+        fail HTTP80_301_FIXED_DOMAIN 'redirect or Location not verified'
+    else
+        warn HTTP80_301_FIXED_DOMAIN 'NOT_VERIFIED: ACME may be provisioning, verify after Nginx starts'
+    fi
+fi
+rm -f "$REDIRECT_HEAD"
 openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -checkend 604800 >/dev/null 2>&1 && pass TLS_VALID_7DAYS || fail TLS_VALID_7DAYS
 vk_check_selfsteal_target_contract() {
     if [[ "$INSTALLED_CONTRACT_CLASS" == modern ]]; then
@@ -1989,17 +2030,31 @@ vk_check_selfsteal_target_contract
 timeout 25 /usr/local/sbin/vkarmani-selfsteal-check && pass SELFSTEAL_WEB_CONTENT || fail SELFSTEAL_WEB_CONTENT
 if docker exec remnanode test -S /dev/shm/nginx.sock >/dev/null 2>&1; then pass NODE_SELFSTEAL_SOCKET; else fail NODE_SELFSTEAL_SOCKET; fi
 if [[ "$XRAY_PRESENT" -eq 1 ]]; then
-    BODY=$(mktemp "$STATE/.cover-check.XXXXXX") || exit 1
-    CODE=$(curl --noproxy '*' -4 --fail --silent --show-error --http2 --tlsv1.3 --tls-max 1.3 \
-        --connect-timeout 5 --max-time 20 --resolve "$DOMAIN:443:$PUBLIC_IP" \
-        -o "$BODY" -w '%{http_code}' "https://$DOMAIN/" 2>/dev/null || true)
-    if [[ "$CODE" == 200 ]] && cmp -s "$BODY" /var/www/vkarmani-node/site/index.html; then
-        pass REALITY_SELFSTEAL_443
-        XRAY_COVER_OK=1
-    else
-        warn REALITY_SELFSTEAL_443 'TCP/443 открыт, но ожидаемый Selfsteal не подтверждён; проверьте назначенный профиль'
-    fi
-    rm -f "$BODY"
+    # Verify the ACTUAL public 443/REALITY fallback, not only the local Unix socket.
+    # Exact TLS-version bounds and trusted CA; no --insecure, no hidden redirect.
+    PUBLIC_TLS_OK=1
+    for TLS in 1.2 1.3; do
+        BODY=$(mktemp "$STATE/.cover-check.XXXXXX") || exit 1
+        HEADERS=$(mktemp "$STATE/.cover-headers.XXXXXX") || { rm -f "$BODY"; exit 1; }
+        CODE=''
+        if CODE=$(curl --noproxy '*' -4 --fail --silent --show-error --http1.1 \
+            --tlsv1."${TLS#1.}" --tls-max "$TLS" --connect-timeout 5 --max-time 20 \
+            --resolve "$DOMAIN:443:$PUBLIC_IP" -D "$HEADERS" \
+            -o "$BODY" -w '%{http_code}' "https://$DOMAIN/" 2>/dev/null); then :; else CODE=''; fi
+        if [[ "$CODE" == 200 ]] && cmp -s "$BODY" /var/www/vkarmani-node/site/index.html &&
+           [[ $(tr -d '\r' < "$HEADERS" | grep -Eic '^Strict-Transport-Security:[[:space:]]*max-age=300[[:space:]]*$') -eq 1 ]]; then
+            pass "REALITY_443_TLS${TLS//./}_HSTS"
+        else
+            PUBLIC_TLS_OK=0
+            if [[ "$MODE" == --require-xray || "$MODE" == --postboot ]]; then
+                fail "REALITY_443_TLS${TLS//./}_HSTS" 'публичный HTTPS/certificate/HSTS/контент не подтверждены'
+            else
+                warn "REALITY_443_TLS${TLS//./}_HSTS" 'NOT_VERIFIED: проверьте назначенный REALITY-профиль и цепочку'
+            fi
+        fi
+        rm -f "$BODY" "$HEADERS"
+    done
+    [[ "$PUBLIC_TLS_OK" -eq 1 ]] && XRAY_COVER_OK=1
 fi
 fail2ban-client ping 2>/dev/null | _contains pong && pass FAIL2BAN_PING || fail FAIL2BAN_PING
 fail2ban-client status sshd >/dev/null 2>&1 && pass FAIL2BAN_SSHD_JAIL || fail FAIL2BAN_SSHD_JAIL
@@ -2155,6 +2210,8 @@ def run(args, timeout=60):
     Stopping a Docker client cannot cancel work already accepted by dockerd.
     A timeout during Compose apply therefore leaves the transaction pending.
     """
+    if args and args[0] == 'docker':
+        args = ['/usr/local/sbin/vkarmani-docker-local'] + args[1:]
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, start_new_session=True, stdin=subprocess.DEVNULL)
@@ -2494,7 +2551,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3608,7 +3665,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -3895,7 +3952,7 @@ def container_state():
         return {'verified': False, 'reason': 'docker_cli_absent'}
     fmt = '{"running":{{.State.Running}},"restarting":{{.State.Restarting}},"oom_killed":{{.State.OOMKilled}},"restarts":{{.RestartCount}}}'
     try:
-        p = subprocess.run(['docker', '--host', 'unix:///var/run/docker.sock', 'inspect', '--format', fmt, 'remnanode'],
+        p = subprocess.run(['/usr/local/sbin/vkarmani-docker-local', 'inspect', '--format', fmt, 'remnanode'],
                            stdin=subprocess.DEVNULL, capture_output=True, timeout=5)
         if p.returncode:
             return {'verified': False, 'reason': 'container_unavailable'}
@@ -4609,6 +4666,9 @@ CHECKED = ROOT / 'last-check.json'
 MAX_BYTES = 4 * 1024 * 1024
 MAX_ENTRIES = 65536
 MIN_ENTRIES = 100
+# Age affects the *diagnostic readiness*, not the basic UFW service. A
+# verified older list remains installed when the network is unavailable.
+MAX_CHECKPOINT_AGE = dt.timedelta(hours=72)
 
 
 class GuardError(Exception):
@@ -4648,6 +4708,8 @@ def require_node():
 
 def panel_ips():
     cfg = json.loads(owned_file(CONFIG))
+    if not isinstance(cfg, dict):
+        raise GuardError('INVALID_NODE_CONFIG_ROOT')
     if cfg.get('installation_mode') != 'secret-key-only':
         raise GuardError('UNSUPPORTED_NODE_CONFIGURATION')
     raw = cfg.get('panel_ipv4')
@@ -4746,6 +4808,66 @@ def atomic(path, data, mode=0o600):
             os.unlink(tmp)
 
 
+def restore_record(path, original):
+    """Reinstate a previously captured state file, including absence of file.
+
+    A failed atomic() may have *published* its new bytes before raising on the
+    directory fsync. Never assume that a failed write left the old file intact.
+    """
+    if path.is_symlink():
+        raise GuardError('UNSAFE_ROLLBACK_SYMLINK')
+    if original is None:
+        if path.exists():
+            if not path.is_file():
+                raise GuardError('UNSAFE_ROLLBACK_TARGET')
+            path.unlink()
+            dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        if path.exists():
+            raise GuardError('ROLLBACK_FILE_STILL_EXISTS')
+    elif not path.exists() or owned_file(path) != original:
+        atomic(path, original)
+        if owned_file(path) != original:
+            raise GuardError('ROLLBACK_BYTES_MISMATCH')
+
+
+def restore_ufw_file(original, *, must_be_active):
+    """Restore verified UFW bytes and sync runtime policy when it is active."""
+    if owned_file(UFW_FILE) != original:
+        atomic(UFW_FILE, original, mode=0o644)
+    if owned_file(UFW_FILE) != original:
+        raise GuardError('UFW_ROLLBACK_BYTES_MISMATCH')
+    active = 'Status: active' in run('ufw', 'status').splitlines()
+    if must_be_active and not active:
+        raise GuardError('UFW_INACTIVE_DURING_ROLLBACK')
+    if active:
+        run('ufw', 'reload', timeout=50)
+        check_ufw_active()
+
+
+def checked_freshness(meta, now=None):
+    """Explicit data-age diagnosis; no filesystem or firewall mutation."""
+    if not isinstance(meta, dict):
+        return 'INVALID'
+    timestamp = meta.get('checked_at_utc')
+    if not isinstance(timestamp, str):
+        return 'UNKNOWN'
+    try:
+        when = dt.datetime.fromisoformat(timestamp)
+    except ValueError:
+        return 'INVALID'
+    if when.tzinfo is None:
+        return 'INVALID'
+    now = now or dt.datetime.now(dt.timezone.utc)
+    elapsed = now - when
+    if elapsed < -dt.timedelta(minutes=5):
+        return 'FUTURE'
+    return 'STALE' if elapsed > MAX_CHECKPOINT_AGE else 'PASS'
+
+
 def ipset_exists(name):
     proc = subprocess.run(['ipset', 'list', name], capture_output=True, text=True, timeout=12)
     if proc.returncode:
@@ -4783,35 +4905,60 @@ def panel_refresh():
     return ips
 
 
-def prepare():
-    """Offline, safe before UFW: provision sets even when source is unavailable."""
-    require_node()
-    ROOT.mkdir(parents=True, mode=0o700, exist_ok=True)
-    new_block = not ipset_exists(BLOCK_SET)
-    if new_block:
-        ipset_create(BLOCK_SET)
-    if not ipset_exists(PANEL_SET):
-        ipset_create(PANEL_SET)
-    try:
-        panel = panel_refresh()
-    except (GuardError, ValueError, OSError) as exc:
-        # Safe failure: never enforce an unexempted scanner list on the panel.
-        run('ipset', 'flush', BLOCK_SET)
-        print('RKN_PREPARE=FAIL_OPEN PANEL_CONFIG: ' + str(exc), file=sys.stderr)
-        return False
-    if new_block:
+def _prepare_degraded(reason):
+    """Keep the base UFW service bootable when optional ipset is unavailable.
+
+    Never remove foreign rules. During boot UFW is not active yet; a validated
+    owned-block removal prevents it loading rules that reference missing sets.
+    Any failure to validate/restore this file remains fatal (manual console).
+    """
+    original = owned_file(UFW_FILE)
+    revised = edit_ufw(original, False)
+    if revised != original:
+        run('iptables-restore', '--test', data=revised, timeout=20)
         try:
+            atomic(UFW_FILE, revised, mode=0o644)
+            # At boot UFW is inactive; on a live node we MUST reload to make
+            # the in-kernel policy agree with the rewritten file.
+            status = run('ufw', 'status')
+            if 'Status: active' in status.splitlines():
+                run('ufw', 'reload', timeout=50)
+        except (GuardError, OSError) as exc:
+            try:
+                restore_ufw_file(original, must_be_active=False)
+            except (GuardError, OSError) as rollback_exc:
+                raise GuardError('PREPARE_DEGRADED_UFW_ROLLBACK_UNCONFIRMED') from rollback_exc
+            raise
+    print('RKN_PREPARE=DEGRADED BASE_UFW_PRESERVED REASON=' + reason, file=sys.stderr)
+    return False
+
+
+def prepare():
+    """Prepare all ipsets before UFW or remove our dependent firewall fragment.
+
+    A failed ipset create/restore must not block the base firewall from booting.
+    If the owned block cannot be removed safely, fail explicitly rather than
+    claiming an operational firewall.
+    """
+    require_node()
+    try:
+        ROOT.mkdir(parents=True, mode=0o700, exist_ok=True)
+        new_block = not ipset_exists(BLOCK_SET)
+        if new_block:
+            ipset_create(BLOCK_SET)
+        if not ipset_exists(PANEL_SET):
+            ipset_create(PANEL_SET)
+        panel = panel_refresh()
+        if new_block:
             saved = restore_cached()
             if saved:
                 ipset_stage(BLOCK_STAGE, saved)
                 run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
-        except (GuardError, OSError, ValueError) as exc:
-            run('ipset', 'flush', BLOCK_SET)
-            print('RKN_PREPARE=FAIL_OPEN CACHE: ' + str(exc), file=sys.stderr)
-            return False
+    except (GuardError, OSError, ValueError) as exc:
+        # Do not rely on `ipset flush`: the set may not even exist.
+        return _prepare_degraded(type(exc).__name__)
     print('RKN_PREPARE=PASS PANEL_IPS=' + str(len(panel)))
     return True
-
 
 def ufw_fragment():
     return ('\n' + BEGIN + '\n'
@@ -4893,8 +5040,7 @@ def apply_ufw(enable):
             check_ufw_jump()
         return
     # Validate the exact resulting restore input without applying it to kernel.
-    if enable:
-        run('iptables-restore', '--test', data=revised, timeout=20)
+    run('iptables-restore', '--test', data=revised, timeout=20)
     snapshot = ROOT / ('ufw-before-pre-rkn' if enable else 'ufw-before-pre-disable')
     atomic(snapshot, original)
     try:
@@ -4904,12 +5050,11 @@ def apply_ufw(enable):
             check_ufw_jump()
         else:
             run('iptables', '-S', 'ufw-before-input')
-    except GuardError as exc:
-        atomic(UFW_FILE, original, mode=0o644)
+    except (GuardError, OSError) as exc:
         try:
-            run('ufw', 'reload', timeout=50)
-        except GuardError:
-            raise GuardError('UFW_RELOAD_AND_ROLLBACK_UNCONFIRMED') from exc
+            restore_ufw_file(original, must_be_active=True)
+        except (GuardError, OSError) as rollback_exc:
+            raise GuardError('UFW_RELOAD_AND_ROLLBACK_UNCONFIRMED') from rollback_exc
         raise
 
 
@@ -4925,21 +5070,40 @@ def update():
         raise GuardError('SUSPICIOUS_NETWORK_COUNT_CHANGE')
     # Reconcile the active kernel set daily even when the source contents
     # are unchanged (e.g. a third-party flush or lost ipset membership).
+    previous_kernel = live_block_set()
+    previous_cache = owned_file(CACHE) if CACHE.exists() else None
+    previous_checkpoint = owned_file(CHECKED) if CHECKED.exists() else None
     ipset_stage(BLOCK_STAGE, new)
-    run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+    swapped = False
     try:
+        run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+        swapped = True
         if new != old:
             atomic(CACHE, ''.join(item + '\n' for item in new))
-    except (OSError, GuardError):
-        run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+        stamp = {'checked_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
+                 'source': SOURCE, 'count_ipv4': len(new),
+                 'sha256': hashlib.sha256((''.join(s + '\n' for s in new)).encode()).hexdigest(),
+                 'changed': new != old, 'code_upstream': UPSTREAM,
+                 'code_auto_update': False}
+        atomic(CHECKED, json.dumps(stamp, sort_keys=True, ensure_ascii=False, indent=2) + '\n')
+        check_ufw_jump()
+        active_after = live_block_set()
+        if len(active_after) != len(new) or set(active_after) != set(new):
+            raise GuardError('RKN_KERNEL_SET_UPDATE_MISMATCH')
+    except (GuardError, OSError) as exc:
+        # Reverse kernel swap AND both disk records, including a record that
+        # atomic() published before reporting a directory fsync failure.
+        try:
+            if swapped:
+                run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+                restored = live_block_set()
+                if len(restored) != len(previous_kernel) or set(restored) != set(previous_kernel):
+                    raise GuardError('RKN_KERNEL_ROLLBACK_MISMATCH')
+            restore_record(CACHE, previous_cache)
+            restore_record(CHECKED, previous_checkpoint)
+        except (GuardError, OSError) as rollback_exc:
+            raise GuardError('RKN_UPDATE_ROLLBACK_UNCONFIRMED') from rollback_exc
         raise
-    stamp = {'checked_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
-             'source': SOURCE, 'count_ipv4': len(new),
-             'sha256': hashlib.sha256((''.join(s + '\n' for s in new)).encode()).hexdigest(),
-             'changed': new != old, 'code_upstream': UPSTREAM,
-             'code_auto_update': False}
-    atomic(CHECKED, json.dumps(stamp, sort_keys=True, ensure_ascii=False, indent=2) + '\n')
-    check_ufw_jump()
     print('RKN_UPDATE=PASS IPV4_NETWORKS=' + str(len(new)) + ' CHANGED=' + str(new != old))
 
 
@@ -4949,31 +5113,149 @@ def enable():
     ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
     if not prepare():
         raise GuardError('PANEL_LIST_INVALID_RKN_NOT_ENABLED')
+    was_enabled = BEGIN in owned_file(UFW_FILE)
     apply_ufw(True)
-    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_EXCEPTION=DYNAMIC')
     try:
         update()
     except (GuardError, OSError, ValueError) as exc:
-        # Network outage/invalid source never rolls back the healthy UFW/SSH setup.
-        print('RKN_DATA=PENDING_TIMER_RETRY ' + str(exc), file=sys.stderr)
+        # A valid old list may remain active when GitHub/network is unavailable.
+        # Check the actual cached bytes against the recorded successful stamp;
+        # a parseable but never-verified list is NOT proof of scanner protection.
+        verified = False
+        fallback_freshness = 'UNKNOWN'
+        try:
+            old = restore_cached()
+            meta = json.loads(owned_file(CHECKED))
+            digest = hashlib.sha256((''.join(x + '\n' for x in old)).encode()).hexdigest()
+            verified = bool(old and isinstance(meta, dict) and
+                            meta.get('sha256') == digest and
+                            meta.get('count_ipv4') == len(old))
+            if verified:
+                # An existing iptables jump is NOT evidence of populated
+                # active kernel sets. Repair from signed-off local data only.
+                active = live_block_set()
+                if len(active) != len(old) or set(active) != set(old):
+                    ipset_stage(BLOCK_STAGE, old)
+                    run('ipset', 'swap', BLOCK_STAGE, BLOCK_SET)
+                    active = live_block_set()
+                    if len(active) != len(old) or set(active) != set(old):
+                        raise GuardError('RKN_KERNEL_CACHE_RESTORE_MISMATCH')
+                if set(live_panel_set()) != set(panel_ips()):
+                    raise GuardError('RKN_ACTIVE_PANEL_EXCLUSION_MISMATCH')
+                fallback_freshness = checked_freshness(meta)
+        except (GuardError, OSError, ValueError, TypeError, KeyError):
+            verified = False
+        if not verified:
+            # This is safe only when THIS invocation installed the block.
+            # For an existing filter, preserve state for operator recovery.
+            if not was_enabled:
+                apply_ufw(False)
+            raise GuardError('RKN_NO_VERIFIED_LIST_INITIAL_ACTIVATION') from exc
+        print('RKN_DATA=DEGRADED_USING_VERIFIED_CACHE FRESHNESS=' + fallback_freshness,
+              file=sys.stderr)
+        if fallback_freshness != 'PASS':
+            if not was_enabled:
+                apply_ufw(False)
+            raise GuardError('RKN_CACHE_FRESHNESS_' + fallback_freshness) from exc
+    # Print success only after a fresh update or independently verified cache.
+    check_ufw_jump()
+    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_EXCEPTION=DYNAMIC')
+
+
+def live_block_set():
+    """Read the installed IPv4 set; a matching on-disk cache is not enough."""
+    raw = run('ipset', 'save', BLOCK_SET, timeout=20)
+    active = []
+    for line in raw.splitlines():
+        if line.startswith('add '):
+            words = line.split()
+            if len(words) != 3 or words[1] != BLOCK_SET:
+                raise GuardError('ACTIVE_BLOCK_SET_UNEXPECTED_ENTRY')
+            try:
+                active.append(str(ipaddress.IPv4Network(words[2], strict=False)))
+            except ValueError as exc:
+                raise GuardError('ACTIVE_BLOCK_SET_MALFORMED_IPV4') from exc
+    return active
+
+
+def live_panel_set():
+    """Validate real kernel members, never infer panel bypass from rule text."""
+    raw = run('ipset', 'save', PANEL_SET, timeout=20)
+    addresses = []
+    for line in raw.splitlines():
+        if not line.startswith('add '):
+            continue
+        fields = line.split()
+        if len(fields) != 3 or fields[1] != PANEL_SET:
+            raise GuardError('ACTIVE_PANEL_SET_UNEXPECTED_ENTRY')
+        try:
+            ip = ipaddress.IPv4Address(fields[2])
+        except ipaddress.AddressValueError as exc:
+            raise GuardError('ACTIVE_PANEL_SET_INVALID_IPV4') from exc
+        if not ip.is_global or str(ip) != fields[2]:
+            raise GuardError('ACTIVE_PANEL_SET_UNSAFE_IPV4')
+        addresses.append(str(ip))
+    if len(addresses) != len(set(addresses)):
+        raise GuardError('ACTIVE_PANEL_SET_DUPLICATES')
+    return addresses
 
 
 def status():
     require_node()
-    print('RKN_ENABLED=' + str(BEGIN in owned_file(UFW_FILE)))
+    enabled = BEGIN in owned_file(UFW_FILE)
+    print('RKN_ENABLED=' + str(enabled))
     print('RKN_SOURCE=' + SOURCE)
     print('RKN_UPSTREAM=' + UPSTREAM + ' (manual code review per release)')
+    panel_valid = True
+    expected_panel = None
     try:
-        print('RKN_PANEL_FROM_CONFIG=' + ','.join(panel_ips()))
+        expected_panel = panel_ips()
+        print('RKN_PANEL_FROM_CONFIG=' + ','.join(expected_panel))
     except (ValueError, GuardError, OSError):
         print('RKN_PANEL_FROM_CONFIG=INVALID')
+        panel_valid = False
     if CHECKED.exists():
         print('RKN_LAST_CHECK=' + owned_file(CHECKED))
     else:
         print('RKN_LAST_CHECK=NEVER')
-    if BEGIN in owned_file(UFW_FILE):
+    if enabled:
         check_ufw_jump()
-        print('RKN_FIREWALL=PASS')
+        print('RKN_FIREWALL_RULES=PASS')
+        try:
+            active_panel = live_panel_set()
+            if expected_panel is None or set(active_panel) != set(expected_panel):
+                raise GuardError('ACTIVE_PANEL_SET_CONFIG_MISMATCH')
+            print('RKN_PANEL_SET_MATCH=PASS ACTIVE_IPV4=' + str(len(active_panel)))
+        except (GuardError, OSError, ValueError) as exc:
+            print('RKN_PANEL_SET_MATCH=FAIL REASON=' + type(exc).__name__)
+            panel_valid = False
+        try:
+            cached = restore_cached()
+            if not cached:
+                raise GuardError('NO_VALID_CACHE')
+            mark = json.loads(owned_file(CHECKED))
+            if not isinstance(mark, dict):
+                raise GuardError('INVALID_CHECKPOINT_ROOT')
+            expected = hashlib.sha256((''.join(x + '\n' for x in cached)).encode()).hexdigest()
+            if mark.get('sha256') != expected or mark.get('count_ipv4') != len(cached):
+                raise GuardError('CACHE_AND_CHECKPOINT_MISMATCH')
+            active = live_block_set()
+            if len(active) != len(cached) or set(active) != set(cached):
+                raise GuardError('KERNEL_SET_CACHE_MISMATCH')
+            print('RKN_DATA_INTEGRITY=PASS ACTIVE_IPV4_NETWORKS=' + str(len(active)))
+            fresh = checked_freshness(mark)
+            print('RKN_FRESHNESS=' + fresh)
+            if fresh != 'PASS':
+                print('RKN_DATA=DEGRADED REASON=FRESHNESS_' + fresh)
+                return 1
+            print('RKN_DATA=PASS ACTIVE_IPV4_NETWORKS=' + str(len(active)))
+        except (GuardError, ValueError, OSError, KeyError, TypeError) as exc:
+            print('RKN_DATA=DEGRADED REASON=' + type(exc).__name__)
+            return 1
+    else:
+        print('RKN_FIREWALL_RULES=DISABLED')
+        print('RKN_PANEL_SET_MATCH=NOT_APPLICABLE')
+    return 0 if panel_valid else 1
 
 
 def disable():
@@ -4991,8 +5273,7 @@ def main():
         LOCK.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     try:
         if args.action == 'status':
-            status()
-            return 0
+            return status()
         with open(LOCK, 'a', encoding='utf-8') as stream:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
             if args.action == 'prepare':
@@ -5096,22 +5377,83 @@ VK_RKN_UFW_DEP
         /etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf
 }
 
-vk_rkn_abort_setup() {
-    # Do NOT remove the boot-time UFW prerequisite until our live firewall
-    # fragment has been removed. A failure here requires operator recovery.
-    if grep -Fq '# BEGIN VKARMANI-RKN-GUARD IPv4 managed by Node_Install' /etc/ufw/before.rules 2>/dev/null; then
-        if ! /usr/local/sbin/vkarmani-rkn-guard disable; then
-            echo 'RKN_CRITICAL: failed to restore UFW; keep console and investigate before reboot.' >&2
+vk_rkn_safe_shutdown() {
+    # The caller holds /run/lock/vkarmani-node-installer.lock.
+    # Never explicitly stop prepare while UFW still Requires= it: systemd
+    # propagates the stop to ufw.service. This is a safety boundary.
+    local dropin=/etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf
+    local backup="${dropin}.vkarmani-pending-remove"
+    local expected=$'[Unit]\nRequires=vkarmani-rkn-prepare.service\nAfter=vkarmani-rkn-prepare.service'
+    local actual
+    [[ -x /usr/local/sbin/vkarmani-rkn-guard ]] || {
+        echo 'RKN_CRITICAL: helper missing; no systemd dependency removed.' >&2; return 1;
+    }
+    if [[ -e "$dropin" || -L "$dropin" ]]; then
+        [[ -f "$dropin" && ! -L "$dropin" ]] || {
+            echo 'RKN_CRITICAL: UFW drop-in is not a regular file.' >&2; return 1;
+        }
+        actual=$(cat -- "$dropin") || return 1
+        [[ "$actual" == "$expected" && $(stat -c '%u' "$dropin") == 0 ]] || {
+            echo 'RKN_CRITICAL: UFW drop-in changed; refusing to delete foreign data.' >&2; return 1;
+        }
+    fi
+    if [[ -e "$backup" || -L "$backup" ]]; then
+        [[ ! -e "$dropin" && ! -L "$dropin" && -f "$backup" && ! -L "$backup" ]] || {
+            echo 'RKN_CRITICAL: ambiguous drop-in recovery state.' >&2; return 1;
+        }
+        actual=$(cat -- "$backup") || return 1
+        [[ "$actual" == "$expected" && $(stat -c '%u' "$backup") == 0 ]] || {
+            echo 'RKN_CRITICAL: pending backup is not ours.' >&2; return 1;
+        }
+    fi
+    # Timer must be disabled first. Do not kill a running refresh halfway
+    # through ipset swap: refuse until it is finished, then allow retry.
+    systemctl disable --now vkarmani-rkn-update.timer || return 1
+    if systemctl is-active --quiet vkarmani-rkn-update.service; then
+        echo 'RKN_BUSY: refresh in progress; retry after it finishes.' >&2; return 1
+    fi
+    # Remove ONLY the checksum-validated owned UFW fragment. The helper
+    # performs its own serialized, checked UFW reload / rollback.
+    /usr/local/sbin/vkarmani-rkn-guard disable || return 1
+    if [[ -e "$dropin" ]]; then
+        [[ ! -e "$backup" && ! -L "$backup" ]] || {
+            echo 'RKN_CRITICAL: conflicting pending removal backup.' >&2; return 1;
+        }
+        mv -- "$dropin" "$backup" || return 1
+        if ! systemctl daemon-reload; then
+            echo 'RKN_CRITICAL: daemon-reload failed; restoring drop-in.' >&2
+            mv -- "$backup" "$dropin" || return 1
+            systemctl daemon-reload || return 1
+            return 1
+        fi
+        # Keep backup until successful stop/verification, for recovery.
+    else
+        # An interrupted disable may have moved the known drop-in to its
+        # protected pending file; finish the reload without losing that backup.
+        if ! systemctl daemon-reload; then
+            if [[ -e "$backup" ]]; then mv -- "$backup" "$dropin" || return 1; fi
+            systemctl daemon-reload || return 1
             return 1
         fi
     fi
-    systemctl disable --now vkarmani-rkn-update.timer >/dev/null 2>&1 || true
-    systemctl disable --now vkarmani-rkn-prepare.service >/dev/null 2>&1 || true
-    if [[ -f /etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf ]] &&
-       grep -Fxq 'Requires=vkarmani-rkn-prepare.service' /etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf; then
-        rm -f /etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf
+    if ! systemctl disable --now vkarmani-rkn-prepare.service; then
+        echo 'RKN_CRITICAL: prepare shutdown failed; UFW dependency already removed.' >&2
+        return 1
     fi
-    systemctl daemon-reload || return 1
+    systemctl is-active --quiet ufw.service || {
+        echo 'RKN_CRITICAL: UFW not active after RKN shutdown.' >&2; return 1;
+    }
+    ufw status | grep -Fx 'Status: active' >/dev/null || {
+        echo 'RKN_CRITICAL: UFW policy not active after RKN shutdown.' >&2; return 1;
+    }
+    if [[ -e "$backup" ]]; then rm -- "$backup" || return 1; fi
+    echo 'RKN_DISABLE=PASS: owned fragment removed, UFW active, prepare stopped last.'
+}
+
+vk_rkn_abort_setup() {
+    # Called under the installer lock; use the same safe ordering as explicit
+    # --rkn-disable. Do not silently continue after any failed cleanup.
+    vk_rkn_safe_shutdown
 }
 
 vk_rkn_activate() {
@@ -5185,32 +5527,38 @@ vkarmani_rkn_command() {
     shift
     [[ $# -eq 0 ]] || { echo 'RKN command accepts no extra arguments' >&2; return 2; }
     [[ $EUID -eq 0 ]] || { echo 'Requires root' >&2; return 1; }
+    if [[ "$action" == status ]]; then
+        [[ -x /usr/local/sbin/vkarmani-rkn-guard ]] || {
+            echo 'RKN integration is not installed.' >&2; return 1;
+        }
+        exec /usr/local/sbin/vkarmani-rkn-guard status
+    fi
+    # All changing CLI actions share the installer lock. The guard helper
+    # additionally holds its own ipset/UFW lock; timer refresh uses that lock.
+    install -d -m 0755 /run/lock
+    [[ ! -L /run/lock/vkarmani-node-installer.lock ]] || {
+        echo 'RKN: unsafe installer lock.' >&2; return 1;
+    }
+    exec 9>/run/lock/vkarmani-node-installer.lock || return 1
+    flock -n 9 || { echo 'Node installer or maintenance is busy.' >&2; return 1; }
     if [[ "$action" == enable ]]; then
         [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
-        grep -Eq '^version=2\.5\.[23456]$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2/2.5.3/2.5.4/2.5.5/2.5.6 nodes.' >&2; return 1;
+        grep -Eq '^version=2\.5\.[234567]$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+            echo 'RKN integration supports only completed 2.5.2–2.5.9 nodes.' >&2; return 1;
         }
-        install -d -m 0755 /run/lock
-        exec 9>/run/lock/vkarmani-node-installer.lock
-        flock -n 9 || { echo 'Node installer is busy' >&2; return 1; }
         vk_rkn_activate
         return
     fi
-    [[ -x /usr/local/sbin/vkarmani-rkn-guard ]] || { echo 'RKN integration is not installed.' >&2; return 1; }
+    [[ -x /usr/local/sbin/vkarmani-rkn-guard ]] || {
+        echo 'RKN integration is not installed.' >&2; return 1;
+    }
     case "$action" in
-        status) exec /usr/local/sbin/vkarmani-rkn-guard status ;;
-        panel) exec /usr/local/sbin/vkarmani-rkn-guard sync-panel ;;
-        update) exec /usr/local/sbin/vkarmani-rkn-guard update ;;
-        disable)
-            systemctl disable --now vkarmani-rkn-update.timer || return 1
-            /usr/local/sbin/vkarmani-rkn-guard disable || return 1
-            systemctl disable --now vkarmani-rkn-prepare.service || return 1
-            rm -f /etc/systemd/system/ufw.service.d/90-vkarmani-rkn.conf
-            systemctl daemon-reload
-            echo 'RKN disabled; only owned UFW fragment removed; cached data retained.'
-            ;;
+        panel) /usr/local/sbin/vkarmani-rkn-guard sync-panel ;;
+        update) /usr/local/sbin/vkarmani-rkn-guard update ;;
+        disable) vk_rkn_safe_shutdown ;;
+        *) echo 'RKN: unknown action' >&2; return 2 ;;
     esac
 }
 
@@ -5510,7 +5858,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -5643,7 +5991,7 @@ def installed_version(runner=None):
     if runner is None:
         runner = subprocess.run
     try:
-        result = runner(['docker', 'exec', 'remnanode', 'rw-core', 'version'],
+        result = runner(['/usr/local/sbin/vkarmani-docker-local', 'exec', 'remnanode', 'rw-core', 'version'],
                         text=True, capture_output=True, timeout=8, check=False)
         if result.returncode != 0:
             return None
@@ -5706,7 +6054,7 @@ vk_write_finalizer_helper() {
     local destination=$1
     cat > "$destination" <<'VK_FINALIZER_PY'
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.6 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.9 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -5727,7 +6075,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.6'
+VERSION = '2.5.9'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -5768,6 +6116,8 @@ def sha(data):
 
 def run(args, timeout=30, quiet=False):
     # A new process group lets timeout stop inherited pipes/children, not just bash.
+    if args and args[0] == 'docker':
+        args = ['/usr/local/sbin/vkarmani-docker-local'] + args[1:]
     with subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, env=ENV, start_new_session=True) as p:
         try:
@@ -6116,7 +6466,7 @@ vkarmani_finish_install_main() (
     # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
     local state=/var/lib/vkarmani-node work
     [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
-        echo 'STOP: no supported 2.5.6 finalization checkpoint; no installation state changed.' >&2; exit 1;
+        echo 'STOP: no supported 2.5.9 finalization checkpoint; no installation state changed.' >&2; exit 1;
     }
     local lock=/run/lock/vkarmani-node-installer.lock
     if [[ ! -e "$lock" && ! -L "$lock" ]]; then
@@ -6137,9 +6487,352 @@ vkarmani_finish_install_main() (
     echo 'FINISH_INSTALL=PASS; AUTO_REBOOT=NOT_SCHEDULED'
 )
 
+# All installer Docker calls must go to the local socket, not the operator's
+# DOCKER_HOST / DOCKER_CONTEXT or saved ~/.docker/config.json.
+# The installed wrapper is written before Docker runtime operations begin.
+docker() {
+    if [[ -x /usr/local/sbin/vkarmani-docker-local ]]; then
+        /usr/local/sbin/vkarmani-docker-local "$@"
+    else
+        # Bootstrap/preflight path before the wrapper can be installed.
+        [[ -S /var/run/docker.sock && ! -L /var/run/docker.sock ]] || {
+            echo 'LOCAL_DOCKER_UNAVAILABLE: local socket missing' >&2; return 1;
+        }
+        local vk_config
+        vk_config=$(mktemp -d /tmp/vkarmani-docker-cli.XXXXXXXX) || return 1
+        (trap 'rm -rf -- "$vk_config"' EXIT
+         env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            HOME=/root DOCKER_CONFIG="$vk_config" /usr/bin/docker --host unix:///var/run/docker.sock "$@")
+    fi
+}
+
+vk_write_docker_local() {
+    install -d -m 0755 /usr/local/sbin
+    local tmp
+    tmp=$(mktemp /usr/local/sbin/.vkarmani-docker-local.XXXXXXXX) || return 1
+    cat > "$tmp" <<'VK_DOCKER_LOCAL_SH'
+#!/usr/bin/env bash
+# VKarmani local Docker ONLY. No user/root contexts, credentials or remote daemons.
+set -Eeuo pipefail
+set +x
+umask 077
+SOCKET=/var/run/docker.sock
+if [[ ! -S "$SOCKET" || -L "$SOCKET" ]]; then
+    echo 'LOCAL_DOCKER_UNAVAILABLE: expected Unix socket /var/run/docker.sock' >&2
+    exit 1
+fi
+if [[ ! -x /usr/bin/docker ]]; then
+    echo 'LOCAL_DOCKER_UNAVAILABLE: /usr/bin/docker not executable' >&2
+    exit 1
+fi
+config=$(mktemp -d /tmp/vkarmani-docker-cli.XXXXXXXX) || exit 1
+trap 'rm -rf -- "$config"' EXIT
+# Empty isolated config prevents a saved remote Docker context, proxy or auth
+# plugin from influencing local operations. No global context is changed.
+env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/root DOCKER_CONFIG="$config" \
+    /usr/bin/docker --host unix:///var/run/docker.sock "$@"
+VK_DOCKER_LOCAL_SH
+    chmod 0755 "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" /usr/local/sbin/vkarmani-docker-local
+}
+
+vk_write_nightly_maintenance() {
+    local dst=/usr/local/lib/vkarmani-node/nightly_maintenance.py
+    install -d -o root -g root -m 0700 /usr/local/lib/vkarmani-node
+    [[ ! -L "$dst" ]] || { echo 'MAINTENANCE: unsafe helper symlink' >&2; return 1; }
+    local tmp
+    tmp=$(mktemp /usr/local/lib/vkarmani-node/.nightly.XXXXXXXX) || return 1
+    cat > "$tmp" <<'VK_NIGHT_MAINT_PY'
+#!/usr/bin/env python3
+"""Local RemnaNode night maintenance only, Europe/Moscow 03:00-03:59.
+
+This is NOT an autorepair loop. At most one planned container restart per
+Moscow date. It never starts a container deliberately stopped by its operator.
+"""
+import datetime as dt
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+from zoneinfo import ZoneInfo
+
+MOSCOW = ZoneInfo('Europe/Moscow')
+STATE = Path('/var/lib/vkarmani-node')
+ETC = Path('/etc/vkarmani-node')
+LOCK = Path('/run/lock/vkarmani-node-installer.lock')
+RESULT = STATE / 'maintenance-last.json'
+DOCKER = '/usr/local/sbin/vkarmani-docker-local'
+EXEC_TIMEOUT = 90
+
+
+class MaintenanceError(Exception):
+    pass
+
+
+def eligible(when):
+    return when.astimezone(MOSCOW).hour == 3
+
+
+def role():
+    """Never guess role from listeners; unknown state is not ordinary."""
+    path = STATE / 'role.json'
+    if not path.exists():
+        return 'ordinary'
+    if path.is_symlink():
+        raise MaintenanceError('ROLE_STATE_SYMLINK')
+    try:
+        obj = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise MaintenanceError('ROLE_STATE_INVALID') from exc
+    if not isinstance(obj, dict) or obj.get('role') not in ('ordinary', 'cascade-entry', 'cascade-exit'):
+        raise MaintenanceError('ROLE_STATE_INVALID')
+    return obj['role']
+
+
+def call(args, timeout=EXEC_TIMEOUT):
+    try:
+        p = subprocess.run(args, capture_output=True, stdin=subprocess.DEVNULL,
+                           text=True, timeout=timeout, check=False,
+                           env={'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+                                'LANG':'C', 'LC_ALL':'C', 'HOME':'/root'})
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise MaintenanceError('LOCAL_COMMAND_FAILED_OR_TIMEOUT') from exc
+    if p.returncode:
+        raise MaintenanceError('LOCAL_COMMAND_FAILED ' + Path(args[0]).name +
+                               ' rc=' + str(p.returncode))
+    return p.stdout.strip()
+
+
+def atomic_record(record):
+    if STATE.is_symlink() or not STATE.is_dir() or RESULT.is_symlink():
+        raise MaintenanceError('UNSAFE_STATE_PATH')
+    fd, name = tempfile.mkstemp(prefix='.maintenance-', dir=STATE)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(record, stream, ensure_ascii=False, sort_keys=True)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(name, 0o600)
+        os.replace(name, RESULT)
+        dfd = os.open(STATE, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def last_result():
+    # Absence is the only valid "never run" state. Corruption must fail
+    # closed: treating a broken marker as {} permits a second restart today.
+    if RESULT.is_symlink():
+        raise MaintenanceError('MAINTENANCE_RECORD_INVALID_SYMLINK')
+    if not RESULT.exists():
+        return {}
+    if not RESULT.is_file():
+        raise MaintenanceError('MAINTENANCE_RECORD_INVALID_TYPE')
+    try:
+        item = json.loads(RESULT.read_text())
+    except (OSError, ValueError) as exc:
+        raise MaintenanceError('MAINTENANCE_RECORD_INVALID_JSON') from exc
+    if (not isinstance(item, dict) or not isinstance(item.get('moscow_date'), str)
+            or not isinstance(item.get('status'), str)):
+        raise MaintenanceError('MAINTENANCE_RECORD_INVALID_FIELDS')
+    try:
+        date = dt.date.fromisoformat(item['moscow_date'])
+    except ValueError as exc:
+        raise MaintenanceError('MAINTENANCE_RECORD_INVALID_DATE') from exc
+    if date.isoformat() != item['moscow_date']:
+        raise MaintenanceError('MAINTENANCE_RECORD_INVALID_DATE')
+    if (item['status'] not in ('STARTED', 'LOCAL_CONTAINER_PASS_REMOTE_AND_CLIENT_NOT_VERIFIED')
+            and not re.fullmatch(r'FAIL_[A-Z0-9_]{1,80}', item['status'])):
+        raise MaintenanceError('MAINTENANCE_RECORD_INVALID_STATUS')
+    return item
+
+
+def local_node_running():
+    result = call([DOCKER, 'inspect', 'remnanode',
+                   '--format', '{{.State.Running}}|{{.State.Restarting}}|{{.HostConfig.NetworkMode}}'])
+    return result == 'true|false|host'
+
+
+def do_run(now=None):
+    now = now or dt.datetime.now(dt.timezone.utc)
+    now_msk = now.astimezone(MOSCOW)
+    if not eligible(now):
+        print('MAINTENANCE=SKIPPED OUTSIDE_03_04_MOSCOW')
+        return 0
+    if not (STATE / 'INSTALL_COMPLETE').is_file():
+        print('MAINTENANCE=SKIPPED INSTALL_NOT_COMPLETE')
+        return 0
+    if LOCK.is_symlink() or (LOCK.exists() and (not LOCK.is_file() or LOCK.stat().st_uid != 0)):
+        raise MaintenanceError('UNSAFE_INSTALLER_LOCK')
+    LOCK.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+    with LOCK.open('a') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('MAINTENANCE=SKIPPED INSTALLER_OR_UPDATE_BUSY')
+            return 0
+        previous = last_result()
+        day = now_msk.date().isoformat()
+        if previous.get('moscow_date') == day:
+            print('MAINTENANCE=SKIPPED ALREADY_ATTEMPTED_TODAY')
+            return 0
+        r = role()
+        # A container stopped by the operator must never be started by timer.
+        if not local_node_running():
+            print('MAINTENANCE=SKIPPED NODE_NOT_RUNNING')
+            return 0
+        call(['nginx', '-t'], timeout=15)
+        call(['systemctl', 'is-active', '--quiet', 'ufw.service'], timeout=10)
+        tx = {'moscow_date': day, 'role': r, 'started_at_utc': now.isoformat(), 'status': 'STARTED'}
+        # At-most-once marker BEFORE the restart; a crash can't cause loop.
+        atomic_record(tx)
+        try:
+            call([DOCKER, 'restart', '--time', '25', 'remnanode'], timeout=65)
+            if not local_node_running():
+                raise MaintenanceError('NODE_NOT_RUNNING_AFTER_RESTART')
+            call(['nginx', '-t'], timeout=15)
+            call(['systemctl', 'is-active', '--quiet', 'ufw.service'], timeout=10)
+            tx['status'] = 'LOCAL_CONTAINER_PASS_REMOTE_AND_CLIENT_NOT_VERIFIED'
+            atomic_record(tx)
+            print('MAINTENANCE=PASS LOCAL_NODE_RUNNING; CLIENT_AND_CASCADE=NOT_VERIFIED')
+            return 0
+        except (MaintenanceError, OSError) as exc:
+            tx['status'] = 'FAIL_' + (str(exc).split()[0][:80])
+            atomic_record(tx)
+            print('MAINTENANCE=FAIL ' + tx['status'], file=sys.stderr)
+            return 1
+
+
+def status():
+    now = dt.datetime.now(MOSCOW)
+    print('MAINTENANCE_TIMEZONE=Europe/Moscow')
+    print('MAINTENANCE_WINDOW=03:00-03:59:59')
+    print('MAINTENANCE_ROLE=' + role())
+    try:
+        record = last_result()
+    except MaintenanceError:
+        print('MAINTENANCE_LAST_STATUS=INVALID')
+        raise
+    print('MAINTENANCE_LAST_STATUS=' + str(record.get('status', 'NEVER')))
+    print('MAINTENANCE_LAST_MOSCOW_DATE=' + str(record.get('moscow_date', 'NEVER')))
+    print('MAINTENANCE_NEXT_PLANNED=systemctl list-timers --all vkarmani-node-nightly.timer')
+    print('MAINTENANCE_NOW_MOSCOW=' + now.isoformat())
+    print('MAINTENANCE_CHECK_SCOPE=LOCAL; authenticated VPN and remote exit NOT_VERIFIED')
+
+
+def main(argv=None):
+    argv = argv if argv is not None else sys.argv[1:]
+    if len(argv) != 1 or argv[0] not in ('run', 'status'):
+        print('Использование: nightly_maintenance.py run|status', file=sys.stderr)
+        return 2
+    try:
+        if argv[0] == 'status':
+            status()
+            return 0
+        if os.geteuid() != 0:
+            raise MaintenanceError('ROOT_REQUIRED')
+        return do_run()
+    except (MaintenanceError, OSError) as exc:
+        print('MAINTENANCE=FAIL ' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+VK_NIGHT_MAINT_PY
+    chmod 0700 "$tmp" || return 1
+    mv -f -- "$tmp" "$dst" || return 1
+    cat > /etc/systemd/system/vkarmani-node-nightly.service <<'VK_NIGHT_MAINT_SERVICE'
+[Unit]
+Description=VKarmani daily minimal RemnaNode restart (local-only)
+After=docker.service
+ConditionPathExists=/var/lib/vkarmani-node/INSTALL_COMPLETE
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I -B -S /usr/local/lib/vkarmani-node/nightly_maintenance.py run
+TimeoutStartSec=150
+UMask=0077
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal
+VK_NIGHT_MAINT_SERVICE
+    cat > /etc/systemd/system/vkarmani-node-nightly.timer <<'VK_NIGHT_MAINT_TIMER'
+[Unit]
+Description=VKarmani RemnaNode planned maintenance 03:00-03:59 Moscow
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Europe/Moscow
+AccuracySec=1s
+RandomizedDelaySec=59min
+FixedRandomDelay=yes
+Persistent=false
+Unit=vkarmani-node-nightly.service
+
+[Install]
+WantedBy=timers.target
+VK_NIGHT_MAINT_TIMER
+    chmod 0644 /etc/systemd/system/vkarmani-node-nightly.service /etc/systemd/system/vkarmani-node-nightly.timer || return 1
+    systemctl daemon-reload || return 1
+    systemctl enable --now vkarmani-node-nightly.timer || return 1
+    echo 'MAINTENANCE=ENABLED; Europe/Moscow 03:00-04:00, no missed daytime restarts.'
+}
+
+vkarmani_maintenance_command() {
+    local action=$1
+    shift
+    [[ $# -eq 0 ]] || { echo 'MAINTENANCE: no extra arguments' >&2; return 2; }
+    [[ $EUID -eq 0 ]] || { echo 'MAINTENANCE: root required' >&2; return 1; }
+    case "$action" in
+        status)
+            [[ -f /usr/local/lib/vkarmani-node/nightly_maintenance.py ]] || {
+                echo 'MAINTENANCE=NOT_INSTALLED'; return 0;
+            }
+            python3 -I -B -S /usr/local/lib/vkarmani-node/nightly_maintenance.py status
+            systemctl list-timers --all vkarmani-node-nightly.timer --no-pager || return 1 ;;
+        disable)
+            install -d -m 0755 /run/lock || return 1
+            [[ ! -L /run/lock/vkarmani-node-installer.lock ]] || {
+                echo 'MAINTENANCE: unsafe installer lock symlink' >&2; return 1;
+            }
+            exec 8>/run/lock/vkarmani-node-installer.lock
+            flock -n 8 || { echo 'MAINTENANCE: installer busy' >&2; return 1; }
+            systemctl disable --now vkarmani-node-nightly.timer || return 1
+            echo 'MAINTENANCE=DISABLED' ;;
+        enable)
+            [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE && ! -L /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
+                echo 'MAINTENANCE: завершите установку перед включением' >&2; return 1;
+            }
+            grep -Eq '^version=2\.5\.(8|9)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8/2.5.9; старые ноды не мигрируются автоматически' >&2; return 1;
+            }
+            [[ -x /usr/local/sbin/vkarmani-docker-local ]] || {
+                echo 'MAINTENANCE: локальный Docker wrapper не установлен' >&2; return 1;
+            }
+            install -d -m 0755 /run/lock
+            [[ ! -L /run/lock/vkarmani-node-installer.lock ]] || {
+                echo 'MAINTENANCE: unsafe installer lock symlink' >&2; return 1;
+            }
+            exec 8>/run/lock/vkarmani-node-installer.lock
+            flock -n 8 || { echo 'MAINTENANCE: installer busy' >&2; return 1; }
+            vk_write_nightly_maintenance ;;
+    esac
+}
+
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.6 — 2026-10-09
+# VKarmani Remnawave Node Installer 2.5.9 — 2026-10-15
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -6151,7 +6844,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.6
+INSTALLER_VERSION=2.5.9
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -6167,7 +6860,7 @@ IMAGE_OVERRIDE=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.6
+VKarmani Remnawave Node Installer 2.5.9
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -6177,7 +6870,7 @@ VKarmani Remnawave Node Installer 2.5.6
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
-  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.6, без переустановки/reboot
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.9, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -6186,11 +6879,14 @@ VKarmani Remnawave Node Installer 2.5.6
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.6 ноде
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.9 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
   sudo bash install.sh --rkn-disable           # отключить только нашу фильтрацию
+  sudo bash install.sh --maintenance-status    # локальный статус и график рестарта
+  sudo bash install.sh --maintenance-disable   # отключить только ночной timer
+  sudo bash install.sh --maintenance-enable    # включить timer на завершённой ноде
   sudo bash install.sh --prepare-xhttp         # создать/проверить XHTTP-шаблон без изменения live-ноды (2.5.2+)
   sudo bash install.sh --xray-versions [--offline] # только версии: установленный и upstream, никаких обновлений
   bash install.sh --version
@@ -6337,7 +7033,7 @@ vk_collect_inputs() {
 [[ $EUID -eq 0 ]] || { echo 'Запустите через sudo bash или от root.' >&2; exit 1; }
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
-        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.6 use --finish-install.' >&2; exit 1
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.9 use --finish-install.' >&2; exit 1
     fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
@@ -6620,7 +7316,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.6: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.9: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -7164,7 +7860,10 @@ def audit_profile(path, c):
     except (OSError, ValueError, UnicodeError) as exc:
         raise Failure('PROFILE_INPUT_READ_OR_JSON_INVALID') from exc
     validate_profile(profile, c)
-    network = next(i for i in profile['inbounds'] if i['protocol'] == 'vless')['streamSettings']['network']
+    # Use the same recognized aliases as validate_profile(). It deliberately
+    # accepts either Xray `network` or the reviewed `method` representation.
+    stream = next(i for i in profile['inbounds'] if i['protocol'] == 'vless')['streamSettings']
+    network = stream.get('network', stream.get('method'))
     if network == 'xhttp':
         print('PROFILE_XHTTP_REALITY_SELFSTEAL_POLICY=PASS')
     else:
@@ -7214,7 +7913,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.6\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.9\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -7390,7 +8089,7 @@ def init_config(node_port='2222', inputs=None):
 def write_panel_guide(c):
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.6 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.9 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -7917,6 +8616,7 @@ done
 # Repository/candidates were validated before SSH/UFW/GRUB changes.
 vk_apt_run "${APT[@]}" install "${DOCKER_PACKAGES[@]}"
 helper docker-config
+vk_write_docker_local || die 'Не удалось установить local-only Docker wrapper.'
 dockerd --validate --config-file=/etc/docker/daemon.json
 systemctl enable docker.service containerd.service
 systemctl restart docker
@@ -8047,6 +8747,8 @@ server {
     disable_symlinks on from=\$document_root;
     if (\$host != $DOMAIN) { return 421; }
     if (\$request_method !~ ^(GET|HEAD)\$) { return 405; }
+    # Scoped to this exact HTTPS host. No subdomain-wide policy or preload; staged for controlled rollout.
+    add_header Strict-Transport-Security "max-age=300" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
@@ -8167,6 +8869,7 @@ for attempt in $(seq 1 6); do
  done
 helper control-ready
 [[ $(docker inspect remnanode --format '{{.State.Running}}') == true ]] || die 'RemnaNode не запущен.'
+vk_write_nightly_maintenance || die 'Не удалось включить защищённое ночное обслуживание.'
 docker exec remnanode test -S /dev/shm/nginx.sock || die 'RemnaNode container не видит /dev/shm/nginx.sock.'
 timeout 25 /usr/local/sbin/vkarmani-selfsteal-check
 helper keys
@@ -8772,6 +9475,9 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         --rkn-update) shift; vkarmani_rkn_command update "$@" ;;
         --rkn-sync-panel) shift; vkarmani_rkn_command panel "$@" ;;
         --rkn-disable) shift; vkarmani_rkn_command disable "$@" ;;
+        --maintenance-status) shift; vkarmani_maintenance_command status "$@" ;;
+        --maintenance-enable) shift; vkarmani_maintenance_command enable "$@" ;;
+        --maintenance-disable) shift; vkarmani_maintenance_command disable "$@" ;;
         --finish-install) shift; vkarmani_finish_install_main "$@" ;;
         --check)
             shift

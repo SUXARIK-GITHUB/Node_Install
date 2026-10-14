@@ -20,8 +20,10 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         cls.security = (ROOT / 'SECURITY.md').read_text(encoding='utf-8')
 
     def test_main_install_command_at_top_is_pinned_verified_and_syntax_valid(self):
-        self.assertLess(self.readme.index('## ⚡ ГЛАВНАЯ КОМАНДА УСТАНОВКИ'), 850)
-        block = self.readme.split("```bash\n", 1)[1].split('\n```', 1)[0]
+        self.assertIn('## ⚡ ГЛАВНАЯ КОМАНДА УСТАНОВКИ (публичная 2.5.6)', self.readme)
+        self.assertIn('Сборка 2.5.9 из этого архива не опубликована в GitHub', self.readme)
+        block = self.readme.split("sudo bash <<'VKARMANI_NODE_INSTALL_256'", 1)[1].split('\n```', 1)[0]
+        block = "sudo bash <<'VKARMANI_NODE_INSTALL_256'" + block
         self.assertTrue(block.startswith("sudo bash <<'VKARMANI_NODE_INSTALL_256'"))
         result = subprocess.run(['bash', '-n'], input=block, text=True,
                                 capture_output=True, timeout=10)
@@ -39,7 +41,9 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertNotIn('curl | bash', block)
         sha = re.search(r'EXPECTED_SHA256="([0-9a-f]{64})"', block)
         self.assertIsNotNone(sha)
-        self.assertEqual(sha.group(1), hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest())
+        # Deliberate: this command installs the PUBLISHED 2.5.6, never unshipped 2.5.7.
+        self.assertEqual(sha.group(1), 'da745235274cee2ea89d5986e7107b5848d0ef2a8fa2767d3fba2a253b40041b')
+        self.assertNotEqual(sha.group(1), hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest())
 
     def test_full_advanced_profiles_are_single_listener_and_align(self):
         examples = {k: json.loads((ROOT / f'examples/inbound-{k}-full.example.json').read_text())

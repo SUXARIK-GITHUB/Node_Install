@@ -8,7 +8,7 @@
 
 **Версия установщика: `2.5.5` · Обновление документации: 09.10.2026**
 
-[⚡ Установить](#install) · [🗺️ Карта проекта](#navigation) · [🔑 Remnawave](#panel) · [📋 RAW](#raw) · [🌐 XHTTP](#xhttp) · [🔐 Security](SECURITY.md) · [🛠️ Поддержка](#operations)
+[⚡ Установить](#install) · [🗺️ Карта проекта](#navigation) · [🔑 Remnawave](#panel) · [📋 RAW](#raw) · [🌐 XHTTP](#xhttp) · [🔐 Security](../../SECURITY.md) · [🛠️ Поддержка](#operations)
 
 </div>
 
@@ -81,7 +81,7 @@ sudo systemctl status nginx --no-pager
 sudo docker compose -f /opt/vkarmani-node/compose.yaml ps
 ```
 
-> 🧰 **Установка из ZIP:** скачайте полный архив этого выпуска, распакуйте `Node_Install/`, выполните `sha256sum --check SHA256SUMS`, `bash -n install.sh`, `bash install.sh --version`, затем `sudo bash install.sh --no-reboot`. Этот способ не зависит от доступности GitHub во время скачивания установщика. Подробности — [🔐 Security](SECURITY.md#supply).
+> 🧰 **Установка из ZIP:** скачайте полный архив этого выпуска, распакуйте `Node_Install/`, выполните `sha256sum --check SHA256SUMS`, `bash -n install.sh`, `bash install.sh --version`, затем `sudo bash install.sh --no-reboot`. Этот способ не зависит от доступности GitHub во время скачивания установщика. Подробности — [🔐 Security](../../SECURITY.md#supply).
 
 ---
 
@@ -90,10 +90,10 @@ sudo docker compose -f /opt/vkarmani-node/compose.yaml ps
 
 | ⚡ Начало | 🌐 Подключение | 🔧 Эксплуатация | 🔐 Безопасность |
 |:--|:--|:--|:--|
-| [📦 Возможности](#features) | [🔑 Панель и Hosts](#panel) | [🛠️ Команды](#operations) | [🛡️ Security policy](SECURITY.md) |
-| [✅ Требования](#requirements) | [📋 RAW + Vision](#raw) | [🔄 RKN Guard](#rkn) | [🔎 Угрозы и порты](SECURITY.md#threat) |
-| [🧩 Архитектура](#architecture) | [🌐 XHTTP](#xhttp) | [🧬 Xray Core](#xray) | [🚨 Инциденты](SECURITY.md#incident) |
-| [⚡ Установка](#install) | [🔀 Переключение](#switch) | [📈 Приёмка и rollback](#acceptance) | [📩 Сообщить об уязвимости](SECURITY.md#report) |
+| [📦 Возможности](#features) | [🔑 Панель и Hosts](#panel) | [🛠️ Команды](#operations) | [🛡️ Security policy](../../SECURITY.md) |
+| [✅ Требования](#requirements) | [📋 RAW + Vision](#raw) | [🔄 RKN Guard](#rkn) | [🔎 Угрозы и порты](../../SECURITY.md#threat) |
+| [🧩 Архитектура](#architecture) | [🌐 XHTTP](#xhttp) | [🧬 Xray Core](#xray) | [🚨 Инциденты](../../SECURITY.md#incident) |
+| [⚡ Установка](#install) | [🔀 Переключение](#switch) | [📈 Приёмка и rollback](#acceptance) | [📩 Сообщить об уязвимости](../../SECURITY.md#report) |
 
 <a id="features"></a>
 ## 🧩 Что входит в Node_Install
@@ -199,7 +199,7 @@ flowchart TD
 
 **Назначение:** текущая производительная схема, на которой работают существующие ноды. `flow=xtls-rprx-vision` относится к RAW, не к XHTTP. Сохраняем `sniffing.routeOnly`, Selfsteal-сокет, IPv4, блокировку приватных направлений и firewall по текущему контракту.
 
-**Отдельный файл:** [`examples/inbound-raw-full.example.json`](examples/inbound-raw-full.example.json).
+**Отдельный файл:** [`examples/inbound-raw-full.example.json`](../../examples/inbound-raw-full.example.json).
 
 <!-- BEGIN RAW FULL EXAMPLE -->
 
@@ -330,7 +330,7 @@ flowchart TD
 
 **Назначение:** альтернативный HTTP-транспорт, если клиент и RemnaNode/Xray поддерживают XHTTP. Здесь `flow=""`, `network="xhttp"`, а `xhttpSettings.host/path/mode` согласованы с выдаваемой подпиской. **Никакого второго TCP/443**.
 
-**Отдельный файл:** [`examples/inbound-xhttp-full.example.json`](examples/inbound-xhttp-full.example.json).
+**Отдельный файл:** [`examples/inbound-xhttp-full.example.json`](../../examples/inbound-xhttp-full.example.json).
 
 <!-- BEGIN XHTTP FULL EXAMPLE -->
 
@@ -494,7 +494,7 @@ flowchart TD
 
 > ❗ Некоторые генераторы подписок Remnawave/клиентские приложения не поддерживают XHTTP. Если клиент хранит старый RAW-профиль, «смена в панели + reboot ноды» **не** переделает его подписку без обновления клиента. Проверяйте каждую используемую платформу, в том числе Happ, v2rayN/v2rayNG, sing-box, Mihomo.
 
-Подробности: [TRANSPORT_SWITCHING_2.5.4.md](docs/TRANSPORT_SWITCHING_2.5.4.md).
+Подробности: [TRANSPORT_SWITCHING_2.5.4.md](../TRANSPORT_SWITCHING_2.5.4.md).
 
 <a id="operations"></a>
 ## 🛠️ Операционная карта: команды и последствия
@@ -523,7 +523,7 @@ flowchart TD
 | `sudo bash install.sh --rkn-sync-panel` | Перечитать IP панели из конфигурации для **RKN-исключений** |
 | `sudo bash install.sh --rkn-disable` | Выключает только наш антискан-фильтр |
 
-**Не используйте как стандартное обновление** `--repair-network`, `--repair-node` (узкие legacy-path) и `--repair-acceptance` (строго конкретный failed-state 2.5.0). Подробное описание в [OPERATIONS.md](docs/OPERATIONS.md) и [SECURITY.md](SECURITY.md).
+**Не используйте как стандартное обновление** `--repair-network`, `--repair-node` (узкие legacy-path) и `--repair-acceptance` (строго конкретный failed-state 2.5.0). Подробное описание в [OPERATIONS.md](../OPERATIONS.md) и [SECURITY.md](../../SECURITY.md).
 
 ### 🧰 Быстрая проверка системных сервисов
 
@@ -551,7 +551,7 @@ sudo systemctl list-timers --all --no-pager
 |:--|:--|:--|:--|
 | CIDR источника GitHub | IPv4 панели из `config.json` | Раз в сутки через systemd timer (`Persistent=true`) | Last-known-good / fail-open для узкой функции |
 
-**Код стороннего установщика/бинарника с GitHub не запускается и не обновляется от root автоматически**. При выпуске следующей версии **обязательно** сравниваем upstream `Flecksis/rkn-guard` и source list с текущей интеграцией — см. [RKN_GUARD_2.5.3.md](docs/RKN_GUARD_2.5.3.md).
+**Код стороннего установщика/бинарника с GitHub не запускается и не обновляется от root автоматически**. При выпуске следующей версии **обязательно** сравниваем upstream `Flecksis/rkn-guard` и source list с текущей интеграцией — см. [RKN_GUARD_2.5.3.md](../RKN_GUARD_2.5.3.md).
 
 > [!WARNING]
 > Исключение `panel_ipv4` в RKN Guard **не** обновляет автоматически основной UFW ACL для TCP/2222. При смене адреса панели отдельно согласуйте firewall с backup/rollback. Кроме того, фильтр может задеть ACME HTTP-01 на TCP/80 — обязательно проверьте renew снаружи. RKN Guard **не предотвращает** блокировку публичного IPv4 или целого ASN провайдера.
@@ -566,7 +566,7 @@ sudo bash install.sh --xray-versions --offline # без сети, только l
 
 RemnaNode поставляется с собственной версией `rw-core`, которую нельзя безопасно заменять произвольным `latest` при каждом запуске. У RemnaNode также существует штатный механизм **`geodata.core`**: HTTPS URL + закреплённая SHA256 исполняемого файла, установка/откат через CoreLoader. Он требует проверки файла и совместимости Xray/Panel/Node Plugins на staging.
 
-**Порядок:** сверить версии → проверить changelog и advisories → backup/snapshot → протестировать оба транспорта и plugins на staging → обновить официальный RemnaNode **image digest** → проверить клиента → иметь `--rollback-image`. Скачивание случайного Core от root **не предусмотрено**. См. [XRAY_CORE_UPDATES_2.5.5.md](docs/XRAY_CORE_UPDATES_2.5.5.md).
+**Порядок:** сверить версии → проверить changelog и advisories → backup/snapshot → протестировать оба транспорта и plugins на staging → обновить официальный RemnaNode **image digest** → проверить клиента → иметь `--rollback-image`. Скачивание случайного Core от root **не предусмотрено**. См. [XRAY_CORE_UPDATES_2.5.5.md](../XRAY_CORE_UPDATES_2.5.5.md).
 
 <a id="files"></a>
 ## 🗂️ Карта файлов VPS
@@ -617,7 +617,7 @@ RemnaNode поставляется с собственной версией `rw-
 | 🧬 Core не запускается | config validation, release compatibility, last-known-good образ | Не подменяйте `/usr/local/bin/rw-core` случайным бинарником |
 | ⚠️ Ошибка после refresh image | transaction log + штатный `--rollback-image`, VPS snapshot | Не удаляйте volumes/контейнеры без инвентаризации |
 
-**Rollback-порядок:** остановить изменения → собрать обезличенную диагностику → при неверном inbound вернуть Config Profile через панель → если менялся образ/cover, использовать строго соответствующий штатный rollback → если пострадали SSH, UFW или загрузка ОС, восстановление через console/snapshot. Для повреждения VPS backup данных **не заменяет** образ диска. См. [OPERATIONS.md](docs/OPERATIONS.md) и [Security incident response](SECURITY.md#incident).
+**Rollback-порядок:** остановить изменения → собрать обезличенную диагностику → при неверном inbound вернуть Config Profile через панель → если менялся образ/cover, использовать строго соответствующий штатный rollback → если пострадали SSH, UFW или загрузка ОС, восстановление через console/snapshot. Для повреждения VPS backup данных **не заменяет** образ диска. См. [OPERATIONS.md](../OPERATIONS.md) и [Security incident response](../../SECURITY.md#incident).
 
 <a id="git-release"></a>
 ## 📦 GitHub, SHA256 и выпуск релиза
@@ -643,14 +643,14 @@ git diff --check
 
 | 📖 Документ | Содержимое |
 |:--|:--|
-| [`SECURITY.md`](SECURITY.md) | Trust boundaries, секреты, incident response, security disclosure |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Глубокая операционная диагностика, обновления, откаты |
-| [`docs/TRANSPORT_SWITCHING_2.5.4.md`](docs/TRANSPORT_SWITCHING_2.5.4.md) | Подробная RAW ⇄ XHTTP замена inbound |
-| [`docs/RKN_GUARD_2.5.3.md`](docs/RKN_GUARD_2.5.3.md) | CIDR, UFW, исключение панели, аварийные сценарии |
-| [`docs/XRAY_CORE_UPDATES_2.5.5.md`](docs/XRAY_CORE_UPDATES_2.5.5.md) | Xray/CoreLoader и безопасная политика обновлений |
-| [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) | Граница offline-тестов и реальные неподтверждённые проверки |
-| [`docs/history/README_2.5.4.md`](docs/history/README_2.5.4.md) | Предыдущий исторический документ (не потерян) |
-| [`docs/history/README_2.5.5_before_ui_refresh.md`](docs/history/README_2.5.5_before_ui_refresh.md) | Исходная 2.5.5 до переработки дизайна |
+| [`SECURITY.md`](../../SECURITY.md) | Trust boundaries, секреты, incident response, security disclosure |
+| [`docs/OPERATIONS.md`](../OPERATIONS.md) | Глубокая операционная диагностика, обновления, откаты |
+| [`docs/TRANSPORT_SWITCHING_2.5.4.md`](../TRANSPORT_SWITCHING_2.5.4.md) | Подробная RAW ⇄ XHTTP замена inbound |
+| [`docs/RKN_GUARD_2.5.3.md`](../RKN_GUARD_2.5.3.md) | CIDR, UFW, исключение панели, аварийные сценарии |
+| [`docs/XRAY_CORE_UPDATES_2.5.5.md`](../XRAY_CORE_UPDATES_2.5.5.md) | Xray/CoreLoader и безопасная политика обновлений |
+| [`docs/TEST_REPORT.md`](../TEST_REPORT.md) | Граница offline-тестов и реальные неподтверждённые проверки |
+| [`docs/history/README_2.5.4.md`](README_2.5.4.md) | Предыдущий исторический документ (не потерян) |
+| [`docs/history/README_2.5.5_before_ui_refresh.md`](README_2.5.5_before_ui_refresh.md) | Исходная 2.5.5 до переработки дизайна |
 
 Официальные проекты: [Remnawave Node](https://github.com/remnawave/node) · [Xray-core](https://github.com/XTLS/Xray-core) · [Xray XHTTP examples](https://github.com/XTLS/Xray-examples) · [Flecksis/rkn-guard](https://github.com/Flecksis/rkn-guard).
 
@@ -662,6 +662,6 @@ git diff --check
 
 **🚀 VKARMANI NODE INSTALL 2.5.5 · 🛡️ Безопасность → 🧩 Совместимость → 📈 Стабильность**
 
-[⬆️ К главной команде](#install) · [🔐 Security](SECURITY.md) · [🛠️ Operations](docs/OPERATIONS.md)
+[⬆️ К главной команде](#install) · [🔐 Security](../../SECURITY.md) · [🛠️ Operations](../OPERATIONS.md)
 
 </div>

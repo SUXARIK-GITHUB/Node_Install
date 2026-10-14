@@ -1,22 +1,22 @@
 # 🚀 VKarmani Node Install 2.5.4
 
 
-> **2.5.4: RAW / XHTTP + REALITY — ручная смена одного активного inbound в Remnawave Panel.** Сохраняем один TCP/443, текущий host Nginx Selfsteal c PROXY v1/HTTP2, существующие REALITY ключи, UFW/RKN и Docker. Добавлены приватный `/etc/vkarmani-node/profile-xhttp.json`, проверка XHTTP-синтаксиса установленным `rw-core`, отдельная команда `sudo bash install.sh --prepare-xhttp` для ранее установленной 2.5.2/2.5.3/2.5.4 ноды **без переустановки и рестарта**. RAW остаётся без изменения. После ручной смены inbound в панели достаточно штатного применения конфигурации или перезапуска RemnaNode; клиенту требуется новая совместимая подписка. Новые протоколы **не работают одновременно на одном 443**. Подробности и rollback: [TRANSPORT_SWITCHING_2.5.4](docs/TRANSPORT_SWITCHING_2.5.4.md). Не гарантирует обход IP/ASN-блокировки. Реальный VPS canary ещё не выполнен.
+> **2.5.4: RAW / XHTTP + REALITY — ручная смена одного активного inbound в Remnawave Panel.** Сохраняем один TCP/443, текущий host Nginx Selfsteal c PROXY v1/HTTP2, существующие REALITY ключи, UFW/RKN и Docker. Добавлены приватный `/etc/vkarmani-node/profile-xhttp.json`, проверка XHTTP-синтаксиса установленным `rw-core`, отдельная команда `sudo bash install.sh --prepare-xhttp` для ранее установленной 2.5.2/2.5.3/2.5.4 ноды **без переустановки и рестарта**. RAW остаётся без изменения. После ручной смены inbound в панели достаточно штатного применения конфигурации или перезапуска RemnaNode; клиенту требуется новая совместимая подписка. Новые протоколы **не работают одновременно на одном 443**. Подробности и rollback: [TRANSPORT_SWITCHING_2.5.4](../TRANSPORT_SWITCHING_2.5.4.md). Не гарантирует обход IP/ASN-блокировки. Реальный VPS canary ещё не выполнен.
 
-> **2.5.3: независимая интеграция данных rkn-guard с ежедневным обновлением.** Добавлен IPv4-only scanner CIDR-filter (схема upstream `Flecksis/rkn-guard`, подтверждённый источник `shadow-netlab/traffic-guard-lists`) через системные ipset+UFW. Источник обновляется **ежедневно** через systemd timer; исключения панели не захардкожены и перечитываются из `panel_ipv4` текущего `config.json` при старте/обновлении. Блокируются только новые входящие TCP/80,443; SSH и TCP/2222 не затронуты. При недоступности GitHub данные/доступ не уничтожаются. Код upstream автоматически НЕ устанавливается и НЕ обновляется с правами root: перед следующим Node_Install release обязательно сверить GitHub Flecksis и занести проверенные улучшения в нашу реализацию. Полная схема, команды, rollback и обязательный чеклист — в [RKN_GUARD_2.5.3](docs/RKN_GUARD_2.5.3.md). **Это offline-validated кандидат, новая установка/ребут на VPS пока не проверены.**
+> **2.5.3: независимая интеграция данных rkn-guard с ежедневным обновлением.** Добавлен IPv4-only scanner CIDR-filter (схема upstream `Flecksis/rkn-guard`, подтверждённый источник `shadow-netlab/traffic-guard-lists`) через системные ipset+UFW. Источник обновляется **ежедневно** через systemd timer; исключения панели не захардкожены и перечитываются из `panel_ipv4` текущего `config.json` при старте/обновлении. Блокируются только новые входящие TCP/80,443; SSH и TCP/2222 не затронуты. При недоступности GitHub данные/доступ не уничтожаются. Код upstream автоматически НЕ устанавливается и НЕ обновляется с правами root: перед следующим Node_Install release обязательно сверить GitHub Flecksis и занести проверенные улучшения в нашу реализацию. Полная схема, команды, rollback и обязательный чеклист — в [RKN_GUARD_2.5.3](../RKN_GUARD_2.5.3.md). **Это offline-validated кандидат, новая установка/ребут на VPS пока не проверены.**
 
 > **Публикация:** ZIP 2.5.4 — локальный комплект. Репозиторий `main` и production ноды не обновлялись в рамках сборки. Пока 2.5.4 не будет опубликована в `main` с совпадающим SHA, встроенная ниже SHA-проверка GitHub намеренно остановит запуск: используйте проверенный полный архив.
 
 
-> **2.5.2: real-VPS acceptance hardening after Ubuntu 24.04 reboot canary.** Сохранены исправления 2.5.1 для Docker `CAP_` capability names и scoped IPv4 `ss`. Дополнительно исправлены ещё два false-negative, доказанные на реальной ноде: до первого reboot RemnaNode API может слушать `*:2222` как AF_INET6 dual-stack socket при `net.ipv6.bindv6only=0`, хотя IPv4 connect реально работает; после reboot `rw-core` штатно слушает `0.0.0.0:443`, что соответствует generated profile contract. Checker принимает эти состояния только с ownership/PID и IPv4-connect proof, не ослабляя public-port policy. Реальный Ubuntu 24.04 local reboot canary прошёл после этих fixes; Panel path и authenticated client остаются отдельными NOT_VERIFIED уровнями. Подробности: [HOTFIX_2.5.2](docs/HOTFIX_2.5.2.md).
+> **2.5.2: real-VPS acceptance hardening after Ubuntu 24.04 reboot canary.** Сохранены исправления 2.5.1 для Docker `CAP_` capability names и scoped IPv4 `ss`. Дополнительно исправлены ещё два false-negative, доказанные на реальной ноде: до первого reboot RemnaNode API может слушать `*:2222` как AF_INET6 dual-stack socket при `net.ipv6.bindv6only=0`, хотя IPv4 connect реально работает; после reboot `rw-core` штатно слушает `0.0.0.0:443`, что соответствует generated profile contract. Checker принимает эти состояния только с ownership/PID и IPv4-connect proof, не ослабляя public-port policy. Реальный Ubuntu 24.04 local reboot canary прошёл после этих fixes; Panel path и authenticated client остаются отдельными NOT_VERIFIED уровнями. Подробности: [HOTFIX_2.5.2](../HOTFIX_2.5.2.md).
 
 > **2.5.1: acceptance hotfix после реального Ubuntu 24.04 canary failure 2.5.0.** Docker Engine 29.8+ возвращает capability names из `docker inspect` в canonical форме `CAP_NET_ADMIN` / `CAP_NET_RAW`, тогда как checker 2.5.0 сравнивал строки только с `NET_ADMIN` / `NET_RAW`; effective policy при этом была правильной. Дополнительно `ss` на Ubuntu 24.04 может печатать loopback listener `systemd-resolved` как `127.0.0.53%lo:53`, а parser 2.5.0 ошибочно считал `%lo` частью IPv4 и выдавал `INVALID_LOCAL_DATA`. 2.5.1 нормализует только эти представления, не ослабляя capability/listener policy. Для **точно известного незавершённого 2.5.0 final-acceptance state** добавлен explicit `--repair-acceptance`: backup → atomic helper/checker replacement → preboot post-check → rollback при ошибке. APT, SSH, UFW, Nginx, Docker image/container lifecycle, GRUB и ключи repair не меняет; auto-reboot repair не запускает.
 >
-> Подробный разбор: [HOTFIX_2.5.1](docs/HOTFIX_2.5.1.md). Реальный post-fix VPS canary должен быть выполнен отдельно; до него 2.5.1 не называется production-verified.
+> Подробный разбор: [HOTFIX_2.5.1](../HOTFIX_2.5.1.md). Реальный post-fix VPS canary должен быть выполнен отдельно; до него 2.5.1 не называется production-verified.
 >
 > **2.5.0: Node Plugins readiness + survivability.** Исправлена первопричина acceptance bug для 2.4.1–2.4.3 через единую fail-closed классификацию installer contract; добавлены kernel>=5.7 preflight, пакет `nftables` без включения `nftables.service`, строгий sniffing profile contract, read-only RemnaNode nft runtime check, раздельные Xray floors `26.3.27`/`26.7.11`, public TCP listener audit и conntrack/disk/inode/reboot facts в существующий `--diagnose-resources`. Installer остаётся node-only: Panel objects/config не меняются. RAW+REALITY+Vision+Selfsteal, TCP/443, host Nginx, IPv4-only, UFW и `NET_ADMIN`/`NET_RAW`/`no-new-privileges` contract сохранены.
 >
-> Подробности: [Node Plugins 2.5.0](docs/NODE_PLUGINS_2.5.0.md), [Survivability](docs/SURVIVABILITY_2.5.0.md), [External path diagnostics](docs/EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md), [Node replacement](docs/NODE_REPLACEMENT_2.5.0.md). Cover/REALITY **не гарантируют** отсутствие IP/prefix/provider-path block и релиз не называется ban-proof/undetectable.
+> Подробности: [Node Plugins 2.5.0](../NODE_PLUGINS_2.5.0.md), [Survivability](../SURVIVABILITY_2.5.0.md), [External path diagnostics](../EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md), [Node replacement](../NODE_REPLACEMENT_2.5.0.md). Cover/REALITY **не гарантируют** отсутствие IP/prefix/provider-path block и релиз не называется ban-proof/undetectable.
 >
 > **2.4.3: исправлен release-manifest для Git checkout.** В архиве 2.4.2 три сохранённых CI evidence-файла имели CRLF, а `.gitattributes` с `* text=auto` при commit/checkout нормализовал их в LF. Из-за этого `sha256sum --check SHA256SUMS` закономерно падал до запуска тестов на всех runner-ах. В 2.4.3 эти три текстовых evidence-файла нормализованы в LF, manifest пересобран по canonical Git bytes и добавлена regression-проверка, запрещающая CR/CRLF в UTF-8 text entries из `SHA256SUMS`. Production installer logic, NET_ADMIN, Nginx/Selfsteal, cert-deploy, firewall, SSH и Docker policy не изменены.
 >
@@ -25,7 +25,7 @@
 
 > **2.4.1: стабилизирована проверка активации сертификата после graceful reload Nginx.** GitHub Actions на Ubuntu 24.04 выявил гонку: одного успешного `--target-only` probe недостаточно, пока старый worker ещё может кратковременно перекрываться с новым. Deploy-hook теперь требует **4 последовательных успешных TLS-проверки** нового leaf-сертификата; любая промежуточная неудача сбрасывает серию. Это не ослабление проверки и не `sleep`-костыль: подтверждение стало строже. Интеграционный cleanup также ждёт устойчивого возврата исходного сертификата, чтобы тесты не загрязняли друг друга. Production transport, NET_ADMIN, Docker/Nginx layout, firewall и SSH policy не менялись.
 >
-> **2.4.0: `NET_ADMIN` включён по умолчанию для RemnaNode.** Это необходимо для функций, которым нужен доступ к сетевому состоянию хоста, включая используемый в панели «Обозреватель сессий». В генерируемом Compose теперь всегда есть `cap_add: [NET_ADMIN]`; состояние `allow_net_admin=true` сохраняется в конфигурации, а локальный checker требует совпадения state и фактической capability. `NET_RAW` по-прежнему сброшен, `no-new-privileges` и read-only Selfsteal mount сохранены. Изменение повышает blast radius контейнера при `network_mode: host`, поэтому оно отдельно задокументировано в [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md). Остальные контракты 2.3.0 — password-only SSH, Selfsteal/TLS checks, Vision, IPv4-only и ровно три поля — сохранены.
+> **2.4.0: `NET_ADMIN` включён по умолчанию для RemnaNode.** Это необходимо для функций, которым нужен доступ к сетевому состоянию хоста, включая используемый в панели «Обозреватель сессий». В генерируемом Compose теперь всегда есть `cap_add: [NET_ADMIN]`; состояние `allow_net_admin=true` сохраняется в конфигурации, а локальный checker требует совпадения state и фактической capability. `NET_RAW` по-прежнему сброшен, `no-new-privileges` и read-only Selfsteal mount сохранены. Изменение повышает blast radius контейнера при `network_mode: host`, поэтому оно отдельно задокументировано в [NET_ADMIN_2.4.0](../NET_ADMIN_2.4.0.md). Остальные контракты 2.3.0 — password-only SSH, Selfsteal/TLS checks, Vision, IPv4-only и ровно три поля — сохранены.
 >
 > GitHub этой поставкой автоматически не изменяется: `push/tag/release/PR` installer и эта работа не выполняют. Команда загрузки из `main` ниже должна останавливаться по SHA256, пока оператор отдельно не опубликует именно проверенный `install.sh` 2.5.4. Для локальной проверки используйте полный архив release candidate.
 
@@ -121,7 +121,7 @@ sudo reboot
 sudo bash install.sh --prepare-xhttp
 ```
 
-На новой 2.5.4 ноде оба приватных шаблона создаются при установке. Файлы: `/etc/vkarmani-node/profile.json` (старый RAW), `/etc/vkarmani-node/profile-xhttp.json` (XHTTP). В панели сохраните backup существующего Config Profile, замените **существующий** inbound с прежним tag, проверьте Host/Subscription overrides, примените конфиг и при необходимости перезапустите только RemnaNode (не VPS). Вернуть обратно — замените inbound на RAW с Vision и обновите подписки клиентов. Если установленный `rw-core` не принимает XHTTP, `--prepare-xhttp` завершится ошибкой без смены действующей ноды; **на новой установке сохранится рабочий RAW, а диагностический статус XHTTP будет NOT_READY**, повторную подготовку выполняйте только после совместимого обновления Core. Клиенту необходима поддержка XHTTP+REALITY и обновление подписки; заметность/DPI/IP-block нельзя гарантированно устранить. Полная инструкция/backup/rollback: [TRANSPORT_SWITCHING_2.5.4](docs/TRANSPORT_SWITCHING_2.5.4.md).
+На новой 2.5.4 ноде оба приватных шаблона создаются при установке. Файлы: `/etc/vkarmani-node/profile.json` (старый RAW), `/etc/vkarmani-node/profile-xhttp.json` (XHTTP). В панели сохраните backup существующего Config Profile, замените **существующий** inbound с прежним tag, проверьте Host/Subscription overrides, примените конфиг и при необходимости перезапустите только RemnaNode (не VPS). Вернуть обратно — замените inbound на RAW с Vision и обновите подписки клиентов. Если установленный `rw-core` не принимает XHTTP, `--prepare-xhttp` завершится ошибкой без смены действующей ноды; **на новой установке сохранится рабочий RAW, а диагностический статус XHTTP будет NOT_READY**, повторную подготовку выполняйте только после совместимого обновления Core. Клиенту необходима поддержка XHTTP+REALITY и обновление подписки; заметность/DPI/IP-block нельзя гарантированно устранить. Полная инструкция/backup/rollback: [TRANSPORT_SWITCHING_2.5.4](../TRANSPORT_SWITCHING_2.5.4.md).
 
 ---
 
@@ -141,7 +141,7 @@ sudo bash install.sh --rkn-disable      # вернуть firewall к UFW без 
 
 IP, указанный при установке как IPv4 панели, не закрепляется в скрипте: при каждом обновлении берётся `panel_ipv4` из `/etc/vkarmani-node/config.json` и атомарно обновляется IP-исключение `vkarmani_rkn_pan4`. **Это не меняет автоматически UFW-правила на TCP/2222**: при переезде панели оператор отдельно проверяет этот ACL и внешний firewall хостера.
 
-Сам код `Flecksis/rkn-guard` по расписанию **не скачивается и не запускается**. При каждом новом релизе Node_Install обязательно вручную проверить Git upstream (commits/tags/readme/документацию/функции) и при необходимости перенести проверенные исправления в модуль. [Подробный runbook и обязательный future-build review](docs/RKN_GUARD_2.5.3.md). Для production требуется отдельный canary с UFW reboot / Panel→Node / реальным клиентом.
+Сам код `Flecksis/rkn-guard` по расписанию **не скачивается и не запускается**. При каждом новом релизе Node_Install обязательно вручную проверить Git upstream (commits/tags/readme/документацию/функции) и при необходимости перенести проверенные исправления в модуль. [Подробный runbook и обязательный future-build review](../RKN_GUARD_2.5.3.md). Для production требуется отдельный canary с UFW reboot / Panel→Node / реальным клиентом.
 
 ---
 
@@ -603,7 +603,7 @@ bash install.sh --help
 - **Единственное межверсионное исключение:** точный failed-state исходного `2.5.0`, остановившегося на final `--preboot` acceptance (`INSTALL_FAILED rc=1 line=6412`) и имеющего известные SHA checker/helper, можно исправить командой `sudo bash install.sh --repair-acceptance` из 2.5.1. Repair не переписывает `install-version=2.5.0`, но после успешного post-check создаёт `INSTALL_COMPLETE` для исходной установки и receipt `ACCEPTANCE_REPAIR_2_5_2`; reboot выполняется оператором отдельно.
 - Любое другое незавершённое `2.1.0`/`2.1.1`/`2.1.2`/`2.1.3`/`2.2.0`/`2.3.0`/`2.4.0`/`2.4.1`/`2.4.2`/`2.4.3`/`2.5.0` не «превращайте» в `2.5.1` ручной заменой markers. Используйте исходный installer той же версии либо восстановите snapshot.
 - На завершённой project-owned установке обычный повторный запуск не должен заново выполнять APT/UFW/SSH/ACME/image pull; он переходит к установленной диагностике.
-- Cross-version resume по умолчанию запрещён. Историческое узкое исключение для конкретного раннего `2.0.2` package-stage описано отдельно в [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md); не обобщайте его на другие состояния.
+- Cross-version resume по умолчанию запрещён. Историческое узкое исключение для конкретного раннего `2.0.2` package-stage описано отдельно в [docs/TIME_SYNC_FIX.md](../TIME_SYNC_FIX.md); не обобщайте его на другие состояния.
 
 ### Автозапуск и плановое обслуживание
 
@@ -657,7 +657,7 @@ Rollback image не равен полному rollback VPS. Он не возвр
 | `/var/log/vkarmani-node-install.log` | закрытый install log |
 | `/var/log/vkarmani-node-postboot.log` | результаты postboot-проверки |
 
-Секретные файлы не публикуйте. Полная политика redaction/incident response — в [SECURITY.md](SECURITY.md).
+Секретные файлы не публикуйте. Полная политика redaction/incident response — в [SECURITY.md](../../SECURITY.md).
 
 ---
 
@@ -677,7 +677,7 @@ Rollback image не равен полному rollback VPS. Он не возвр
 | image update оставил pending | transaction state, Docker daemon, previous image | что удаление marker = rollback |
 | после reboot нет сети | provider console, GRUB/kernel log, provider routing | что preboot local PASS гарантировал внешний доступ |
 
-Подробный регламент: [docs/OPERATIONS.md](docs/OPERATIONS.md) · сетевые/hosting-инциденты: [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md)
+Подробный регламент: [docs/OPERATIONS.md](../OPERATIONS.md) · сетевые/hosting-инциденты: [docs/HOSTING_AND_INCIDENTS.md](../HOSTING_AND_INCIDENTS.md)
 
 ---
 
@@ -725,24 +725,24 @@ snapshot
 
 ## 📚 Документация проекта
 
-- [docs/SELFSTEAL_2.2.0.md](docs/SELFSTEAL_2.2.0.md) — точный объём новой серверной части и границы приёмки.
-- [docs/SOURCE_REVIEW_2.2.0.md](docs/SOURCE_REVIEW_2.2.0.md) — Selfsteal / iptables / HAProxy / Nginx, источники и решения.
-- [preview/README.md](preview/README.md) — четыре локальных HTML-preview и браузерные изображения.
+- [docs/SELFSTEAL_2.2.0.md](../SELFSTEAL_2.2.0.md) — точный объём новой серверной части и границы приёмки.
+- [docs/SOURCE_REVIEW_2.2.0.md](../SOURCE_REVIEW_2.2.0.md) — Selfsteal / iptables / HAProxy / Nginx, источники и решения.
+- [preview/README.md](../../preview/README.md) — четыре локальных HTML-preview и браузерные изображения.
 
-- [SECURITY.md](SECURITY.md) — trust boundaries, секреты, firewall/container security, supply chain и incident response.
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — эксплуатация, диагностика, backup, maintenance и recovery.
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — точная матрица тестов и ограничения.
-- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md) — export REALITY keys и auto-reboot.
-- [docs/APT_LOCK_COORDINATION_2.1.1.md](docs/APT_LOCK_COORDINATION_2.1.1.md) — безопасное ожидание dpkg/APT locks.
-- [docs/COVER_SITE.md](docs/COVER_SITE.md) — обновление/rollback cover-site.
-- [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md) — provider restrictions и reachability diagnostics.
-- [docs/UBUNTU_26_04.md](docs/UBUNTU_26_04.md) — статус Ubuntu 26.04 и pilot plan.
-- [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md) — timesyncd/Chrony и границы resume.
-- [docs/UFW_PREFLIGHT_FIX.md](docs/UFW_PREFLIGHT_FIX.md) — почему preflight UFW намеренно строгий.
-- [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — сценарии отказов и остаточные риски.
-- [docs/AUDIT.md](docs/AUDIT.md) — технический аудит и границы архитектуры.
-- [docs/RESEARCH.md](docs/RESEARCH.md) — основания технических решений.
-- [CHANGELOG.md](CHANGELOG.md) — история версий.
+- [SECURITY.md](../../SECURITY.md) — trust boundaries, секреты, firewall/container security, supply chain и incident response.
+- [docs/OPERATIONS.md](../OPERATIONS.md) — эксплуатация, диагностика, backup, maintenance и recovery.
+- [docs/TEST_REPORT.md](../TEST_REPORT.md) — точная матрица тестов и ограничения.
+- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](../REALITY_KEYS_AUTOREBOOT_2.1.2.md) — export REALITY keys и auto-reboot.
+- [docs/APT_LOCK_COORDINATION_2.1.1.md](../APT_LOCK_COORDINATION_2.1.1.md) — безопасное ожидание dpkg/APT locks.
+- [docs/COVER_SITE.md](../COVER_SITE.md) — обновление/rollback cover-site.
+- [docs/HOSTING_AND_INCIDENTS.md](../HOSTING_AND_INCIDENTS.md) — provider restrictions и reachability diagnostics.
+- [docs/UBUNTU_26_04.md](../UBUNTU_26_04.md) — статус Ubuntu 26.04 и pilot plan.
+- [docs/TIME_SYNC_FIX.md](../TIME_SYNC_FIX.md) — timesyncd/Chrony и границы resume.
+- [docs/UFW_PREFLIGHT_FIX.md](../UFW_PREFLIGHT_FIX.md) — почему preflight UFW намеренно строгий.
+- [docs/FAILURE_AUDIT.md](../FAILURE_AUDIT.md) — сценарии отказов и остаточные риски.
+- [docs/AUDIT.md](../AUDIT.md) — технический аудит и границы архитектуры.
+- [docs/RESEARCH.md](../RESEARCH.md) — основания технических решений.
+- [CHANGELOG.md](../../CHANGELOG.md) — история версий.
 
 ---
 

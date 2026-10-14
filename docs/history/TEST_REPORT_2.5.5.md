@@ -2,7 +2,7 @@
 
 ## 2.5.5 docs/security UI refresh — 2026-10-09
 
-- **Финальные проверки новой документации:** root UID 0 **637/637 PASS** (38.893 s) — [`evidence/255-docs-root-tests.txt`](evidence/255-docs-root-tests.txt); unprivileged UID 65534 **637/637 PASS** (39.110 s) — [`evidence/255-docs-unprivileged-tests.txt`](evidence/255-docs-unprivileged-tests.txt). Оба прогона без ошибок и пропусков.
+- **Финальные проверки новой документации:** root UID 0 **637/637 PASS** (38.893 s) — [`evidence/255-docs-root-tests.txt`](../evidence/255-docs-root-tests.txt); unprivileged UID 65534 **637/637 PASS** (39.110 s) — [`evidence/255-docs-unprivileged-tests.txt`](../evidence/255-docs-unprivileged-tests.txt). Оба прогона без ошибок и пропусков.
 - Исходный `install.sh` **не изменялся**; проверен SHA256 `ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40`.
 - Переработаны `README.md` и `SECURITY.md`, примеры `examples/inbound-*.json`. Оригинальные документы сохранены в `docs/history` побайтово. Документация расширенных опций DNS/routing является **manual opt-in**, без изменения генератора установленной ноды.
 - Добавлены offline-тесты документации: главная команда, неизменяемый Git commit и SHA, полные профили RAW/XHTTP, ссылки/анкоры, Security reporting и отсутствие production-секретов в примерах.
@@ -12,8 +12,8 @@
 
 ## 2.5.5 release-candidate offline validation — 2026-10-09
 
-- **Root UID 0:** **631/631 PASS**, 0 failures/errors/skips (39.821 s), [`evidence/255-root-tests.txt`](evidence/255-root-tests.txt).
-- **Unprivileged UID 65534:** **631/631 PASS**, 0 failures/errors/skips (39.055 s), [`evidence/255-unprivileged-tests.txt`](evidence/255-unprivileged-tests.txt).
+- **Root UID 0:** **631/631 PASS**, 0 failures/errors/skips (39.821 s), [`evidence/255-root-tests.txt`](../evidence/255-root-tests.txt).
+- **Unprivileged UID 65534:** **631/631 PASS**, 0 failures/errors/skips (39.055 s), [`evidence/255-unprivileged-tests.txt`](../evidence/255-unprivileged-tests.txt).
 - По сравнению с 2.5.4 сохранены прежние 620 тестов и добавлены **11 тестов**: 8 для read-only Xray release checker и полноты/согласованности двух JSON, 3 для завершённых версий и маршрутизации без дубликатов.
 - Сначала были обнаружены два старых ожидания (дублирующий CIDR в profile regression и фиксированная формулировка предупреждения про DPI в README). Подтверждённо исправлены оба; **полный повторный прогон** прошёл успешно у двух разных пользователей. Первые FAIL не скрыты и не объявляются PASS.
 - `install.sh --xray-versions --offline` не обращается к GitHub и не заменяет бинарник. Онлайн проверка GitHub метаданных покрыта моками, доступности GitHub **с конкретной VPS не проверяли**.
@@ -26,8 +26,8 @@
 
 ## 2.5.4 release-candidate offline validation — 2026-10-09
 
-- **Root:** 620/620 PASS, 0 failures/errors/skips (38.669 s), [`evidence/254-root-tests.txt`](evidence/254-root-tests.txt).
-- **Unprivileged UID65534:** 620/620 PASS, 0 failures/errors/skips (39.064 s), [`evidence/254-unprivileged-tests.txt`](evidence/254-unprivileged-tests.txt).
+- **Root:** 620/620 PASS, 0 failures/errors/skips (38.669 s), [`evidence/254-root-tests.txt`](../evidence/254-root-tests.txt).
+- **Unprivileged UID65534:** 620/620 PASS, 0 failures/errors/skips (39.064 s), [`evidence/254-unprivileged-tests.txt`](../evidence/254-unprivileged-tests.txt).
 - Добавлены 11 отдельных проверок XHTTP-шаблона, стабильного пути, сохранения ключей, отказа от Vision, совместимости Remnawave API inbound, root:0600, идемпотентности и отказа при имитированном несовместимом Core. Существующие тесты RAW/RKN/ACME/UFW/Docker/SSH/ресурсов сохранены.
 - Полный набор — **локальная offline-симуляция** и проверка синтаксиса файлов, а НЕ проверка запущенной production-ноды, XHTTP-совместимости реального Xray/Core, работы панели и VPN-клиентов.
 - На реальном VPS `--prepare-xhttp` должен выполнить дополнительный `rw-core run -test` по установленному образу. При отказе эта операция не изменяет RAW. Новая установка не ломает RAW из-за необязательного XHTTP.
@@ -80,7 +80,7 @@ Final suite: **599/599 PASS** as root (33.437 s) and **599/599 PASS** as UID 100
 
 Current pre-manifest `install.sh` SHA256: `69177096f8d7142ee578a7bcd9f583b0e934ebe8990341d11a4ef07b24dd0523`.
 
-Detailed incident contract: [HOTFIX_2.5.2](HOTFIX_2.5.2.md).
+Detailed incident contract: [HOTFIX_2.5.2](../HOTFIX_2.5.2.md).
 
 ---
 
@@ -91,7 +91,7 @@ Detailed incident contract: [HOTFIX_2.5.2](HOTFIX_2.5.2.md).
 
 После публикации 2.4.2 все три обязательных CI job остановились **до запуска тестов** на `sha256sum --check SHA256SUMS`. Ровно три файла дали mismatch: `evidence/241-ci-ubuntu22-failure.txt`, `evidence/241-ci-ubuntu24-failure.txt`, `evidence/241-ci-ubuntu26-userspace-failure.txt`. В ZIP они имели CRLF, а `.gitattributes` (`* text=auto`) при commit/checkout канонизировал их в LF. Manifest был корректен для ZIP-байтов, но не для clean Git checkout.
 
-В 2.4.3 три evidence-файла нормализованы в LF, manifest пересобран, добавлен regression `test_manifest_text_files_are_git_canonical_lf`, а финальная release-validation включает временный Git repository и clean clone с повторным `sha256sum --check`. Это supply-chain/packaging fix; production runtime logic не менялась. Подробности: [CI_GIT_NORMALIZATION_2.4.3](CI_GIT_NORMALIZATION_2.4.3.md).
+В 2.4.3 три evidence-файла нормализованы в LF, manifest пересобран, добавлен regression `test_manifest_text_files_are_git_canonical_lf`, а финальная release-validation включает временный Git repository и clean clone с повторным `sha256sum --check`. Это supply-chain/packaging fix; production runtime logic не менялась. Подробности: [CI_GIT_NORMALIZATION_2.4.3](../CI_GIT_NORMALIZATION_2.4.3.md).
 
 ## Исправление 2.4.2 по фактическому GitHub Actions failure 2.4.1
 
@@ -101,7 +101,7 @@ Detailed incident contract: [HOTFIX_2.5.2](HOTFIX_2.5.2.md).
 
 Детерминированное локальное воспроизведение старого сценария с 10 ms между 7-байтовыми кусками PROXY v1 дало `BrokenPipeError`, а Nginx записал `broken header: "PROXY T" while reading PROXY protocol` (`evidence/242-proxy-fragment-reproduction.txt`). Старый тест случайно зависел от coalescing коротких UNIX-stream writes.
 
-В 2.4.2 тест переименован в `test_large_fragmented_clienthello_after_complete_proxy_header`: PROXY v1 строка отправляется целиком, затем выдерживается 10 ms, а большой TLS 1.3 ClientHello **реально** фрагментируется по 37 байт с 1 ms между чанками. Ошибка не маскируется try/except и timeout не расширяется. Upstream Xray fallback для `xver=1` формирует PROXY v1 в отдельном buffer и пишет его перед копированием fallback payload, поэтому исправленный boundary соответствует фактической архитектуре. Подробный разбор: [CI_PROXY_FRAGMENTATION_2.4.2](CI_PROXY_FRAGMENTATION_2.4.2.md).
+В 2.4.2 тест переименован в `test_large_fragmented_clienthello_after_complete_proxy_header`: PROXY v1 строка отправляется целиком, затем выдерживается 10 ms, а большой TLS 1.3 ClientHello **реально** фрагментируется по 37 байт с 1 ms между чанками. Ошибка не маскируется try/except и timeout не расширяется. Upstream Xray fallback для `xver=1` формирует PROXY v1 в отдельном buffer и пишет его перед копированием fallback payload, поэтому исправленный boundary соответствует фактической архитектуре. Подробный разбор: [CI_PROXY_FRAGMENTATION_2.4.2](../CI_PROXY_FRAGMENTATION_2.4.2.md).
 
 Production `install.sh` transport/config behavior не менялся, кроме номера релиза, version markers и reviewed-version allowlists. NET_ADMIN default 2.4.0, cert-deploy convergence 2.4.1, Nginx template, REALITY profile, firewall, SSH, network и runtime dependencies сохранены.
 
@@ -117,7 +117,7 @@ GitHub Actions job `ubuntu-24.04` для 2.4.0 завершился ошибко
 
 Область 2.4.0 намеренно узкая: `NET_ADMIN` стал default capability RemnaNode для новых установок; новая конфигурация сохраняет `allow_net_admin=true`; generated Compose всегда содержит `cap_add: NET_ADMIN`; checker считает совпадающее state/runtime состояние штатным PASS; reviewed-version gates дополнены 2.4.0. Новые runtime-пакеты, порты, контейнеры, сервисы, transport, firewall rules, proxy, БД и зависимости не добавлялись. `NET_RAW` drop, `no-new-privileges`, read-only Selfsteal mount, host Nginx, UFW/Fail2ban, SSH policy, IPv4-only и image digest pinning сохранены.
 
-Обычный повтор installer на уже завершённой 2.3.0 ноде не является скрытой миграцией Compose. Для существующих нод подготовлена отдельная backup/validate/recreate/rollback процедура: [NET_ADMIN_2.4.0.md](NET_ADMIN_2.4.0.md). Эта узкая процедура не заменяет старый 2.3.0 checker: после включения capability он может продолжить показывать исторический `WARN NODE_NET_ADMIN`; фактический CapAdd проверяется самой процедурой.
+Обычный повтор installer на уже завершённой 2.3.0 ноде не является скрытой миграцией Compose. Для существующих нод подготовлена отдельная backup/validate/recreate/rollback процедура: [NET_ADMIN_2.4.0.md](../NET_ADMIN_2.4.0.md). Эта узкая процедура не заменяет старый 2.3.0 checker: после включения capability он может продолжить показывать исторический `WARN NODE_NET_ADMIN`; фактический CapAdd проверяется самой процедурой.
 
 ## Выполненные полные прогоны
 
@@ -133,7 +133,7 @@ GitHub Actions job `ubuntu-24.04` для 2.4.0 завершился ошибко
 | 2.4.3, root | 557 | 28.199 s | 0 / 0 / 0 |
 | 2.4.3, UID 1000 | 557 | 27.882 s | 0 / 0 / 0 |
 
-Журналы: [2.3.0 root](evidence/230-root-tests.txt), [2.4.0 root](evidence/240-root-tests.txt), [2.4.0 UID 1000](evidence/240-uid1000-tests.txt), [2.4.1 root](evidence/241-root-tests.txt), [2.4.1 UID 1000](evidence/241-uid1000-tests.txt), [2.4.2 root](evidence/242-root-tests.txt), [2.4.2 UID 1000](evidence/242-uid1000-tests.txt), [2.4.3 root](evidence/243-root-tests.txt), [2.4.3 UID 1000](evidence/243-uid1000-tests.txt). Root/UID-прогоны каждой версии — повтор одного набора под разными UID, а не сумма разных тестов. Тесты не отключались ради успешного результата.
+Журналы: [2.3.0 root](../evidence/230-root-tests.txt), [2.4.0 root](../evidence/240-root-tests.txt), [2.4.0 UID 1000](../evidence/240-uid1000-tests.txt), [2.4.1 root](../evidence/241-root-tests.txt), [2.4.1 UID 1000](../evidence/241-uid1000-tests.txt), [2.4.2 root](../evidence/242-root-tests.txt), [2.4.2 UID 1000](../evidence/242-uid1000-tests.txt), [2.4.3 root](../evidence/243-root-tests.txt), [2.4.3 UID 1000](../evidence/243-uid1000-tests.txt). Root/UID-прогоны каждой версии — повтор одного набора под разными UID, а не сумма разных тестов. Тесты не отключались ради успешного результата.
 
 Новый поведенческий тест `test_new_install_persists_net_admin_enabled` реально запускает извлечённый helper `init_config` во временном дереве и проверяет, что новый state получает `allow_net_admin=true`. Существующие static/version tests сохраняют контракт 2.4.0/2.4.1/2.4.2 и дополнены reviewed-version 2.4.3; generated Compose с default NET_ADMIN не менялся. Старые проверки SSH, UFW/firewall, DNS, REALITY/Profile, TLS/Selfsteal, HTTP/2, Certbot lifecycle, APT/time, network, Docker/image transactions, ENOSPC, timeout/signals, symlink/FIFO/races/tamper и resource diagnostics сохранены.
 
@@ -153,13 +153,13 @@ GitHub Actions job `ubuntu-24.04` для 2.4.0 завершился ошибко
 - clean Git commit/clone round-trip с повторным `sha256sum --check SHA256SUMS` — PASS;
 - новый cert-deploy convergence contract (4 consecutive target-only PASS, reset on failure) — PASS.
 
-Машиночитаемые результаты: [2.4.0](evidence/240-static-validation.json), [2.4.1](evidence/241-static-validation.json), [2.4.2](evidence/242-static-validation.json), [2.4.3](evidence/243-static-validation.json).
+Машиночитаемые результаты: [2.4.0](../evidence/240-static-validation.json), [2.4.1](../evidence/241-static-validation.json), [2.4.2](../evidence/242-static-validation.json), [2.4.3](../evidence/243-static-validation.json).
 
 `ShellCheck` в локальной среде отсутствует и **не запускался**. `bash -n`/unit tests не выдаются за ShellCheck.
 
 ## Preview/browser и неизменённые части
 
-HTML/CSS/preview/site rendering в рамках 2.4.3 не изменялись. Поэтому браузерный прогон не повторялся только ради изменения Docker capability. Сохранён предыдущий зафиксированный отчёт 2.3.0: **36 PASS** (4 варианта × 9 ширин) в [evidence/230-browser-report.json](evidence/230-browser-report.json). Это наследуемое evidence неизменённой части, а не новый browser-run 2.4.3.
+HTML/CSS/preview/site rendering в рамках 2.4.3 не изменялись. Поэтому браузерный прогон не повторялся только ради изменения Docker capability. Сохранён предыдущий зафиксированный отчёт 2.3.0: **36 PASS** (4 варианта × 9 ширин) в [evidence/230-browser-report.json](../evidence/230-browser-report.json). Это наследуемое evidence неизменённой части, а не новый browser-run 2.4.3.
 
 ## Что не доказано локальными тестами
 

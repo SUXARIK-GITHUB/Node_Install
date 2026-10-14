@@ -452,14 +452,14 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 
 ## 17. Связанные документы
 
-- [README.md](README.md) — установка, Remnawave, архитектура и operator commands.
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — эксплуатация, диагностика и recovery.
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — test coverage и явные gaps.
-- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md) — secure key export и auto-reboot.
-- [docs/APT_LOCK_COORDINATION_2.1.1.md](docs/APT_LOCK_COORDINATION_2.1.1.md) — package-manager lock policy.
-- [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md) — provider/network incidents.
-- [docs/COVER_SITE.md](docs/COVER_SITE.md) — cover-site update/rollback boundaries.
-- [docs/UFW_PREFLIGHT_FIX.md](docs/UFW_PREFLIGHT_FIX.md) — strict saved-UFW rules handling.
-- [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md) — сохранение поддерживаемого time provider.
-- [docs/UBUNTU_26_04.md](docs/UBUNTU_26_04.md) — статус 26.04 и требования canary.
-- [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — failure modes и остаточные риски.
+- [README.md](../../README.md) — установка, Remnawave, архитектура и operator commands.
+- [docs/OPERATIONS.md](../OPERATIONS.md) — эксплуатация, диагностика и recovery.
+- [docs/TEST_REPORT.md](../TEST_REPORT.md) — test coverage и явные gaps.
+- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](../REALITY_KEYS_AUTOREBOOT_2.1.2.md) — secure key export и auto-reboot.
+- [docs/APT_LOCK_COORDINATION_2.1.1.md](../APT_LOCK_COORDINATION_2.1.1.md) — package-manager lock policy.
+- [docs/HOSTING_AND_INCIDENTS.md](../HOSTING_AND_INCIDENTS.md) — provider/network incidents.
+- [docs/COVER_SITE.md](../COVER_SITE.md) — cover-site update/rollback boundaries.
+- [docs/UFW_PREFLIGHT_FIX.md](../UFW_PREFLIGHT_FIX.md) — strict saved-UFW rules handling.
+- [docs/TIME_SYNC_FIX.md](../TIME_SYNC_FIX.md) — сохранение поддерживаемого time provider.
+- [docs/UBUNTU_26_04.md](../UBUNTU_26_04.md) — статус 26.04 и требования canary.
+- [docs/FAILURE_AUDIT.md](../FAILURE_AUDIT.md) — failure modes и остаточные риски.

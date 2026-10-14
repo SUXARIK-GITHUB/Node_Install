@@ -6,7 +6,7 @@
 
 Для запуска #36679239665 получены полный лог 22.04 и текст ошибки 26.04. Ubuntu 22.04 запустила **356 тестов**, получила **1 error** в `test_sni_matches_nodejs_hkdf`; Node `v12.22.9` не предоставляет `crypto.hkdfSync`. Ubuntu 26.04 получила **код 128 на git rev-parse до тестов**, `detected dubious ownership`. Ubuntu 24.04 успешна по пользовательской сводке; полного её лога здесь нет.
 
-[Полный пользовательский лог 22.04](evidence/ci2_user_ubuntu22.txt) · [Фрагмент 26.04](evidence/ci2_user_ubuntu26_excerpt.txt). Не утверждается, что все файлы удалённого commit побайтово сравнены с архивом.
+[Полный пользовательский лог 22.04](../evidence/ci2_user_ubuntu22.txt) · [Фрагмент 26.04](../evidence/ci2_user_ubuntu26_excerpt.txt). Не утверждается, что все файлы удалённого commit побайтово сравнены с архивом.
 
 ## Локальное воспроизведение и исправление
 
@@ -18,7 +18,7 @@
 | Разные HOME при той же папке | Исключение в первом HOME не исправляет второй; actual workflow step пишет в нужный контекст |
 | Отказы trust step | Пустой/относительный workspace, другая рабочая папка, отсутствие `.git` останавливают до записи config |
 
-[Ошибка старого oracle](evidence/ci2_old_hkdf_reproduction.txt) · [реальные разные UID Git](evidence/ci2_real_git_ownership.json) · [целевые тесты](evidence/ci2_targeted_tests.txt).
+[Ошибка старого oracle](../evidence/ci2_old_hkdf_reproduction.txt) · [реальные разные UID Git](../evidence/ci2_real_git_ownership.json) · [целевые тесты](../evidence/ci2_targeted_tests.txt).
 
 ## Полные прогоны ci-fix2
 
@@ -31,9 +31,9 @@
 | UID 1000, native hkdfSync искусственно отключён | 371 | 19.667 s | OK, 0 skips |
 | Свежий Git clone, owner UID 0 / запуск UID 1000 | 371 | 19.794 s | OK, 0 skips |
 
-[Полный root лог](evidence/ci2_fixed_root.txt) · [полный non-root лог](evidence/ci2_fixed_unprivileged.txt) · [полный fallback лог](evidence/ci2_fixed_without_native_api.txt).
+[Полный root лог](../evidence/ci2_fixed_root.txt) · [полный non-root лог](../evidence/ci2_fixed_unprivileged.txt) · [полный fallback лог](../evidence/ci2_fixed_without_native_api.txt).
 
-[Свежий Git clone: полный ход проверки](evidence/ci2_fresh_clone_flow.txt): исходный rc=128 → exact trust step → worktree и SHA256SUMS → 371 тест → `git diff --check` / `git diff --exit-code` → повторный manifest. Шаги Git/trust взяты непосредственно из YAML, владельцы действительно разные. Нормализация строк Git не нарушила manifest. Это локальный аналог последовательности шагов, не GitHub Actions runner. Последующие записи текущего отчёта и упаковка проверяются отдельно после распаковки ZIP.
+[Свежий Git clone: полный ход проверки](../evidence/ci2_fresh_clone_flow.txt): исходный rc=128 → exact trust step → worktree и SHA256SUMS → 371 тест → `git diff --check` / `git diff --exit-code` → повторный manifest. Шаги Git/trust взяты непосредственно из YAML, владельцы действительно разные. Нормализация строк Git не нарушила manifest. Это локальный аналог последовательности шагов, не GitHub Actions runner. Последующие записи текущего отчёта и упаковка проверяются отдельно после распаковки ZIP.
 
 HKDF сверяется с фиксированными RFC 5869 A.1/A.2/A.3, Python cryptography и реальным извлечённым production payload. При наличии API сохраняется native comparison; его ошибки не подавляются. Git-тесты используют приватный HOME и реальный Git; большинство применяет только в subprocess тестовый флаг GIT_TEST_ASSUME_DIFFERENT_OWNER. Отдельный опыт с реальными разными UID не использует этот флаг.
 
@@ -51,7 +51,7 @@ HKDF сверяется с фиксированными RFC 5869 A.1/A.2/A.3, Py
 
 ## История и повторение
 
-Предыдущие [README ci-fix1](history/README_2.1.0_ci_fix1.md), [TEST_REPORT ci-fix1](history/TEST_REPORT_2.1.0_ci_fix1.md) и [RELEASE_VALIDATION ci-fix1](history/RELEASE_VALIDATION_2.1.0_ci_fix1.json) сохранены дословно. Все ещё более ранние документы также оставлены. [Разбор и применение ci-fix2](CI_FIX2_2.1.0.md).
+Предыдущие [README ci-fix1](README_2.1.0_ci_fix1.md), [TEST_REPORT ci-fix1](TEST_REPORT_2.1.0_ci_fix1.md) и [RELEASE_VALIDATION ci-fix1](RELEASE_VALIDATION_2.1.0_ci_fix1.json) сохранены дословно. Все ещё более ранние документы также оставлены. [Разбор и применение ci-fix2](../CI_FIX2_2.1.0.md).
 
 ```bash
 bash tests/run.sh

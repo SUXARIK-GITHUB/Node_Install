@@ -1,0 +1,76 @@
+{
+  "version": "2.5.6",
+  "date": "2026-10-09",
+  "status": "OFFLINE_TESTED_RELEASE_CANDIDATE; NEW_VPS_INSTALLATION_NOT_VERIFIED",
+  "base": {
+    "commit": "8780852ac1adc15293758aae2d8ce1b7584b0380",
+    "version": "2.5.5",
+    "installer_sha256": "ca654e4b36f88338c15f608c1d554acef83d971e68dff9e5c08ddc31822abc40",
+    "independently_rerun_baseline_tests": 637,
+    "baseline_rc": 0,
+    "prior_complete_validation": "docs/history/RELEASE_VALIDATION_2.5.5.json"
+  },
+  "installer_sha256": "da745235274cee2ea89d5986e7107b5848d0ef2a8fa2767d3fba2a253b40041b",
+  "test_environment": {
+    "os": "Debian GNU/Linux 13 container userspace",
+    "python": "Python 3.13.5",
+    "kernel_scope": "container host, not a target VPS",
+    "test_only_dependency_note": "PyYAML from existing environment provided via PYTHONPATH to system Python; no new runtime package or project dependency was added"
+  },
+  "tests": [
+    {
+      "uid": 0,
+      "tests": 695,
+      "seconds": 23.19,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "log": "docs/evidence/256-root-tests.txt"
+    },
+    {
+      "uid": 65534,
+      "tests": 695,
+      "seconds": 23.682,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "log": "docs/evidence/256-unprivileged-tests.txt"
+    }
+  ],
+  "targeted_cases": {
+    "ntp": "replayed first probe before NTP source reappears; deadline; persistent outage; non-IPv4; invalid/ignored/zero-packet response; InvocationID changes; two stable samples; all acceptance modes",
+    "finalization": "private snapshot hashes; no checkpoint/old version refused; drift and symlinks; mocked services; NTP failure retry; RKN failure and rollback failure; checked/commit/cleanup interruption; idempotence; quiet key export; descendant timeout; no package installation during finish",
+    "resources": "nested partial verified=false surfaces; optional strict exit=2; stopped container critical; real provided resource JSON replay returns review-required"
+  },
+  "preserved_policy": {
+    "checked": true,
+    "embedded_payload_count": 13,
+    "static_files_count": 6,
+    "regression_test": "tests/test_preserved_policy_256.py",
+    "nginx_selfsteal_transport": "unchanged",
+    "full_raw_xhttp_examples": "unchanged",
+    "rkn_guard_python_and_units": "unchanged",
+    "ssh_firewall_ipv4_policy": "unchanged"
+  },
+  "upstream_review": {
+    "Flecksis/rkn-guard": "34ed9c13bfa1280d32226164084da25b33a4c155",
+    "shadow-netlab/traffic-guard-lists": "7b9623238d7420cbb31feaa149610738feb45fd5",
+    "changed_since_previous_review": false,
+    "auto_update_executable_code": false
+  },
+  "not_verified": [
+    "Initiator of the repeated timesyncd service starts in the original VPS log",
+    "New 2.5.6 clean VPS install/reboot under Ubuntu or Debian",
+    "Live ipset/iptables/UFW failure and rollback on a real server",
+    "Actual Panel-to-Node authentication or a real RAW/XHTTP client",
+    "New production certificate issuance/renewal or daily RKN timer execution",
+    "New GitHub Actions run before publishing this archive"
+  ],
+  "deployment_scope": {
+    "existing_working_2_5_5": "Do not reinstall. Original node was already recovered independently. Replacing repository files does not upgrade installed helpers.",
+    "resume_command": "bash install.sh --finish-install",
+    "resume_eligibility": "ONLY a recorded finalization checkpoint created by 2.5.6, not arbitrary older incomplete installs",
+    "resume_reboots": false,
+    "rollback": "Verified provider snapshot for the whole VPS; scoped RKN rollback for finalization; private checkpoint is not an OS/package rollback"
+  }
+}

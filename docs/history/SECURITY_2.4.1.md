@@ -464,18 +464,18 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 
 ## 17. Связанные документы
 
-- [README.md](README.md) — установка, Remnawave, архитектура и operator commands.
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — эксплуатация, диагностика и recovery.
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — test coverage и явные gaps.
-- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md) — secure key export и auto-reboot.
-- [docs/APT_LOCK_COORDINATION_2.1.1.md](docs/APT_LOCK_COORDINATION_2.1.1.md) — package-manager lock policy.
-- [docs/HOSTING_AND_INCIDENTS.md](docs/HOSTING_AND_INCIDENTS.md) — provider/network incidents.
-- [docs/COVER_SITE.md](docs/COVER_SITE.md) — cover-site update/rollback boundaries.
-- [docs/UFW_PREFLIGHT_FIX.md](docs/UFW_PREFLIGHT_FIX.md) — strict saved-UFW rules handling.
-- [docs/TIME_SYNC_FIX.md](docs/TIME_SYNC_FIX.md) — сохранение поддерживаемого time provider.
-- [docs/UBUNTU_26_04.md](docs/UBUNTU_26_04.md) — статус 26.04 и требования canary.
-- [docs/FAILURE_AUDIT.md](docs/FAILURE_AUDIT.md) — failure modes и остаточные риски.
-- [docs/NET_ADMIN_2.4.0.md](docs/NET_ADMIN_2.4.0.md) — default `NET_ADMIN`, существующие ноды и rollback-границы.
+- [README.md](../../README.md) — установка, Remnawave, архитектура и operator commands.
+- [docs/OPERATIONS.md](../OPERATIONS.md) — эксплуатация, диагностика и recovery.
+- [docs/TEST_REPORT.md](../TEST_REPORT.md) — test coverage и явные gaps.
+- [docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md](../REALITY_KEYS_AUTOREBOOT_2.1.2.md) — secure key export и auto-reboot.
+- [docs/APT_LOCK_COORDINATION_2.1.1.md](../APT_LOCK_COORDINATION_2.1.1.md) — package-manager lock policy.
+- [docs/HOSTING_AND_INCIDENTS.md](../HOSTING_AND_INCIDENTS.md) — provider/network incidents.
+- [docs/COVER_SITE.md](../COVER_SITE.md) — cover-site update/rollback boundaries.
+- [docs/UFW_PREFLIGHT_FIX.md](../UFW_PREFLIGHT_FIX.md) — strict saved-UFW rules handling.
+- [docs/TIME_SYNC_FIX.md](../TIME_SYNC_FIX.md) — сохранение поддерживаемого time provider.
+- [docs/UBUNTU_26_04.md](../UBUNTU_26_04.md) — статус 26.04 и требования canary.
+- [docs/FAILURE_AUDIT.md](../FAILURE_AUDIT.md) — failure modes и остаточные риски.
+- [docs/NET_ADMIN_2.4.0.md](../NET_ADMIN_2.4.0.md) — default `NET_ADMIN`, существующие ноды и rollback-границы.
 
 
 ## 18. Selfsteal 2.3.0: HTTP-поверхность и ограничения
@@ -494,7 +494,7 @@ sudo timeout 120 tcpdump -ni <interface> -nn -tttt -vv 'tcp port 2222'
 
 UFW остаётся единственным управляемым firewall; нет raw iptables -m string по TLS, нового SNI-фильтра, source-IP-лимитов на443 или массовых IP-ban-list. Пользователи за общим NAT не получают новый агрегированный лимит. Установка не обещает защиту от блокировки IP/домена, неизвестного DPI, заражённого клиента, DDoS на внешнем канале или разглашения домена в CT. Множество оформлений не доказывает статистическую неразличимость VPN.
 
-Полное обновление работающих старых Nginx/helpers в 2.3.0 не реализовано. `--update-cover` меняет только страницы по уже существующей контролируемой транзакции, а не транспорт, firewall, TLS vhost или marker версии. Новые проверки не нужно переносить одиночным файлом на старую Nginx-policy: это вызовет ожидаемый несовместимый контракт. [Подробности](docs/SELFSTEAL_2.2.0.md).
+Полное обновление работающих старых Nginx/helpers в 2.3.0 не реализовано. `--update-cover` меняет только страницы по уже существующей контролируемой транзакции, а не транспорт, firewall, TLS vhost или marker версии. Новые проверки не нужно переносить одиночным файлом на старую Nginx-policy: это вызовет ожидаемый несовместимый контракт. [Подробности](../SELFSTEAL_2.2.0.md).
 
 
 ## 19. Новые границы проверок 2.3.0
@@ -517,5 +517,5 @@ UFW остаётся единственным управляемым firewall; �
 
 Локальная проверка подтверждает только, что контейнер запущен с ожидаемой capability. Она **не** доказывает корректность «Обозревателя сессий» на конкретной версии панели/Xray и не доказывает отсутствие побочных сетевых эффектов. После canary-обновления проверьте сам интерфейс сессий, обычный клиентский трафик, доступ панели к Node API и host firewall/routes/qdisc.
 
-Для уже завершённых нод изменение применяется отдельной узкой операцией с backup Compose/config, `docker compose config --quiet`, recreate только RemnaNode с `--pull never`, проверкой неизменности image и rollback при apply-failure. Полный VPS snapshot остаётся предпочтительным rollback перед массовой раскаткой. Подробный регламент: [NET_ADMIN_2.4.0](docs/NET_ADMIN_2.4.0.md) и [OPERATIONS](docs/OPERATIONS.md).
+Для уже завершённых нод изменение применяется отдельной узкой операцией с backup Compose/config, `docker compose config --quiet`, recreate только RemnaNode с `--pull never`, проверкой неизменности image и rollback при apply-failure. Полный VPS snapshot остаётся предпочтительным rollback перед массовой раскаткой. Подробный регламент: [NET_ADMIN_2.4.0](../NET_ADMIN_2.4.0.md) и [OPERATIONS](../OPERATIONS.md).
 

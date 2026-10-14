@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.6 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.9 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.6'
+VERSION = '2.5.9'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -61,6 +61,8 @@ def sha(data):
 
 def run(args, timeout=30, quiet=False):
     # A new process group lets timeout stop inherited pipes/children, not just bash.
+    if args and args[0] == 'docker':
+        args = ['/usr/local/sbin/vkarmani-docker-local'] + args[1:]
     with subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, env=ENV, start_new_session=True) as p:
         try:

@@ -89,7 +89,7 @@ def installed_version(runner=None):
     if runner is None:
         runner = subprocess.run
     try:
-        result = runner(['docker', 'exec', 'remnanode', 'rw-core', 'version'],
+        result = runner(['/usr/local/sbin/vkarmani-docker-local', 'exec', 'remnanode', 'rw-core', 'version'],
                         text=True, capture_output=True, timeout=8, check=False)
         if result.returncode != 0:
             return None
