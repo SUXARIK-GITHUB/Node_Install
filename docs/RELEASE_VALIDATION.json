@@ -1,11 +1,12 @@
 {
-  "version": "2.5.9",
+  "version": "2.5.10",
   "date": "2026-10-15",
   "status": "INCOMPLETE_STAGING_ONLY; NOT_PRODUCTION_VALIDATED; NOT_PUBLISHED",
   "source": {
-    "base_version": "2.5.8",
-    "commit": "e0e076678d92daa074daa8289db2df3a3a395a42",
-    "source_snapshot": "Node_Install_2.5.8-edge-staging_edge-20261014T201907Z.zip",
+    "base_version": "2.5.9",
+    "commit": "3a4d277e2d9d0f80671656a917409efeade781f6",
+    "source_snapshot": "Node_Install_2.5.9-qa-fixes_qa-20261014T212340Z.zip",
+    "source_sha256": "94354b647112ba82e3f8a1931fdbcb25c2eb35125e205bd7f75d528d0eb73b0c",
     "old_release_validation": "docs/history/RELEASE_VALIDATION_2.5.6.json"
   },
   "changes": [
@@ -26,20 +27,41 @@
     "QA-06/07 fail-closed nightly marker and locked disable",
     "QA-08 explicit 72h CIDR freshness classification",
     "QA-09 NFC release filename validation",
-    "QA-10 negative post-restart verification regression"
+    "QA-10 negative post-restart verification regression",
+    "r4 offline two-role cascade profile generator with AsIs entry + finalRules exit",
+    "r4 RKN content_changed_at_utc checkpoint and UFW Node API ACL read-only audit",
+    "r4 cascade maintenance restart fail-closed SKIPPED",
+    "r4 six static cover variants and loopback-only HTTP/TCP Nginx plan generator",
+    "r4 SHA-bound staging evidence gate with external live tests BLOCKED",
+    "r5 fresh-host cascade entry/exit installer path with immutable pre-APT enrollment and full stored role checks",
+    "r5 valid X25519 key pair generation, private role separation and per-role profiles verified by actual code",
+    "r5 read-only policy checker for Panel computed Xray JSON and bridge access",
+    "r5 staging two-role guide, negative policy tests and explicit no-production-release marker",
+    "r6 Remnawave v3 normalized inventory gate with bridge vlessUuid distinction (offline no API writes)",
+    "r6 read-only local RemnaNode cold Xray config audit CLI (no live-session claim)",
+    "r6 Exit-only pinned Entry RKN trusted exception with strict role marker and unchanged Panel Node API UFW ACL",
+    "r6 local root-private state/config limited backup and tamper verification; NOT full server/Panel restore",
+    "r6 comprehensive staging SOP and negative tests for safety gates",
+    "r7 explicit six-theme staging deployment with transactional backup/rollback, protected CSS Nginx location and live Selfsteal CSS check",
+    "r7 Nginx TCP loopback stream deployment with top-level include, syntax/reload, backend preflight and rollback; no 443 or package auto-install",
+    "r7 test client SOCKS5 HTTPS egress IPv4 and RFC1928 UDP DNS with baseline/outage/recovery receipts, not real VPS acceptance",
+    "r7 mock local SOCKS5 DNS relay + negative deploy tests and exact package integrity gate",
+    "r7b independent generic SOCKS5 UDP echo canary in addition to DNS-over-UDP, with typed target validation and negative outage gates",
+    "r7c DNS RR parser verifies complete public A answer and bounded compression pointers (not only ANCOUNT)",
+    "r7c preserve original file modes through web/TCP deploy and rollback; negative tests"
   ],
   "tests": {
     "source_baseline_2_5_6": "695 passed on original unpacked archive; not new build proof",
-    "current_offline": "Must be verified from exact 2.5.9 ZIP; no VPS verification",
-    "safety_regressions": "tests/test_r2_critical.py; tests/test_edge_security_258.py; tests/test_259_fault_regressions.py",
+    "current_offline": "r7c targeted tests PASS offline; full suite must be run against exact final ZIP; live VPS not run",
+    "safety_regressions": "tests/test_r2_critical.py; tests/test_edge_security_258.py; tests/test_259_fault_regressions.py; tests/test_2510_menu_cascade_docs.py; tests/test_2510_r5_cascade_roles.py; tests/test_2510_r5_cascade_panel.py",
     "release_integrity": "tests/test_release_packaging_r2.py; scripts/verify_release.py"
   },
   "no_auto_upgrades_on_installed_hosts": true,
   "source_code_published_to_github": false,
   "scope": {
-    "ordinary": "code changes + offline mock tests; fresh VPS not verified",
-    "cascade_entry": "NOT_IMPLEMENTED",
-    "cascade_exit": "NOT_IMPLEMENTED"
+    "ordinary": "Ordinary install path preserved; RKN timestamp and cascade-role nightly skip added; real VPS still not verified",
+    "cascade_entry": "STAGING_ROLE_INSTALLER; COLD_CONFIG_AUDIT_AVAILABLE; NEEDS_REAL_PANEL_AND_LIVE_ACCEPTANCE",
+    "cascade_exit": "STAGING_ROLE_INSTALLER; RKN_PEER_EXEMPTION_CODE_IMPLEMENTED; NEEDS_REAL_KERNEL_AND_PANEL_AND_LIVE_ACCEPTANCE"
   },
   "not_verified": [
     "live two-host VLESS/REALITY cascade and fail-closed DNS",
@@ -54,11 +76,30 @@
     "IPv4 firewall external tests, SSH reentry, ARM64 VPS",
     "public TLS 1.2 and TLS 1.3 through real Xray REALITY on deployed VPS",
     "independent external test of RemnaNode Node Port panel-IP allow/deny",
-    "VM-fault-injection on actual kernel after RKN rollback; kernel sets and panel exceptions"
+    "VM-fault-injection on actual kernel after RKN rollback; kernel sets and panel exceptions",
+    "r5 two-host cascade installation path exists but NOT run on real VPS (host OS/SSL/Docker/Panel unverified)",
+    "r4 Panel service user assignment and computed config re-validation",
+    "r4 generated profiles tested by real rw-core and actual client",
+    "r4 HTTP/TCP Nginx template loaded/tested on actual staging VM",
+    "r4 six cover themes deployed on public HTTPS",
+    "r4 independent root of trust for ZIP SHA256",
+    "Manual service-user/Internal Squad/Node/Host assignment in REAL test Panel pending",
+    "Full Panel computed JSON normalization against actual active rw-core pending",
+    "RKN source IP on Exit, reconnect and peer blackout behavior require real network tests",
+    "r5 core version compatibility of VLESS RAW/REALITY chain not yet verified on real remnanode image",
+    "r6 isolated TEST Panel API automatic CRUD workflow (NOT IMPLEMENTED)",
+    "r6 RKN pinned peer exception behavior under real kernel/ipset/UFW after cold boot",
+    "r6 real Node CLI cold JSON structure on target version and live VPN session",
+    "r6 rollback of full provider snapshot/Panel database and zero-downtime rotation",
+    "r6 all external staging gates and GitHub CI (local archive only)",
+    "r7 six themes and Nginx TCP real staging deploy and rollback not run on VPS",
+    "r7 live client/UDP/DNS/outage phases not run on two staging VPS; Entry packet capture absent"
   ],
   "test_claim_policy": "Results for exact produced ZIP are external; do not infer production from CRC or unit tests",
   "previous_release_validation_metadata": {
-    "version": "2.5.6",
-    "date": "2026-10-09"
-  }
+    "version": "2.5.9",
+    "date": "2026-10-15",
+    "source_commit": "3a4d277e2d9d0f80671656a917409efeade781f6"
+  },
+  "build_id": "20261015-r7c-sites-tcp-live-qa"
 }

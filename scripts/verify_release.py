@@ -24,7 +24,43 @@ REQUIRED = {'install.sh', 'README.md', 'CHANGELOG.md', '.gitattributes',
             'integrations/rkn_guard.py', 'tests/test_r2_critical.py',
             'scripts/verify_release.py', 'docs/STAGING_CANDIDATE_2.5.7.md',
             'docs/EDGE_HARDENING_2.5.8.md', 'tests/test_edge_security_258.py',
-            'tests/test_259_fault_regressions.py', 'docs/RKN_FAILSAFE_2.5.9.md'}
+            'tests/test_259_fault_regressions.py', 'docs/RKN_FAILSAFE_2.5.9.md', 'docs/CASCADE_REFERENCE_2.5.10.md',
+            'examples/cascade-entry-profile.reference.json', 'examples/cascade-exit-profile.reference.json',
+            'tests/test_2510_menu_cascade_docs.py',
+            'docs/R4_8_POINT_ENGINEERING_20261015.md',
+            'docs/COVER_VARIANTS_AND_PROXY_R4.md',
+            'integrations/cascade_profiles.py',
+            'integrations/panel_acl_audit.py',
+            'scripts/staging_acceptance.py',
+            'scripts/cover_variants.py',
+            'scripts/nginx_proxy_plan.py',
+            'tests/test_2510_r4_preparation.py',
+            'cover-variants/01-atelier/index.html',
+            'cover-variants/01-atelier/style.css',
+            'cover-variants/02-archive/index.html',
+            'cover-variants/02-archive/style.css',
+            'cover-variants/03-observatory/index.html',
+            'cover-variants/03-observatory/style.css',
+            'cover-variants/04-fieldnotes/index.html',
+            'cover-variants/04-fieldnotes/style.css',
+            'cover-variants/05-readingroom/index.html',
+            'cover-variants/05-readingroom/style.css',
+            'cover-variants/06-foundry/index.html',
+            'cover-variants/06-foundry/style.css',
+            'integrations/cascade_deployment.py',
+            'integrations/cascade_panel_audit.py',
+            'tests/test_2510_r5_cascade_roles.py',
+            'tests/test_2510_r5_cascade_panel.py',
+            'docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md',
+            'docs/R5_CASCADE_QA.md',
+            'docs/R6_CASCADE_OPERATIONS_AND_GATES.md',
+            'integrations/cascade_live_gate.py',
+            'integrations/cascade_panel_inventory.py',
+            'integrations/cascade_recovery.py',
+            'tests/test_2510_r6_remaining_gates.py',
+            'scripts/staging_web_deploy.py', 'scripts/cascade_live_probe.py',
+            'tests/test_2510_r7_web_deploy.py', 'tests/test_2510_r7_live_probe.py',
+            'docs/R7_SITES_TCP_AND_LIVE_PROBES.md',}
 
 
 def sha256(value):
@@ -47,7 +83,7 @@ def verify_name(value):
 
 
 def verify_manifest(m):
-    if m.get('version') != '2.5.9' or m.get('release_status') != 'INCOMPLETE_STAGING_ONLY':
+    if m.get('version') != '2.5.10' or m.get('release_status') != 'INCOMPLETE_STAGING_ONLY':
         raise ValueError('wrong release version or safety status')
     commit = m.get('source_commit')
     if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
@@ -107,11 +143,14 @@ def verify_bytes(files):
         if sha256(files[name]) != digest:
             raise ValueError('SHA256SUMS failed: ' + name)
     installer = files['install.sh'].decode('utf-8')
-    if not re.search(r'(?m)^INSTALLER_VERSION=2\.5\.9$', installer):
+    if not re.search(r'(?m)^INSTALLER_VERSION=2\.5\.10$', installer):
         raise ValueError('version of installer differs from manifest')
     readme = files['README.md'].decode('utf-8')
-    if '2.5.9' not in readme or 'не опубликована в GitHub' not in readme:
+    if '2.5.10' not in readme or 'локальный непубликованный staging' not in readme:
         raise ValueError('README release state/version inconsistent')
+    expected_archive = 'Node_Install_2.5.10-docs-menu_' + m['build_id'] + '.zip'
+    if expected_archive not in readme.split('---', 1)[0]:
+        raise ValueError('README release command/build ID inconsistent')
     for word in ('vk_rkn_safe_shutdown()', 'vk_write_docker_local()', 'vk_write_nightly_maintenance()'):
         if word not in installer:
             raise ValueError('required executable change missing: ' + word)

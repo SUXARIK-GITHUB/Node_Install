@@ -36,14 +36,14 @@ class Finalization256(unittest.TestCase):
             self.write(name, 'fixture\n')
         self.write('etc/vkarmani-node/config.json', json.dumps({'installation_mode':'secret-key-only',
                    'domain':'node.example.test','public_ipv4':'192.0.2.10','panel_ipv4':['192.0.2.20'],'node_port':2222}))
-        self.write(self.m.STATE+'/install-version','2.5.9\n')
+        self.write(self.m.STATE+'/install-version','2.5.10\n')
         self.write(self.m.STATE+'/image-digest', self.digest+'\n')
         self.write('etc/ufw/before.rules','*filter\n:ufw-before-input - [0:0]\nCOMMIT\n')
         self.write('proc/cmdline','quiet ipv6.disable=1\n')
         self.write(self.m.STATE+'/backups/original/config','old fixture\n')
         self.write(self.m.STATE+'/backups/original/MANIFEST.sha256',self.m.sha(b'old fixture\n')+'  ./config\n')
         self.write(self.m.STATE+'/latest-backup-path','/'+self.m.STATE+'/backups/original\n')
-        self.source=self.write(self.m.STATE+'/installer-2.5.9.sh', SCRIPT)
+        self.source=self.write(self.m.STATE+'/installer-2.5.10.sh', SCRIPT)
 
     def write(self, path, value, mode=0o600):
         p=self.root/path

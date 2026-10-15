@@ -1,0 +1,115 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "VK_CASCADE_ENTRY_REALITY_REPLACE_WITH_REAL_TAG",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none",
+        "flow": "xtls-rprx-vision"
+      },
+      "sniffing": {
+        "enabled": true,
+        "routeOnly": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "target": "/dev/shm/nginx.sock",
+          "xver": 1,
+          "minClientVer": "0.0.0",
+          "spiderX": "/",
+          "serverNames": [
+            "entry.example.com"
+          ],
+          "privateKey": "REPLACE_WITH_PRIVATE_KEY_FROM_NODE",
+          "shortIds": [
+            "REPLACE_WITH_SHORT_ID_FROM_NODE"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "BLOCK",
+      "protocol": "blackhole"
+    },
+    {
+      "tag": "TO_EXIT_VLESS",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "198.51.100.20",
+            "port": 443,
+            "users": [
+              {
+                "id": "REPLACE_WITH_EXIT_SERVICE_USER_UUID",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "exit.example.com",
+          "fingerprint": "chrome",
+          "publicKey": "REPLACE_WITH_EXIT_REALITY_PUBLIC_KEY",
+          "shortId": "REPLACE_WITH_EXIT_SHORT_ID",
+          "spiderX": "/"
+        }
+      }
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "protocol": [
+          "bittorrent"
+        ],
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "domain": [
+          "geosite:private"
+        ],
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "ip": [
+          "geoip:private",
+          "::/0"
+        ],
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "VK_CASCADE_ENTRY_REALITY_REPLACE_WITH_REAL_TAG"
+        ],
+        "outboundTag": "TO_EXIT_VLESS"
+      }
+    ]
+  }
+}

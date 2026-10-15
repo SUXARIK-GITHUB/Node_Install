@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.9 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.10 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.9'
+VERSION = '2.5.10'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -43,7 +43,10 @@ WATCHED = (
     'usr/local/sbin/vkarmani-selfsteal-check',
     'usr/local/sbin/vkarmani-node-tls-check',
 )
-OPTIONAL_WATCHED = ('etc/vkarmani-node/profile-xhttp.json',)
+OPTIONAL_WATCHED = ('etc/vkarmani-node/profile-xhttp.json',
+                    'etc/vkarmani-node/cascade-role.json', STATE + '/role.json',
+                    'usr/local/lib/vkarmani-node/cascade_deployment.py',
+                    'usr/local/lib/vkarmani-node/cascade_profiles.py')
 PENDING = ('network-rollback-armed', 'network-rollback-running', 'image-update-pending', 'RESUME_FAILED')
 IMAGE = re.compile(r'(?:remnawave/node|ghcr\.io/remnawave/node)@sha256:[0-9a-f]{64}')
 ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',

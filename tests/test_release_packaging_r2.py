@@ -17,13 +17,14 @@ import verify_release as vr
 class R2ReleasePackageTests(unittest.TestCase):
     def minimal_package(self):
         c = {name: (b'fixture-' + name.encode()) for name in vr.REQUIRED}
-        c['install.sh'] = (b'INSTALLER_VERSION=2.5.9\n'
+        c['install.sh'] = (b'INSTALLER_VERSION=2.5.10\n'
                            b'vk_rkn_safe_shutdown()\nvk_write_docker_local()\n'
                            b'vk_write_nightly_maintenance()\n')
-        c['README.md'] = '2.5.9 — не опубликована в GitHub\n'.encode()
+        c['README.md'] = ('2.5.10 — локальный непубликованный staging\n'
+                          'Node_Install_2.5.10-docs-menu_r2-fixed-test-build.zip\n').encode()
         items = [{'path':n,'size':len(c[n]),'sha256':vr.sha256(c[n]),'mode':'0644'}
                  for n in sorted(c)]
-        meta = {'version':'2.5.9','build_id':'r2-fixed-test-build',
+        meta = {'version':'2.5.10','build_id':'r2-fixed-test-build',
                 'source_commit':'e0e076678d92daa074daa8289db2df3a3a395a42',
                 'release_status':'INCOMPLETE_STAGING_ONLY',
                 'excluded_from_manifest':sorted(vr.SKIPPED),'files':items}
@@ -65,6 +66,19 @@ class R2ReleasePackageTests(unittest.TestCase):
         c[vr.SUMS] = ''.join(f'{vr.sha256(c[n])}  {n}\n'
                               for n in sorted(c) if n != vr.SUMS).encode()
         with self.assertRaisesRegex(ValueError,'README release'):
+            vr.verify_bytes(c)
+
+    def test_wrong_archive_build_id_in_readme_is_rejected_even_when_rehashed(self):
+        c = self.minimal_package()
+        c['README.md'] = c['README.md'].replace(b'r2-fixed-test-build.zip', b'old-build.zip')
+        meta = json.loads(c[vr.MANIFEST])
+        row = next(x for x in meta['files'] if x['path'] == 'README.md')
+        row['size'] = len(c['README.md'])
+        row['sha256'] = vr.sha256(c['README.md'])
+        c[vr.MANIFEST] = (json.dumps(meta, sort_keys=True) + '\n').encode()
+        c[vr.SUMS] = ''.join(f'{vr.sha256(c[n])}  {n}\n'
+                              for n in sorted(c) if n != vr.SUMS).encode()
+        with self.assertRaisesRegex(ValueError, 'README release command/build ID'):
             vr.verify_bytes(c)
 
     def test_modified_manifest_is_detected(self):

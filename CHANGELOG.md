@@ -1,3 +1,56 @@
+## 2.5.10 r7c — 2026-10-15 · STAGING ONLY · дополнительные проверки DNS и точный rollback
+
+- SOCKS5 UDP DNS: проверяется фактическая публичная IN/A-запись, длина RR, циклы/повреждения указателей DNS, а не только `ANCOUNT>0`; добавлены негативные тесты подмены.
+- Site/TCP Nginx rollback: сохранение исходных прав доступа к установленным HTML/CSS/Nginx-файлам (включая ограниченные 0600/0640); протокол совместим с прежним r7b journal.
+- Никаких изменений `install.sh`, Xray/Remnawave, Docker, UFW, SSH, systemd или live VPS. Все внешние проверки требуют staging и остаются `NOT_RUN`.
+
+## 2.5.10 r7 — 2026-10-15 · STAGING ONLY · сайты, TCP stream, network probe
+
+- Шесть исходных HTML/CSS cover-тем развёртываются отдельно по явной команде на новой, завершённой staging-ноды: ограниченная транзакция, backup, CSS location, `nginx -t`, reload, локальная Selfsteal/CSS-проверка и rollback. Без изменения VPN, 443 или дизайна по умолчанию.
+- Опциональный Nginx TCP stream — только loopback 127.0.0.1 на безопасных портах, с проверкой backend, сохранением `nginx.conf`, проверкой syntax/reload и откатом. Модуль stream требуется заранее; APT/Module auto-install не включён.
+- Клиентский тест SOCKS5: HTTPS external exit IPv4, UDP ASSOCIATE DNS + независимый UDP echo canary, три фазы baseline/outage/recovery с root/private receipts, без автоматической остановки Exit. Результаты offline тестов **не** доказывают работу реальных VPS.
+- Дополнены негативные mock regression tests, release metadata и инструкция по безопасной приёмке. Production/Panel/real-client E2E НЕ проверены, release остаётся локальным.
+
+## 2.5.10 r6 — 2026-10-15 · INCOMPLETE_STAGING_ONLY · дополнительные защитные операции каскада
+
+- Внутренний `VK_RKN_GUARD_PY` и `integrations/rkn_guard.py` синхронизированы: при установке новой exit-роли pin IPv4 Entry автоматически включается в RKN trusted ipset только после строгой валидации неизменяемого PairID и role marker. UFW Node API ACL при этом остаётся ограниченным IP панели; ordinary и entry не получают peer-exception.
+- `integrations/cascade_panel_inventory.py`: строгая offline-проверка связей двух Node, разных профилей, Internal Squads, публичного Host только Entry и bridge `vlessUuid` в Remnawave v3. Никаких сетевых/API операций и административных токенов.
+- `integrations/cascade_live_gate.py`: проверка переданного Xray JSON или cold configuration через read-only RemnaNode CLI; **не** подтверждает активные пользовательские соединения.
+- `integrations/cascade_recovery.py`: новый root-private ограниченный резервный набор identity/config/state с sha256 и fail-closed проверкой, но НЕ полный snapshot VPS/Panel/БД и не автоматический restore.
+- Обновлены валидатор архива, маркеры проверяемых изменений, документ эксплуатации и негативные тесты. Все изменения сохраняют ordinary и ранее работающие inbound; архив не обновляет живые ноды автоматически.
+- **Не закрыто:** живые две staging VPS, TEST Panel API provisioning, безостановочная ротация, полноузловой restore, внешний мониторинг, Nginx/live TLS; production запрещён до независимой приёмки.
+
+## 2.5.10 / r5 — 2026-10-15 · STAGING ROLE INSTALLER / LIVE NOT VERIFIED
+
+- Реализованы две отдельные установочные роли для **новых** staging VPS через `install.sh --cascade-role entry|exit --cascade-bundle <root-private-path>` или меню `2`, без изменения ordinary-ветки. При неполном вводе/роль-расхождении — отказ до APT и системных изменений; повторная регистрация роли на занятом узле запрещена.
+- `integrations/cascade_deployment.py`: генератор действительных X25519 пар для REALITY, независимые приватные роли + одинаковый pair-id, service-user UUID, криптографическое соответствие public/private key, права 0600 и неизменяемый ролевой checkpoint до установки ОС.
+- `install.sh`: ролевой генератор изолированных RAW/VLESS/REALITY+Vision конфигураций Entry/Exit в `node_helper.py`, `run -test` реальным core при установке на VPS, отсутствие пользовательского DIRECT на Entry и DNS `AsIs`, ограничение доступности XHTTP и автоматического scheduled restart.
+- `integrations/cascade_panel_audit.py`: read-only fail-closed аудит предоставленного computed Xray JSON Panel, inbound + users/squad effect + no unexpected outbound/DNS/routes; **не** подтверждает, что этот JSON реально применён.
+- Новая подробная [staging-инструкция](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md), регрессионные и негативные unit-tests, безопасная маркировка локального ZIP.
+- **НЕ сделано автоматически:** создание Node/Config Profile/Host/Internal Squad/service-user в Remnawave, двухузловая координация перезапусков, ротация действующего peer, RKN-exclusion для IPv4 другой ноды, полный VPS rollback. Реальный client/Panel/2-VPS/SSH/reboot/CA/24h soak **не проверялись**. Рабочим production-каскадом выпуск не объявляется.
+
+## 2.5.10 / r4 — 2026-10-15 · INCOMPLETE STAGING ONLY · инженерная подготовка 8 задач
+
+- Сохранена старая branch ordinary и безопасная остановка меню `2` без установки. Существующие VPN, ключи, Panel, Docker и UFW **не менялись**.
+- `integrations/cascade_profiles.py`: offline подготовка двух независимых VLESS/REALITY RAW + Vision профилей, input 0600, изоляция stage, уникальные теги и ключи, entry без DNS/неявного DIRECT, exit с `finalRules`; самостоятельную криптографическую проверку Reality-пары и Core test не заменяет.
+- `integrations/panel_acl_audit.py`: read-only UFW vs `panel_ipv4`/Node Port; никаких изменений IPv4 ACL без сетевого canary.
+- RKN marker: `content_changed_at_utc` отличает изменение **локального нормализованного списка** от очередной проверки upstream; не является источником подписанных upstream данных.
+- Ночной restart теперь явно **пропускает** cascade-entry/exit, пока нет двухсерверного координирующего проверенного механизма; ordinary поведение сохранено.
+- `scripts/staging_acceptance.py`: SHA-bound checklist/evidence gate для новой ordinary и cascade с явным состоянием BLOCKED.
+- `cover-variants/{01..06}`, `scripts/cover_variants.py`: шесть независимых мобильных статических сайтов, opt-in offline preview, без изменения действующего сайта.
+- `scripts/nginx_proxy_plan.py`: staging-only HTTP/TCP proxy на 127.0.0.1, без 80/443/2222, без reload.
+- Новые регрессионные тесты и релизная упаковка с SHA; [технические ограничения](docs/R4_8_POINT_ENGINEERING_20261015.md). **Не является завершённой ролевой установкой каскада или E2E приёмкой.**
+
+## 2.5.10 — 2026-10-15 · STAGING ONLY · README overhaul + guarded first-mode prompt
+
+- **Команда новой 2.5.10 установки размещена на самом верху README:** только локальный ZIP с проверкой манифеста и SHA256. Публичный GitHub `main` уже публикует 2.5.9, поэтому соответствующая закреплённая команда дана отдельно и прямо помечена как 2.5.9. Не выдан фиктивный URL несуществующей публикации 2.5.10.
+- README полностью пересобран в русском стиле с сохранением шапки, логики navigation/cards/emoji и дословно идентичных образовательных RAW/XHTTP JSON; устранены ошибочные сведения о публикации 2.5.9.
+- Для **новой** установки добавлен выбор `1 — обычная нода / 2 — каскад` **до любых системных изменений**. Режим 1 сохраняет прежние три поля и весь рабочий процесс; режим 2 блокируется с кодом 2, поскольку полноценного двухсерверного cascade/runtime ещё нет. Повторные/восстановительные запуски роль не меняют.
+- Добавлены два самостоятельных **справочных, не применяемых установщиком** JSON с входным и выходным REALITY inbound, отдельным outbound на peer и отсутствием DIRECT fallback на входе. Полная информация о недостающих шагах в `docs/CASCADE_REFERENCE_2.5.10.md`. Эти профили НЕ являются готовой установкой каскада.
+- Проверка релизного ZIP также отвергает README с **чужим build ID / неверным именем архива**, даже при пересчитанном файловом манифесте.
+- Актуализированы версия скрипта и finalizer, соответствующие compatibility-gates, release verifier, упаковщик, README-контракты, `docs/RELEASE_VALIDATION.json` и новые тесты. Исторические документы и содержимое старых релизов сохранены.
+- **Нет production-приёмки:** реальный server/install, two-VPS, Remnawave Panel, клиентский Xray, UFW/Docker, reboot и 24h soak не выполнены. GitHub не изменялся этим выпуском.
+
 ## 2.5.9 — 2026-10-15 · STAGING ONLY · исправления QA-DEEP-1
 
 - `RKN apply_ufw()` и boot-degraded: после `os.replace()` ошибки `fsync`/файловых операций больше не пропускают попытку подтверждённого отката `before.rules`; при невозможности отката возвращается `*_ROLLBACK_UNCONFIRMED`.

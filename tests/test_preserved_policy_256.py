@@ -1,5 +1,8 @@
-"""Protect unaffected reviewed contracts and pin the corrected 2.5.9 RKN bytes. Intentionally modified RKN/Xray/Selfsteal helper
-have a pinned checksum for this exact candidate; all unrelated checks remain active.
+"""Protect historical 2.5.6/2.5.9 contract bytes and review r4 exceptions.
+
+Original hashes stay recorded below, not silently discarded. R4 explicitly changed
+only RKN checkpoint reporting and GitHub's test-matrix YAML, with semantic tests
+in test_2510_r4_preparation.py; every unaffected SHA256 guard is still in force.
 """
 import hashlib
 import unittest
@@ -29,16 +32,57 @@ FILES = {
     '.github/workflows/check.yml': 'b438d42132f00e315d426f6a4009559b16012c23397c2c2456d46d7b6454c2f0',
 }
 
+
+# Reviewed r4 changes ONLY; previous expected hashes remain intact in the
+# baseline dictionaries above. Intentional changes: distinguish RKN list
+# checks from content changes, and include Debian CI jobs. No other overrides.
+R4_APPROVED_PAYLOAD_SHA256 = {
+    'VK_RKN_GUARD_PY': 'd9239fb216bf8de3d89c2945cc100a3099516e588ba490b8caa497a004161664',
+}
+R4_APPROVED_FILE_SHA256 = {
+    'integrations/rkn_guard.py': 'd9239fb216bf8de3d89c2945cc100a3099516e588ba490b8caa497a004161664',
+    '.github/workflows/check.yml': 'd7913822fcf750e8d95e452ff90113a8ebef3ddd6add44b839c85ca5a4f90aea',
+}
+
+# Reviewed r6 change: on cascade Exit, the immutable Entry peer IPv4 joins
+# the RKN trusted ipset for public 80/443. Ordinary and Entry remain unchanged;
+# Node API management ACL still uses ONLY panel_ipv4. Historical hashes kept.
+R6_APPROVED_PAYLOAD_SHA256 = {
+    'VK_RKN_GUARD_PY': '57a4e9a2840ee6b1c17ebed1192cc48154a21def201087974cb3dce7a473147d',
+}
+R6_APPROVED_FILE_SHA256 = {
+    'integrations/rkn_guard.py': '57a4e9a2840ee6b1c17ebed1192cc48154a21def201087974cb3dce7a473147d',
+}
+
 class PreservedPolicy256(unittest.TestCase):
     def test_reviewed_network_and_cover_payloads_unchanged(self):
         for tag, expected in PAYLOADS.items():
             with self.subTest(tag=tag):
-                self.assertEqual(hashlib.sha256(payload(tag).encode()).hexdigest(), expected)
+                expected_for_this_candidate = R6_APPROVED_PAYLOAD_SHA256.get(tag, R4_APPROVED_PAYLOAD_SHA256.get(tag, expected))
+                self.assertEqual(hashlib.sha256(payload(tag).encode()).hexdigest(), expected_for_this_candidate)
 
     def test_existing_integrations_and_full_profile_examples_unchanged(self):
         for name, expected in FILES.items():
             with self.subTest(name=name):
-                self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(), expected)
+                expected_for_this_candidate = R6_APPROVED_FILE_SHA256.get(name, R4_APPROVED_FILE_SHA256.get(name, expected))
+                self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(), expected_for_this_candidate)
+
+    def test_reviewed_r4_hash_overrides_are_explicit_and_keep_prior_baselines(self):
+        self.assertEqual(set(R4_APPROVED_PAYLOAD_SHA256), {'VK_RKN_GUARD_PY'})
+        self.assertEqual(set(R4_APPROVED_FILE_SHA256),
+                         {'integrations/rkn_guard.py', '.github/workflows/check.yml'})
+        self.assertEqual(R4_APPROVED_PAYLOAD_SHA256['VK_RKN_GUARD_PY'],
+                         R4_APPROVED_FILE_SHA256['integrations/rkn_guard.py'])
+        for name, new in R4_APPROVED_PAYLOAD_SHA256.items():
+            self.assertNotEqual(new, PAYLOADS[name])
+        for name, new in R4_APPROVED_FILE_SHA256.items():
+            self.assertNotEqual(new, FILES[name])
+
+    def test_reviewed_r6_has_explicit_new_hash_and_preserves_r4_record(self):
+        self.assertEqual(R6_APPROVED_FILE_SHA256['integrations/rkn_guard.py'],
+                         R6_APPROVED_PAYLOAD_SHA256['VK_RKN_GUARD_PY'])
+        self.assertNotEqual(R6_APPROVED_PAYLOAD_SHA256['VK_RKN_GUARD_PY'],
+                            R4_APPROVED_PAYLOAD_SHA256['VK_RKN_GUARD_PY'])
 
     def test_finish_rkn_cannot_install_packages(self):
         self.assertIn('VK_RKN_NO_PACKAGE_INSTALL=1; source "$1";', payload('VK_FINALIZER_PY'))

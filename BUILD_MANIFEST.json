@@ -1,5 +1,5 @@
 {
-  "build_id": "qa-20261014T212340Z",
+  "build_id": "20261015-r7d-readme",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
     "SHA256SUMS"
@@ -14,8 +14,8 @@
     {
       "mode": "0644",
       "path": ".github/workflows/check.yml",
-      "sha256": "b438d42132f00e315d426f6a4009559b16012c23397c2c2456d46d7b6454c2f0",
-      "size": 3625
+      "sha256": "d7913822fcf750e8d95e452ff90113a8ebef3ddd6add44b839c85ca5a4f90aea",
+      "size": 5037
     },
     {
       "mode": "0644",
@@ -26,20 +26,92 @@
     {
       "mode": "0644",
       "path": "CHANGELOG.md",
-      "sha256": "ed63e7d3bd8cbda497f77d72f396700b51d92750fd15caec40bead4a1b08cc19",
-      "size": 64296
+      "sha256": "8cc6290dbaa7fc313ac70ee1905776eef5a88003ac06e8e0fc081265f86c796d",
+      "size": 76345
     },
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "4101a586c255686bcd81345d76d5485627b89eb3008f37b007bd3c14ef523379",
-      "size": 58398
+      "sha256": "fe41b9681237c4a5c5ddb14e4b52ef44e65c8c1668a47e84c54c2479c437c3b4",
+      "size": 44826
     },
     {
       "mode": "0644",
       "path": "SECURITY.md",
-      "sha256": "3781c4cef6c34950d815eddfbcdb59e9159d3db79cae6cf855e47b6079075c3b",
-      "size": 76550
+      "sha256": "f0352b6850a3c280d7878dbc207ed6c7b9505c452429418ee1d808a41c7f1726",
+      "size": 81198
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/01-atelier/index.html",
+      "sha256": "22635e3f3cf4195083686e9f69405e09e748143f0d94ed7b376ca9c6c934adca",
+      "size": 2126
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/01-atelier/style.css",
+      "sha256": "a9170ac142662689d1145ad9e6fa19c863b489245e5aabf91fa33a11cb672388",
+      "size": 1990
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/02-archive/index.html",
+      "sha256": "85f9dc5d2f8153deef1cc960dc41633516e526eb154d6e80b880453fc7a3165a",
+      "size": 2050
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/02-archive/style.css",
+      "sha256": "f28640bb1ccb6fc95b47e02cae5c3368d697edd7b1c87f7f30fc555dabd1a290",
+      "size": 2102
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/03-observatory/index.html",
+      "sha256": "188ebe9dbf8b300c6de02f5e754cab3197cc3754727412072c25e9f3824ead95",
+      "size": 1957
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/03-observatory/style.css",
+      "sha256": "697ab11e3e3a3a3b4d07aff2698f405ab747927a2056c0fb60338f09f20b54d6",
+      "size": 2138
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/04-fieldnotes/index.html",
+      "sha256": "4f199da87386257ccef8f5dd7ba7495e55318c1b79c406f0d3872e4c0f11f3e3",
+      "size": 2056
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/04-fieldnotes/style.css",
+      "sha256": "096423b7c5f67c4d43a72379cbeac4b1e83ac11ebe2eea55b9222aeaa9c6c06e",
+      "size": 2088
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/05-readingroom/index.html",
+      "sha256": "73a17aa4f15d22b2c2328a509478c7d2d26b4bbf65f07f9185b84a1fe072ff12",
+      "size": 2007
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/05-readingroom/style.css",
+      "sha256": "959350e2890bf1857f994f03d74060b05719f3933e2305b447dc8e00d5b527ff",
+      "size": 2193
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/06-foundry/index.html",
+      "sha256": "d7c43a7aa9a7a353fc0dc8cb076b0a642ef9e760c266717ced2655040b3a83af",
+      "size": 2022
+    },
+    {
+      "mode": "0644",
+      "path": "cover-variants/06-foundry/style.css",
+      "sha256": "7b68394f3acf3733ff9b8c17214f13c7217b2d96a91228f3a9128d91ab2b3f9a",
+      "size": 2237
     },
     {
       "mode": "0644",
@@ -52,6 +124,18 @@
       "path": "docs/AUDIT.md",
       "sha256": "05dcf91519c53c15bc36c6c75420eb6e0a18a8a76a005958a5b331d5d4120d49",
       "size": 21999
+    },
+    {
+      "mode": "0644",
+      "path": "docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md",
+      "sha256": "8b2a35c8a99a9ca2c75fadd07da4e64cb7fc2c7e321e6a80f0a92677ea7d5837",
+      "size": 18617
+    },
+    {
+      "mode": "0644",
+      "path": "docs/CASCADE_REFERENCE_2.5.10.md",
+      "sha256": "f5a4442a57c72b54b30f7f4ed7abb22ab2490c78440b9bde4a0387b2baaa697a",
+      "size": 7674
     },
     {
       "mode": "0644",
@@ -82,6 +166,12 @@
       "path": "docs/COVER_SITE.md",
       "sha256": "d70149b0d6ea3da18a816f62a7b8bdd61cc1cc8a6f33d32626a2e1d3b75d3024",
       "size": 6527
+    },
+    {
+      "mode": "0644",
+      "path": "docs/COVER_VARIANTS_AND_PROXY_R4.md",
+      "sha256": "7748d917e4d98c8dc86674650f892123fc48c683fd6648be80408a5904b83ba1",
+      "size": 2279
     },
     {
       "mode": "0644",
@@ -169,6 +259,30 @@
     },
     {
       "mode": "0644",
+      "path": "docs/R4_8_POINT_ENGINEERING_20261015.md",
+      "sha256": "d3435640a0e1a219bae41bcfed60a63d3f940f1ad3118e10053623f8b35e5578",
+      "size": 23465
+    },
+    {
+      "mode": "0644",
+      "path": "docs/R5_CASCADE_QA.md",
+      "sha256": "cfdafdf25cc17c4073164fc70aef31724990b3bd6f17c2962f15050bebe85b6d",
+      "size": 5547
+    },
+    {
+      "mode": "0644",
+      "path": "docs/R6_CASCADE_OPERATIONS_AND_GATES.md",
+      "sha256": "f688fdf5715d6c5502ba1207251013cf172aa92d7034d6cb97b3abbd99dbfb97",
+      "size": 11659
+    },
+    {
+      "mode": "0644",
+      "path": "docs/R7_SITES_TCP_AND_LIVE_PROBES.md",
+      "sha256": "e58065deffc2a7aa317123915e83f3d406fed0c9f5e4cf99052a6b6d077ca25e",
+      "size": 19677
+    },
+    {
+      "mode": "0644",
       "path": "docs/REALITY_KEYS_AUTOREBOOT_2.1.2.md",
       "sha256": "3b0bc68b601e28773b914a80aa41b635b8b7fcb5ac7e8fdd402fcb8c0ea12e7b",
       "size": 3465
@@ -176,8 +290,8 @@
     {
       "mode": "0644",
       "path": "docs/RELEASE_VALIDATION.json",
-      "sha256": "685ae9527fe6eb7aadab127dae05a2ad92040d65aeec3fc8468a29678cb514dc",
-      "size": 3347
+      "sha256": "a997181c5df76584ad37d3b25fab603b63a4c450d67c3ebd30e56a3b8015edb3",
+      "size": 7461
     },
     {
       "mode": "0644",
@@ -230,8 +344,8 @@
     {
       "mode": "0644",
       "path": "docs/TEST_REPORT.md",
-      "sha256": "abbf3af9638bdd0b1360ad80d292ab5df94e8b32603abc66640883185db413a8",
-      "size": 6202
+      "sha256": "f855f4f64c22d9c317d79e4c6f6c49de5ae2b44319852542d6cd43a1965f745a",
+      "size": 8945
     },
     {
       "mode": "0644",
@@ -248,8 +362,8 @@
     {
       "mode": "0644",
       "path": "docs/TZ_R2_IMPLEMENTATION_MATRIX.md",
-      "sha256": "294b18db8abeb8070eb23dd5595f7a062cacf57486034a25bec5636509bef553",
-      "size": 11673
+      "sha256": "5626092882f280a177a8f777f66ad57042da2d9b2c808ff8a701ba2e124c8da0",
+      "size": 12970
     },
     {
       "mode": "0644",
@@ -1117,6 +1231,18 @@
     },
     {
       "mode": "0644",
+      "path": "examples/cascade-entry-profile.reference.json",
+      "sha256": "f9c21ca8832b04b618245dda6f5f3d20a94b7277fecf1b403bba76792811c57a",
+      "size": 2508
+    },
+    {
+      "mode": "0644",
+      "path": "examples/cascade-exit-profile.reference.json",
+      "sha256": "5745ebb94e1ddd1071a02b21c0590bd337baf94ac74fc44b216e13bf6d754f61",
+      "size": 2332
+    },
+    {
+      "mode": "0644",
       "path": "examples/inbound-raw-full.example.json",
       "sha256": "e967d9d8eafcb7738c52882eb6c05d9b281242a671b36e759d5d9f709e6cd10e",
       "size": 2382
@@ -1130,8 +1256,44 @@
     {
       "mode": "0644",
       "path": "install.sh",
-      "sha256": "f61e219fc58035a29ad8be99713378fb464fe7e36d1cd7bee8d3e74a9ae701f0",
-      "size": 449643
+      "sha256": "f00c1433b83421de3d21b61d3e85e99e96b537c6ed16c0fed7a77b588d846378",
+      "size": 466073
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/cascade_deployment.py",
+      "sha256": "6d2ea67dde9d6e6a17e29f9ef43a5b83d555339bb2e306bb3351cd4f347b0256",
+      "size": 21388
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/cascade_live_gate.py",
+      "sha256": "d40c9d49af29f7c5a8cdcf28ec2cefd1d759bb5a35f0488226723b341cee1ffc",
+      "size": 2688
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/cascade_panel_audit.py",
+      "sha256": "cd21bbafe48d1a37ae9bfbfe3e31f98771b66e8045b8f50370530363a68bbcda",
+      "size": 5839
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/cascade_panel_inventory.py",
+      "sha256": "d9144ccab0b9bb682d86caf712835afc2e4aedd811106937a6e2bde981ef2036",
+      "size": 7200
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/cascade_profiles.py",
+      "sha256": "cb40b0bfe2d3bd6c66746577c2e6e14331b81a78222683dae376a67ee2d3d9b9",
+      "size": 16660
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/cascade_recovery.py",
+      "sha256": "649a9d10d88159af2cbcc1cbec3d63fa86e53058b0983515465b0fed935a2f12",
+      "size": 6726
     },
     {
       "mode": "0644",
@@ -1142,20 +1304,26 @@
     {
       "mode": "0644",
       "path": "integrations/finalize_install.py",
-      "sha256": "74a73deb874f5aafdd8f74680fd8e0f3c90e3cdb8f1b53c35c35f98cf8897d56",
-      "size": 18956
+      "sha256": "787e9f5960725e9f27f834994792c5594177fd58859dd328ae3b96a6c29d4c13",
+      "size": 19182
     },
     {
       "mode": "0644",
       "path": "integrations/nightly_maintenance.py",
-      "sha256": "8d54136b702e36dc79a354455147dfea7fbac40d176638a335b68cb850fd0953",
-      "size": 8024
+      "sha256": "baa9a2b02886860c7218fdd6ecd8331a5f9e106e5e1fa9f51645edc1b4d6db1e",
+      "size": 8231
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/panel_acl_audit.py",
+      "sha256": "d4411b1996b20e820289f080bdb0b9e29a7aea99edab8fd01599795dc41b2351",
+      "size": 4673
     },
     {
       "mode": "0644",
       "path": "integrations/rkn_guard.py",
-      "sha256": "6ee94729acb61e54c831b6f5539d75b8a3029411b9dfefb6d432f01bfdff425d",
-      "size": 26999
+      "sha256": "57a4e9a2840ee6b1c17ebed1192cc48154a21def201087974cb3dce7a473147d",
+      "size": 31074
     },
     {
       "mode": "0644",
@@ -1362,16 +1530,46 @@
       "size": 2063
     },
     {
-      "mode": "0755",
+      "mode": "0644",
       "path": "scripts/build_staging_archive.py",
-      "sha256": "eab196834a7633ca4a31ef51a5016a66e3203cd551380913dd0336db78b314b1",
-      "size": 6871
+      "sha256": "16e9be75df8f47c598336392defe3cf6a673947d438b774bc1253dbc2c6bc2d1",
+      "size": 8618
     },
     {
       "mode": "0755",
+      "path": "scripts/cascade_live_probe.py",
+      "sha256": "8f6736eb4e4508f49f2924773962d1cabce423469bf010fdc04254a48bce42bc",
+      "size": 16115
+    },
+    {
+      "mode": "0644",
+      "path": "scripts/cover_variants.py",
+      "sha256": "8cc7b1e6ef3b32c32bb5d8b6d6a3e6f587fbd81e5d28e77e39d7b39808ef031f",
+      "size": 1923
+    },
+    {
+      "mode": "0644",
+      "path": "scripts/nginx_proxy_plan.py",
+      "sha256": "49731e4f5550f9ce4629d37158d2964a22c9e7d38fd1852839f855ce8f81df17",
+      "size": 2767
+    },
+    {
+      "mode": "0644",
+      "path": "scripts/staging_acceptance.py",
+      "sha256": "2a76f0e2abb272805fe254bda70248a2117a60d730e24106843877ef0bdfdaa7",
+      "size": 5518
+    },
+    {
+      "mode": "0755",
+      "path": "scripts/staging_web_deploy.py",
+      "sha256": "242fa73796451fe4e1520669b871e32ee39a404797d91677dbf6e755de9fb34d",
+      "size": 20780
+    },
+    {
+      "mode": "0644",
       "path": "scripts/verify_release.py",
-      "sha256": "9059aee6ac733a4ace0ba328183fafd5ede7387c03dfec42def887cfa901facf",
-      "size": 7965
+      "sha256": "ce66dc1dcff2a70e7132e115106d5f9b5686817abe0e78391961118fb08a433b",
+      "size": 10186
     },
     {
       "mode": "0644",
@@ -1466,8 +1664,8 @@
     {
       "mode": "0644",
       "path": "tests/test_213_profile_contract.py",
-      "sha256": "d2ab67513fa1896a09ad9fd6eedbdc578d09bc8ecc32134a62e41b7da0db1317",
-      "size": 19850
+      "sha256": "04dabea116f7e28fb31b777af3078372c926688c556e53351ec7457838016337",
+      "size": 19861
     },
     {
       "mode": "0644",
@@ -1519,6 +1717,48 @@
     },
     {
       "mode": "0644",
+      "path": "tests/test_2510_menu_cascade_docs.py",
+      "sha256": "4667ef6a44c2b2eb42137acef0583478c7ea07eff46a251e1e34a973d644b44f",
+      "size": 7928
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_2510_r4_preparation.py",
+      "sha256": "b3e08915065c7f6aa4affcadb502143237402cf157729ec8d99763f56c8338be",
+      "size": 12947
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_2510_r5_cascade_panel.py",
+      "sha256": "6c8f215d7d05a5f390f9406b848a7df9de530867aa22fff99e9e6ffea90537ff",
+      "size": 5467
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_2510_r5_cascade_roles.py",
+      "sha256": "aa0bed24dd50b46d66ca71973e3f1bc554380d48be9269a856ba45ae911ca5aa",
+      "size": 13435
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_2510_r6_remaining_gates.py",
+      "sha256": "de3018dd3649514a345e98e79dfa6af00719be329d707bce0d98ce91a3a43dbe",
+      "size": 10645
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_2510_r7_live_probe.py",
+      "sha256": "932471adb75ac357083659b46ad07d957364f6ba8611ec80be69c8f7c91df41b",
+      "size": 8609
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_2510_r7_web_deploy.py",
+      "sha256": "6b93b2579f68c3086686414f0ad58cdce7296521efcd1571a2bd4f2a8b599948",
+      "size": 8841
+    },
+    {
+      "mode": "0644",
       "path": "tests/test_259_fault_regressions.py",
       "sha256": "b49f67793841da08255f77ae792a22e528f6a0a909adc7359f7c50c670e41ee6",
       "size": 19427
@@ -1532,8 +1772,8 @@
     {
       "mode": "0644",
       "path": "tests/test_acceptance_version_contract.py",
-      "sha256": "848e062d08de842484cfd60f08147ed28ea4c46be9a40baa876cf15470bcad21",
-      "size": 3469
+      "sha256": "09da0c4b7311b439e67db4c0c3882ddbec9fff91527349c3201c8b294846beab",
+      "size": 3479
     },
     {
       "mode": "0644",
@@ -1550,8 +1790,8 @@
     {
       "mode": "0644",
       "path": "tests/test_docs_ui_255.py",
-      "sha256": "25551819b7fd0b290dc986bc54de2cefb4199c067446a625870b6cfff56f8984",
-      "size": 7942
+      "sha256": "a95fd320f5e8a884d824072b72e1cfebaf9270115ba1a04b686f9e44f5f4c1c9",
+      "size": 7910
     },
     {
       "mode": "0644",
@@ -1574,8 +1814,8 @@
     {
       "mode": "0644",
       "path": "tests/test_finalization_256.py",
-      "sha256": "c452cf8657678196bf956d2d48056ffe8a36f654a4578c33f8506de58cc66d8e",
-      "size": 14918
+      "sha256": "4ed3da57fcb3b449a26f32bfb5a253a69452bb211482db26de5505a229b26994",
+      "size": 14920
     },
     {
       "mode": "0644",
@@ -1646,8 +1886,8 @@
     {
       "mode": "0644",
       "path": "tests/test_preserved_policy_256.py",
-      "sha256": "8353136c5d21ac2033996918fb7124e937d19b5d2bd389d41f77cfaaa8a615eb",
-      "size": 3435
+      "sha256": "30fafa522fa9bf0049197fe864c28e4880c8089bf72e660cc88a38cd91e9f6c8",
+      "size": 5969
     },
     {
       "mode": "0644",
@@ -1676,14 +1916,14 @@
     {
       "mode": "0644",
       "path": "tests/test_release_contract_255.py",
-      "sha256": "0522c2aa169f844e1d8aa795380b0fa895771b256feeac1fd0f80df164378b42",
-      "size": 1938
+      "sha256": "d83f520a1b727c2ef5ca99853770408bb75f0c659fefa0cf332dfb5086b063d8",
+      "size": 1940
     },
     {
       "mode": "0644",
       "path": "tests/test_release_packaging_r2.py",
-      "sha256": "047317480c1396b1147cd6da3d6cd9a55c78a1ee13f7c8e38041a1675f3d84ab",
-      "size": 3644
+      "sha256": "64ac0ecd38292f6e75ec2da10d257d871d68927505d5126126ac03e716c1387d",
+      "size": 4495
     },
     {
       "mode": "0644",
@@ -1724,8 +1964,8 @@
     {
       "mode": "0644",
       "path": "tests/test_static.py",
-      "sha256": "d40396abdba7e37e535a1dcf538141932174a68f0880773ba890ee02f107f6f3",
-      "size": 6226
+      "sha256": "6c9fd54143fce416a6fb69c43001c2d3f72365214209bcee7b067ff06724c579",
+      "size": 6227
     },
     {
       "mode": "0644",
@@ -1777,7 +2017,7 @@
     }
   ],
   "release_status": "INCOMPLETE_STAGING_ONLY",
-  "source_commit": "e0e076678d92daa074daa8289db2df3a3a395a42",
+  "source_commit": "3a4d277e2d9d0f80671656a917409efeade781f6",
   "source_tree_has_local_changes": true,
-  "version": "2.5.9"
+  "version": "2.5.10"
 }

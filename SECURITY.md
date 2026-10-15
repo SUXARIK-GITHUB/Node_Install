@@ -1,3 +1,10 @@
+> **r6 staging:** Реализация доверенного RKN peer IPv4 для cascade-exit действует только при строгом role marker/pair ID. Node API UFW ACL не расширяется. Локальный `cascade_recovery.py` ZIP содержит SECRET_KEY и REALITY private key: хранить только в шифрованном внепроектном backup-хранилище. Это не полная резервная копия VPS/Panel. См. [операционный документ r6](docs/R6_CASCADE_OPERATIONS_AND_GATES.md).
+
+> **Текущая локальная версия: 2.5.10 / r4, 15.10.2026; только STAGING.**
+> Ветка `main` на момент сборки остаётся на 2.5.9. Шесть статических cover-вариантов, offline каскадный генератор и Nginx loopback-прокси не активируют новые открытые порты, не создают права Panel/Node и не меняют сервер.
+> При реализации кастомного каскада `entry` не должен иметь DIRECT/локального DNS-выхода по пользовательскому трафику; выходной `finalRules` должен блокировать приватные адреса. Это подтверждено только структурными тестами, **не** анализом пакетов и не E2E-клиентом.
+> [R4 полный план и блокеры](docs/R4_8_POINT_ENGINEERING_20261015.md).
+
 > **2.5.9 (локальный непубликованный staging):** сохранены HSTS/TLS 1.2/1.3/HTTP 301 версии 2.5.8; устранены дефекты отката UFW, проверки kernel scanner/panel-ipset и повреждённого состояния ночного таймера. NODE_PORT остаётся закрытым UFW для всех, кроме IPv4 панели; это должно быть дополнительно подтверждено с внешних IP. См. [RKN_FAILSAFE_2.5.9](docs/RKN_FAILSAFE_2.5.9.md) и [EDGE_HARDENING_2.5.8](docs/EDGE_HARDENING_2.5.8.md). Ранее установленные VPS автоматически не мигрируются.
 
 <div align="center">
@@ -6,7 +13,7 @@
 
 **Безопасность выделенной Remnawave-ноды: модель угроз, привилегии, секреты, защита сети и восстановление**
 
-🛡️ **Проект:** Node_Install `2.5.6` · 📅 **Актуализировано:** 09.10.2026 · 🚨 **Vulnerability reporting:** [Security](https://github.com/SUXARIK-GITHUB/Node_Install/security)
+🛡️ **Проект:** Node_Install `2.5.10 / r4 (staging)` · 📅 **Актуализировано:** 15.10.2026 · 🚨 **Vulnerability reporting:** [Security](https://github.com/SUXARIK-GITHUB/Node_Install/security)
 
 [🚨 Сообщить об уязвимости](#report) · [🧭 Карта рисков](#threat) · [🔒 Секреты](#secrets) · [🌐 UFW](#firewall) · [📦 Docker](#container) · [🌍 REALITY](#selfsteal) · [🔄 Supply chain](#supply) · [🧯 Инциденты](#incident)
 
@@ -43,6 +50,9 @@
 
 | Выпуск | Статус | Рекомендация |
 |:--|:--|:--|
+| `2.5.10 / r5` | Ролевой установщик Entry/Exit и криптографически проверенные bundle + offline Panel-audit; настоящий двухсерверный каскад **не подтверждён**, не опубликован | Только две новые staging VPS; соблюдать [ролевую инструкцию](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md) |
+| `2.5.10 / r4` | Предыдущее поколение: справочные/offline профили, нет установочного пути каскада | Историческая, не переносить поверх рабочих VPS |
+| `2.5.9` | Опубликованная ветка main, успешный GitHub Actions на commit 3a4d277; не равна локальной r4 | Без автоматического обновления production |
 | `2.5.6` | Исправление NTP race, защищённая финальная фаза и честная диагностика; новая VPS ещё отдельно проверяется | Canary на отдельной VPS; реальные клиент/панель и reboot |
 | `2.5.5` | Исходная race финальной NTP-проверки воспроизведена; рабочая нода может быть исправна после завершения recovery | Не переустанавливать работающую ноду ради версии |
 | `2.5.2–2.5.4` | Исторические совместимые поколения; исправления могут быть не перенесены на сервер | Плановая контролируемая миграция, не `install.sh` поверх живого узла |
@@ -795,3 +805,11 @@ XHTTP is an optional **alternative** VLESS transport to RAW+Vision for a single 
 [⬆️ К навигации](#report) · [🚀 README](README.md) · [🧰 Operations](docs/OPERATIONS.md) · [📩 Security tab](https://github.com/SUXARIK-GITHUB/Node_Install/security)
 
 </div>
+
+### ⛓️ Ролевые секреты и egress (2.5.10 / r5)
+
+Генератор master-pair держать **только на доверенной операторской машине**: в нём ОБА Reality private key и service-user UUID. На каждую новую VPS переносить по закрытому каналу только свой `role-bundle.json`, root:0600, с 0700 родительским каталогом. Установка отказывается менять роль/перегенерировать Reality keys/применять чужие параметры; серверный профиль защищён от локального дрейфа.
+
+Наличие `BLOCK` первым outbound и `TO_EXIT_VLESS` вместо DIRECT на Entry гарантирует только **структуру шаблона**. Panel может добавить inbounds, outbounds и dynamic clients: нужен независимый review её рассчитанной конфигурации (`cascade_panel_audit.py`), подтверждённый Xray `run -test`, реальный клиент и egress-pcap со staging VPS. Системный DNS/APT/NTP/ACME/RKN трафик самой входной VPS от этого не блокируется.
+
+На Exit только отдельный bridge service-user в Internal Squad. Автоматического его создания, удаления, ротации или назначения в тестовой Panel нет. Нельзя использовать JWT/admin token панели вместо Node SECRET_KEY, логировать UUID или открывать Node API в интернет. RKN-список может блокировать source-IP Entry на Exit; **автоматического исключения peer IP нет**. При такой несовместимости запрещён выпуск до ручного расследования и проверяемого решения. Двухузловый backup, rollback, maintenance и сетевой failover не испытаны.

@@ -20,30 +20,25 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         cls.security = (ROOT / 'SECURITY.md').read_text(encoding='utf-8')
 
     def test_main_install_command_at_top_is_pinned_verified_and_syntax_valid(self):
-        self.assertIn('## ⚡ ГЛАВНАЯ КОМАНДА УСТАНОВКИ (публичная 2.5.6)', self.readme)
-        self.assertIn('Сборка 2.5.9 из этого архива не опубликована в GitHub', self.readme)
-        block = self.readme.split("sudo bash <<'VKARMANI_NODE_INSTALL_256'", 1)[1].split('\n```', 1)[0]
-        block = "sudo bash <<'VKARMANI_NODE_INSTALL_256'" + block
-        self.assertTrue(block.startswith("sudo bash <<'VKARMANI_NODE_INSTALL_256'"))
-        result = subprocess.run(['bash', '-n'], input=block, text=True,
-                                capture_output=True, timeout=10)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('raw.githubusercontent.com/SUXARIK-GITHUB/Node_Install/', block)
-        self.assertRegex(block, r'RELEASE_COMMIT="[0-9a-f]{40}"')
-        self.assertNotIn('RELEASE_COMMIT="' + '0'*40 + '"', block)
-        self.assertNotIn('/main/install.sh', block)
-        self.assertIn('--proto \'=https\'', block)
-        self.assertIn('--proto-redir \'=https\'', block)
-        self.assertIn('sha256sum --check --status', block)
-        self.assertIn('bash -n "$WORK_DIR/install.sh"', block)
-        self.assertIn('"2.5.6"', block)
-        self.assertIn('--no-reboot', block)
-        self.assertNotIn('curl | bash', block)
-        sha = re.search(r'EXPECTED_SHA256="([0-9a-f]{64})"', block)
-        self.assertIsNotNone(sha)
-        # Deliberate: this command installs the PUBLISHED 2.5.6, never unshipped 2.5.7.
-        self.assertEqual(sha.group(1), 'da745235274cee2ea89d5986e7107b5848d0ef2a8fa2767d3fba2a253b40041b')
-        self.assertNotEqual(sha.group(1), hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest())
+        # This ZIP is NOT on GitHub. The first command must install these local bytes.
+        self.assertTrue(self.readme.startswith('<a id="install"></a>\n## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10'))
+        command = self.readme.split('```bash\n', 1)[1].split('\n```', 1)[0]
+        build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
+        self.assertIn('Node_Install_2.5.10-docs-menu_' + build_id + '.zip', command)
+        self.assertIn('python3 scripts/verify_release.py --root .', command)
+        self.assertIn('sha256sum --check SHA256SUMS', command)
+        self.assertIn('sudo bash ./install.sh --no-reboot', command)
+        self.assertEqual(subprocess.run(['bash', '-n'],input=command,text=True,capture_output=True).returncode, 0)
+        self.assertIn('публичном `main` сейчас опубликована **2.5.9**', self.readme)
+        self.assertIn('отдельную чистую staging VPS', self.readme)
+        self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
+        self.assertIn('**не** подтверждение live-каскада', self.readme)
+        published = self.readme.split('## 📦 Уже опубликованная версия GitHub 2.5.9',1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        self.assertIn('3a4d277e2d9d0f80671656a917409efeade781f6',published)
+        self.assertIn('f61e219fc58035a29ad8be99713378fb464fe7e36d1cd7bee8d3e74a9ae701f0', published)
+        self.assertEqual(subprocess.run(['bash','-n'],input=published,text=True,capture_output=True).returncode,0)
+        self.assertNotIn('/main/install.sh', published)
+        self.assertNotIn('curl | bash', published)
 
     def test_full_advanced_profiles_are_single_listener_and_align(self):
         examples = {k: json.loads((ROOT / f'examples/inbound-{k}-full.example.json').read_text())
@@ -102,7 +97,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
                     anchor = link.split('#',1)[1]
                     linked=(ROOT/target).read_text(encoding='utf-8')
                     self.assertIn(f'<a id="{anchor}"></a>', linked, f'{name}: bad link anchor: {link}')
-        self.assertIn('## 🗺️ Карта проекта', self.readme)
+        self.assertIn('## 🗺️ Навигация', self.readme)
         self.assertIn('## 🧭 Быстрые карты безопасности',self.security)
 
     def test_security_report_model_and_preserved_originals(self):
@@ -123,7 +118,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
     def test_previous_documentation_is_preserved_on_hotfix(self):
         for path in ('docs/history/README_2.5.5.md', 'docs/history/SECURITY_2.5.5.md'):
             self.assertTrue((ROOT/path).is_file())
-        self.assertIn('## ⚡ ГЛАВНАЯ КОМАНДА УСТАНОВКИ', self.readme)
+        self.assertIn('## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10', self.readme)
         self.assertIn('2.5.6', self.readme)
 
 

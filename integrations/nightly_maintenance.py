@@ -142,6 +142,10 @@ def do_run(now=None):
             print('MAINTENANCE=SKIPPED ALREADY_ATTEMPTED_TODAY')
             return 0
         r = role()
+        # Two-hop maintenance is never safe without cross-node ordering/canaries.
+        if r != 'ordinary':
+            print('MAINTENANCE=SKIPPED CASCADE_REQUIRES_PEER_COORDINATION')
+            return 0
         # A container stopped by the operator must never be started by timer.
         if not local_node_running():
             print('MAINTENANCE=SKIPPED NODE_NOT_RUNNING')

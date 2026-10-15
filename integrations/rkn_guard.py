@@ -13,6 +13,8 @@ import json
 import os
 from pathlib import Path
 import re
+import hmac
+import stat
 import subprocess
 import sys
 import tempfile
@@ -24,6 +26,8 @@ SOURCE = ('https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/'
 UPSTREAM = 'https://github.com/Flecksis/rkn-guard'
 ROOT = Path('/var/lib/vkarmani-node/rkn')
 CONFIG = Path('/etc/vkarmani-node/config.json')
+CASCADE_ROLE = Path('/etc/vkarmani-node/cascade-role.json')
+CASCADE_MARKER = Path('/var/lib/vkarmani-node/role.json')
 OWNER = Path('/var/lib/vkarmani-node/owned-installation')
 UFW_FILE = Path('/etc/ufw/before.rules')
 LOCK = Path('/run/lock/vkarmani-rkn-guard.lock')
@@ -99,6 +103,58 @@ def panel_ips():
         if not addr.is_global or str(addr) != value:
             raise GuardError('PANEL_IP_MUST_BE_PUBLIC_IPV4')
         ips.add(str(addr))
+    return sorted(ips, key=ipaddress.IPv4Address)
+
+
+
+def trusted_exception_ips():
+    """Panel backends plus verified Entry peer IP on cascade Exit, and nobody else.
+
+    Read-only discovery; called under existing RKN lock. Refuse a torn role
+    enrollment, uncertain schema, symlinks or mutable/foreign-owned secrets.
+    Management port UFW ACL STILL references panel_ipv4 alone, never this union.
+    """
+    ips = set(panel_ips())
+    has_role = CASCADE_ROLE.exists() or CASCADE_ROLE.is_symlink()
+    has_marker = CASCADE_MARKER.exists() or CASCADE_MARKER.is_symlink()
+    if not has_role and not has_marker:
+        return sorted(ips, key=ipaddress.IPv4Address)
+    if not has_role or not has_marker:
+        raise GuardError('CASCADE_ROLE_PARTIAL_NO_RKN_EXCEPTION')
+    for file in (CASCADE_ROLE, CASCADE_MARKER):
+        st = file.lstat()
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_mode & 0o077:
+            raise GuardError('CASCADE_ROLE_FILE_UNSAFE')
+        if os.geteuid() == 0 and st.st_uid != 0:
+            raise GuardError('CASCADE_ROLE_FILE_NOT_ROOT')
+        if st.st_size > 16384:
+            raise GuardError('CASCADE_ROLE_FILE_TOO_LARGE')
+    try:
+        obj = json.loads(owned_file(CASCADE_ROLE))
+        mark = json.loads(owned_file(CASCADE_MARKER))
+        if not isinstance(obj, dict) or not isinstance(mark, dict):
+            raise ValueError()
+        if obj.get('role') != mark.get('role') or obj.get('pair_id') != mark.get('pair_id'):
+            raise ValueError()
+        if obj.get('role') == 'cascade-entry':
+            return sorted(ips, key=ipaddress.IPv4Address)
+        if obj.get('role') != 'cascade-exit' or obj.get('schema') != 2 or mark.get('schema') != 2:
+            raise ValueError()
+        peer = obj['peer']
+        if not isinstance(peer, dict) or set(peer) != {'domain','ipv4','public_key','short_id','inbound_tag'}:
+            raise ValueError()
+        addr = ipaddress.IPv4Address(peer['ipv4'])
+        if not addr.is_global or str(addr) != peer['ipv4'] or addr == ipaddress.IPv4Address(obj['self']['ipv4']):
+            raise ValueError()
+        # Public part of PairID pins this IP and cannot be changed alone.
+        public = {'entry':peer, 'exit':{k:obj['self'][k] for k in peer},
+                  'bridge_uuid':obj['bridge']['service_user_uuid'], 'schema':2}
+        expected = hashlib.sha256(json.dumps(public, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        if not hmac.compare_digest(expected, obj['pair_id']):
+            raise ValueError()
+    except (ValueError, KeyError, TypeError, AttributeError, ipaddress.AddressValueError) as exc:
+        raise GuardError('CASCADE_EXIT_PEER_IDENTITY_INVALID') from exc
+    ips.add(str(addr))
     return sorted(ips, key=ipaddress.IPv4Address)
 
 
@@ -272,7 +328,7 @@ def restore_cached():
 
 
 def panel_refresh():
-    ips = panel_ips()  # Re-read every operation; no baked-in panel IP.
+    ips = trusted_exception_ips()  # Include pinned Entry peer ONLY on Exit.
     ipset_stage(PANEL_STAGE, ips)
     run('ipset', 'swap', PANEL_STAGE, PANEL_SET)
     return ips
@@ -453,7 +509,19 @@ def update():
         swapped = True
         if new != old:
             atomic(CACHE, ''.join(item + '\n' for item in new))
-        stamp = {'checked_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
+        checked_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        # The upstream may not publish updates for months. Last success is not
+        # the same thing as last content change; report both independently.
+        changed_at = checked_at if new != old else None
+        if new == old and previous_checkpoint is not None:
+            try:
+                old_mark = json.loads(previous_checkpoint)
+                prior = old_mark.get('content_changed_at_utc')
+                changed_at = prior if isinstance(prior, str) and prior else None
+            except (ValueError, AttributeError, TypeError):
+                changed_at = None
+        stamp = {'checked_at_utc': checked_at,
+                 'content_changed_at_utc': changed_at,
                  'source': SOURCE, 'count_ipv4': len(new),
                  'sha256': hashlib.sha256((''.join(s + '\n' for s in new)).encode()).hexdigest(),
                  'changed': new != old, 'code_upstream': UPSTREAM,
@@ -513,8 +581,8 @@ def enable():
                     active = live_block_set()
                     if len(active) != len(old) or set(active) != set(old):
                         raise GuardError('RKN_KERNEL_CACHE_RESTORE_MISMATCH')
-                if set(live_panel_set()) != set(panel_ips()):
-                    raise GuardError('RKN_ACTIVE_PANEL_EXCLUSION_MISMATCH')
+                if set(live_panel_set()) != set(trusted_exception_ips()):
+                    raise GuardError('RKN_TRUSTED_SOURCE_EXCLUSION_MISMATCH')
                 fallback_freshness = checked_freshness(meta)
         except (GuardError, OSError, ValueError, TypeError, KeyError):
             verified = False
@@ -532,7 +600,7 @@ def enable():
             raise GuardError('RKN_CACHE_FRESHNESS_' + fallback_freshness) from exc
     # Print success only after a fresh update or independently verified cache.
     check_ufw_jump()
-    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_EXCEPTION=DYNAMIC')
+    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_AND_PINNED_EXIT_PEER_EXCEPTION=DYNAMIC')
 
 
 def live_block_set():
@@ -582,15 +650,23 @@ def status():
     panel_valid = True
     expected_panel = None
     try:
-        expected_panel = panel_ips()
-        print('RKN_PANEL_FROM_CONFIG=' + ','.join(expected_panel))
+        expected_panel = trusted_exception_ips()
+        print('RKN_TRUSTED_EXCEPTIONS_COUNT=' + str(len(expected_panel)))
     except (ValueError, GuardError, OSError):
-        print('RKN_PANEL_FROM_CONFIG=INVALID')
+        print('RKN_TRUSTED_EXCEPTIONS=INVALID')
         panel_valid = False
     if CHECKED.exists():
-        print('RKN_LAST_CHECK=' + owned_file(CHECKED))
+        checkpoint_text = owned_file(CHECKED)
+        print('RKN_LAST_CHECK=' + checkpoint_text)
+        try:
+            checkpoint = json.loads(checkpoint_text)
+            changed = checkpoint.get('content_changed_at_utc', 'UNKNOWN')
+            print('RKN_LAST_CONTENT_CHANGE=' + changed if isinstance(changed, str) else 'RKN_LAST_CONTENT_CHANGE=UNKNOWN')
+        except (ValueError, AttributeError):
+            print('RKN_LAST_CONTENT_CHANGE=INVALID')
     else:
         print('RKN_LAST_CHECK=NEVER')
+        print('RKN_LAST_CONTENT_CHANGE=UNKNOWN')
     if enabled:
         check_ufw_jump()
         print('RKN_FIREWALL_RULES=PASS')

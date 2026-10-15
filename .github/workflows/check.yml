@@ -93,3 +93,37 @@ jobs:
         run: |
           git diff --check
           git diff --exit-code
+
+  debian-userspace:
+    # Debian 12/13 userspace regression only. Docker/systemd/firewall/kernel reboot NOT tested.
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.container }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        container: [debian:12, debian:13]
+    steps:
+      - name: Bootstrap dependencies in disposable container before Git checkout
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get -o APT::Update::Error-Mode=any update
+          apt-get install -y --no-install-recommends ca-certificates git python3 python3-cryptography python3-yaml nginx nodejs openssl procps util-linux findutils nftables
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify Git checkout and local release manifest
+        run: |
+          : "${GITHUB_WORKSPACE:?}"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git rev-parse --is-inside-work-tree
+          sha256sum --check SHA256SUMS
+          python3 scripts/verify_release.py
+      - name: Run offline tests inside disposable Debian container
+        run: |
+          export PYTHONDONTWRITEBYTECODE=1
+          bash tests/run.sh
+      - name: Confirm tests did not mutate versioned files
+        run: |
+          git diff --check
+          git diff --exit-code

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.9 (RKN reliability staged candidate). Read README.md before running as root.
+# VKarmani Node 2.5.10 (README and guarded installation-choice candidate). Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1499,7 +1499,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1539,8 +1539,10 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 ]]; then
-        if [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 ]]; then
+        if [[ -f "$ETC/cascade-role.json" ]]; then
+            warn XHTTP_IMPORT_PROFILE_POLICY 'CASCADE_RAW_ONLY: XHTTP not available for this peer bridge'
+        elif [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
             if helper profile-check "$ETC/profile-xhttp.json"; then
                 pass XHTTP_IMPORT_PROFILE_POLICY
             else
@@ -2551,7 +2553,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3665,7 +3667,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -4640,6 +4642,8 @@ import json
 import os
 from pathlib import Path
 import re
+import hmac
+import stat
 import subprocess
 import sys
 import tempfile
@@ -4651,6 +4655,8 @@ SOURCE = ('https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/'
 UPSTREAM = 'https://github.com/Flecksis/rkn-guard'
 ROOT = Path('/var/lib/vkarmani-node/rkn')
 CONFIG = Path('/etc/vkarmani-node/config.json')
+CASCADE_ROLE = Path('/etc/vkarmani-node/cascade-role.json')
+CASCADE_MARKER = Path('/var/lib/vkarmani-node/role.json')
 OWNER = Path('/var/lib/vkarmani-node/owned-installation')
 UFW_FILE = Path('/etc/ufw/before.rules')
 LOCK = Path('/run/lock/vkarmani-rkn-guard.lock')
@@ -4726,6 +4732,58 @@ def panel_ips():
         if not addr.is_global or str(addr) != value:
             raise GuardError('PANEL_IP_MUST_BE_PUBLIC_IPV4')
         ips.add(str(addr))
+    return sorted(ips, key=ipaddress.IPv4Address)
+
+
+
+def trusted_exception_ips():
+    """Panel backends plus verified Entry peer IP on cascade Exit, and nobody else.
+
+    Read-only discovery; called under existing RKN lock. Refuse a torn role
+    enrollment, uncertain schema, symlinks or mutable/foreign-owned secrets.
+    Management port UFW ACL STILL references panel_ipv4 alone, never this union.
+    """
+    ips = set(panel_ips())
+    has_role = CASCADE_ROLE.exists() or CASCADE_ROLE.is_symlink()
+    has_marker = CASCADE_MARKER.exists() or CASCADE_MARKER.is_symlink()
+    if not has_role and not has_marker:
+        return sorted(ips, key=ipaddress.IPv4Address)
+    if not has_role or not has_marker:
+        raise GuardError('CASCADE_ROLE_PARTIAL_NO_RKN_EXCEPTION')
+    for file in (CASCADE_ROLE, CASCADE_MARKER):
+        st = file.lstat()
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_mode & 0o077:
+            raise GuardError('CASCADE_ROLE_FILE_UNSAFE')
+        if os.geteuid() == 0 and st.st_uid != 0:
+            raise GuardError('CASCADE_ROLE_FILE_NOT_ROOT')
+        if st.st_size > 16384:
+            raise GuardError('CASCADE_ROLE_FILE_TOO_LARGE')
+    try:
+        obj = json.loads(owned_file(CASCADE_ROLE))
+        mark = json.loads(owned_file(CASCADE_MARKER))
+        if not isinstance(obj, dict) or not isinstance(mark, dict):
+            raise ValueError()
+        if obj.get('role') != mark.get('role') or obj.get('pair_id') != mark.get('pair_id'):
+            raise ValueError()
+        if obj.get('role') == 'cascade-entry':
+            return sorted(ips, key=ipaddress.IPv4Address)
+        if obj.get('role') != 'cascade-exit' or obj.get('schema') != 2 or mark.get('schema') != 2:
+            raise ValueError()
+        peer = obj['peer']
+        if not isinstance(peer, dict) or set(peer) != {'domain','ipv4','public_key','short_id','inbound_tag'}:
+            raise ValueError()
+        addr = ipaddress.IPv4Address(peer['ipv4'])
+        if not addr.is_global or str(addr) != peer['ipv4'] or addr == ipaddress.IPv4Address(obj['self']['ipv4']):
+            raise ValueError()
+        # Public part of PairID pins this IP and cannot be changed alone.
+        public = {'entry':peer, 'exit':{k:obj['self'][k] for k in peer},
+                  'bridge_uuid':obj['bridge']['service_user_uuid'], 'schema':2}
+        expected = hashlib.sha256(json.dumps(public, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        if not hmac.compare_digest(expected, obj['pair_id']):
+            raise ValueError()
+    except (ValueError, KeyError, TypeError, AttributeError, ipaddress.AddressValueError) as exc:
+        raise GuardError('CASCADE_EXIT_PEER_IDENTITY_INVALID') from exc
+    ips.add(str(addr))
     return sorted(ips, key=ipaddress.IPv4Address)
 
 
@@ -4899,7 +4957,7 @@ def restore_cached():
 
 
 def panel_refresh():
-    ips = panel_ips()  # Re-read every operation; no baked-in panel IP.
+    ips = trusted_exception_ips()  # Include pinned Entry peer ONLY on Exit.
     ipset_stage(PANEL_STAGE, ips)
     run('ipset', 'swap', PANEL_STAGE, PANEL_SET)
     return ips
@@ -5080,7 +5138,19 @@ def update():
         swapped = True
         if new != old:
             atomic(CACHE, ''.join(item + '\n' for item in new))
-        stamp = {'checked_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
+        checked_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        # The upstream may not publish updates for months. Last success is not
+        # the same thing as last content change; report both independently.
+        changed_at = checked_at if new != old else None
+        if new == old and previous_checkpoint is not None:
+            try:
+                old_mark = json.loads(previous_checkpoint)
+                prior = old_mark.get('content_changed_at_utc')
+                changed_at = prior if isinstance(prior, str) and prior else None
+            except (ValueError, AttributeError, TypeError):
+                changed_at = None
+        stamp = {'checked_at_utc': checked_at,
+                 'content_changed_at_utc': changed_at,
                  'source': SOURCE, 'count_ipv4': len(new),
                  'sha256': hashlib.sha256((''.join(s + '\n' for s in new)).encode()).hexdigest(),
                  'changed': new != old, 'code_upstream': UPSTREAM,
@@ -5140,8 +5210,8 @@ def enable():
                     active = live_block_set()
                     if len(active) != len(old) or set(active) != set(old):
                         raise GuardError('RKN_KERNEL_CACHE_RESTORE_MISMATCH')
-                if set(live_panel_set()) != set(panel_ips()):
-                    raise GuardError('RKN_ACTIVE_PANEL_EXCLUSION_MISMATCH')
+                if set(live_panel_set()) != set(trusted_exception_ips()):
+                    raise GuardError('RKN_TRUSTED_SOURCE_EXCLUSION_MISMATCH')
                 fallback_freshness = checked_freshness(meta)
         except (GuardError, OSError, ValueError, TypeError, KeyError):
             verified = False
@@ -5159,7 +5229,7 @@ def enable():
             raise GuardError('RKN_CACHE_FRESHNESS_' + fallback_freshness) from exc
     # Print success only after a fresh update or independently verified cache.
     check_ufw_jump()
-    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_EXCEPTION=DYNAMIC')
+    print('RKN_FIREWALL=ENABLED TCP_80_443_ONLY PANEL_AND_PINNED_EXIT_PEER_EXCEPTION=DYNAMIC')
 
 
 def live_block_set():
@@ -5209,15 +5279,23 @@ def status():
     panel_valid = True
     expected_panel = None
     try:
-        expected_panel = panel_ips()
-        print('RKN_PANEL_FROM_CONFIG=' + ','.join(expected_panel))
+        expected_panel = trusted_exception_ips()
+        print('RKN_TRUSTED_EXCEPTIONS_COUNT=' + str(len(expected_panel)))
     except (ValueError, GuardError, OSError):
-        print('RKN_PANEL_FROM_CONFIG=INVALID')
+        print('RKN_TRUSTED_EXCEPTIONS=INVALID')
         panel_valid = False
     if CHECKED.exists():
-        print('RKN_LAST_CHECK=' + owned_file(CHECKED))
+        checkpoint_text = owned_file(CHECKED)
+        print('RKN_LAST_CHECK=' + checkpoint_text)
+        try:
+            checkpoint = json.loads(checkpoint_text)
+            changed = checkpoint.get('content_changed_at_utc', 'UNKNOWN')
+            print('RKN_LAST_CONTENT_CHANGE=' + changed if isinstance(changed, str) else 'RKN_LAST_CONTENT_CHANGE=UNKNOWN')
+        except (ValueError, AttributeError):
+            print('RKN_LAST_CONTENT_CHANGE=INVALID')
     else:
         print('RKN_LAST_CHECK=NEVER')
+        print('RKN_LAST_CONTENT_CHANGE=UNKNOWN')
     if enabled:
         check_ufw_jump()
         print('RKN_FIREWALL_RULES=PASS')
@@ -5545,8 +5623,8 @@ vkarmani_rkn_command() {
         [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
-        grep -Eq '^version=2\.5\.[234567]$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2–2.5.9 nodes.' >&2; return 1;
+        grep -Eq '^version=2\.5\.([2-9]|10)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+            echo 'RKN integration supports only completed 2.5.2–2.5.10 nodes.' >&2; return 1;
         }
         vk_rkn_activate
         return
@@ -5845,6 +5923,10 @@ vk_xhttp_prepare_template() {
 }
 
 vkarmani_prepare_xhttp_main() {
+    if [[ -e /etc/vkarmani-node/cascade-role.json ]]; then
+        echo 'STOP: --prepare-xhttp is for ordinary nodes only; cascade bridge requires reviewed RAW.' >&2
+        return 2
+    fi
     set -Eeuo pipefail
     set +x
     umask 077
@@ -5858,7 +5940,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -6054,7 +6136,7 @@ vk_write_finalizer_helper() {
     local destination=$1
     cat > "$destination" <<'VK_FINALIZER_PY'
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.9 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.10 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -6075,7 +6157,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.9'
+VERSION = '2.5.10'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -6098,7 +6180,10 @@ WATCHED = (
     'usr/local/sbin/vkarmani-selfsteal-check',
     'usr/local/sbin/vkarmani-node-tls-check',
 )
-OPTIONAL_WATCHED = ('etc/vkarmani-node/profile-xhttp.json',)
+OPTIONAL_WATCHED = ('etc/vkarmani-node/profile-xhttp.json',
+                    'etc/vkarmani-node/cascade-role.json', STATE + '/role.json',
+                    'usr/local/lib/vkarmani-node/cascade_deployment.py',
+                    'usr/local/lib/vkarmani-node/cascade_profiles.py')
 PENDING = ('network-rollback-armed', 'network-rollback-running', 'image-update-pending', 'RESUME_FAILED')
 IMAGE = re.compile(r'(?:remnawave/node|ghcr\.io/remnawave/node)@sha256:[0-9a-f]{64}')
 ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
@@ -6466,7 +6551,7 @@ vkarmani_finish_install_main() (
     # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
     local state=/var/lib/vkarmani-node work
     [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
-        echo 'STOP: no supported 2.5.9 finalization checkpoint; no installation state changed.' >&2; exit 1;
+        echo 'STOP: no supported 2.5.10 finalization checkpoint; no installation state changed.' >&2; exit 1;
     }
     local lock=/run/lock/vkarmani-node-installer.lock
     if [[ ! -e "$lock" && ! -L "$lock" ]]; then
@@ -6688,6 +6773,10 @@ def do_run(now=None):
             print('MAINTENANCE=SKIPPED ALREADY_ATTEMPTED_TODAY')
             return 0
         r = role()
+        # Two-hop maintenance is never safe without cross-node ordering/canaries.
+        if r != 'ordinary':
+            print('MAINTENANCE=SKIPPED CASCADE_REQUIRES_PEER_COORDINATION')
+            return 0
         # A container stopped by the operator must never be started by timer.
         if not local_node_running():
             print('MAINTENANCE=SKIPPED NODE_NOT_RUNNING')
@@ -6814,8 +6903,8 @@ vkarmani_maintenance_command() {
             [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE && ! -L /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
                 echo 'MAINTENANCE: завершите установку перед включением' >&2; return 1;
             }
-            grep -Eq '^version=2\.5\.(8|9)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8/2.5.9; старые ноды не мигрируются автоматически' >&2; return 1;
+            grep -Eq '^version=2\.5\.(8|9|10)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8/2.5.9/2.5.10; старые ноды не мигрируются автоматически' >&2; return 1;
             }
             [[ -x /usr/local/sbin/vkarmani-docker-local ]] || {
                 echo 'MAINTENANCE: локальный Docker wrapper не установлен' >&2; return 1;
@@ -6832,7 +6921,7 @@ vkarmani_maintenance_command() {
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.9 — 2026-10-15
+# VKarmani Remnawave Node Installer 2.5.10 — 2026-10-15
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -6844,7 +6933,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.9
+INSTALLER_VERSION=2.5.10
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -6857,20 +6946,30 @@ NO_REBOOT=0
 WEEKLY_REBOOT=0
 ALLOW_NET_ADMIN=1
 IMAGE_OVERRIDE=''
+VK_CASCADE_ROLE_ARG=''
+VK_CASCADE_BUNDLE_ARG=''
+VK_CASCADE_ACTIVE=0
+VK_CASCADE_BUNDLE_SHA=''
+VK_CASCADE_HELPER=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.9
+VKarmani Remnawave Node Installer 2.5.10
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
+  sudo bash install.sh --cascade-role entry --cascade-bundle /root/entry/role-bundle.json --no-reboot
+  sudo bash install.sh --cascade-role exit --cascade-bundle /root/exit/role-bundle.json --no-reboot
+      # Только ДВЕ НОВЫЕ выделенные staging VPS; нужные исходники integrations/ из этого ZIP
+      # Сначала: python3 integrations/cascade_deployment.py prepare --pair /root/pair.json --output /root/cascade-pair
+      # Каждая роль устанавливается отдельно, её bundle передают только на её VPS
   sudo bash install.sh --reboot                # совместимо: явно оставить auto-reboot включённым
   sudo bash install.sh --weekly-reboot         # необязательно: понедельник 04:00 МСК
   sudo bash install.sh --allow-net-admin       # совместимость: NET_ADMIN уже включён по умолчанию
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
-  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.9, без переустановки/reboot
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.10, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -6879,7 +6978,7 @@ VKarmani Remnawave Node Installer 2.5.9
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.9 ноде
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.10 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
@@ -6891,7 +6990,10 @@ VKarmani Remnawave Node Installer 2.5.9
   sudo bash install.sh --xray-versions [--offline] # только версии: установленный и upstream, никаких обновлений
   bash install.sh --version
 
-Три обязательных значения: SECRET_KEY → домен ноды → исходящий IPv4 технички.
+Первая установка: 1 — обычная нода; 2 — каскад (выбор entry/exit и отдельного приватного bundle).
+Каскад: host install + offline RAW template; Node/Profile/Host/Squad/bridge user подключаются вручную в TEST Panel.
+Без реальной Panel/E2E и двух-VPS приёмки каскад не является production-ready; live config не модифицируется.
+Три обязательных значения обычной ноды: SECRET_KEY → домен ноды → исходящий IPv4 технички.
 IP самой ноды выбирается по DNS среди публичных IPv4 её интерфейсов.
 Чистая выделенная Ubuntu 22.04/24.04/26.04 или Debian 12/13; amd64/arm64; systemd + GRUB.
 Минимум: 900 MiB RAM (26.04: 1536 MiB), 6 GiB свободно. NAT, LXC/OpenVZ, IPv6 SSH, чужая установка не поддержаны.
@@ -6912,6 +7014,16 @@ while (($#)); do
         --no-reboot) NO_REBOOT=1; shift ;;
         --reboot) NO_REBOOT=0; shift ;;
         --weekly-reboot) WEEKLY_REBOOT=1; shift ;;
+        --cascade-role)
+            [[ $# -ge 2 && ( $2 == entry || $2 == exit ) && -z "$VK_CASCADE_ROLE_ARG" ]] || {
+                echo '--cascade-role must be entry or exit, specified once' >&2; exit 2;
+            }
+            VK_CASCADE_ROLE_ARG=$2; shift 2 ;;
+        --cascade-bundle)
+            [[ $# -ge 2 && "$2" == /* && -z "$VK_CASCADE_BUNDLE_ARG" ]] || {
+                echo '--cascade-bundle must be one absolute root-private file path' >&2; exit 2;
+            }
+            VK_CASCADE_BUNDLE_ARG=$2; shift 2 ;;
         --allow-net-admin) ALLOW_NET_ADMIN=1; shift ;;
         --image)
             [[ $# -ge 2 ]] || { echo '--image requires an official image reference' >&2; exit 2; }
@@ -7030,10 +7142,82 @@ vk_collect_inputs() {
     trap - EXIT INT TERM HUP
     printf '\nВсе три значения приняты. IPv4 ноды будет выбран автоматически; SECRET_KEY не выводится.\n'
 }
+# A role is selected before any OS mutation. Bundle MUST be a separate 0600
+# file prepared offline, with only this VPS's Reality private key. No fallback
+# to the ordinary flow if anything about role/bundle validation fails.
+vk_menu_read() {
+    VK_MENU_CHOICE=''
+    IFS= read -r VK_MENU_CHOICE </dev/tty
+}
+vk_menu_display_prompt() {
+    printf 'Выберите 1 или 2: ' >/dev/tty
+}
+vk_initial_install_menu() {
+    local tries=0
+    echo 'VKarmani Node Install 2.5.10 — выбор режима первой установки:'
+    echo '  1 — Обычная нода (доступна в этой версии)'
+    echo '  2 — Каскад: отдельная входная/выходная нода (только чистая staging VPS)'
+    while ((tries < 5)); do
+        ((tries+=1))
+        vk_menu_display_prompt 2>/dev/null || {
+            echo 'STOP: необходим интерактивный терминал /dev/tty.' >&2; return 2;
+        }
+        if ! vk_menu_read; then
+            echo 'STOP: выбор режима прерван; системные настройки не изменены.' >&2
+            return 2
+        fi
+        case "$VK_MENU_CHOICE" in
+            1) echo 'Режим: обычная нода. Далее — три обязательных параметра.'; return 0 ;;
+            2)
+                echo 'Выберите роль: entry (вход) или exit (выход). Bundle готовится заранее.'
+                vk_menu_display_prompt 2>/dev/null || return 2
+                vk_menu_read || return 2
+                [[ "$VK_MENU_CHOICE" == entry || "$VK_MENU_CHOICE" == exit ]] || {
+                    echo 'STOP: роль должна быть entry или exit; изменений ОС нет.' >&2; return 2;
+                }
+                VK_CASCADE_ROLE_ARG=$VK_MENU_CHOICE
+                echo 'Введите АБСОЛЮТНЫЙ путь к root:0600 role-bundle.json на ЭТОЙ VPS:'
+                vk_menu_display_prompt 2>/dev/null || return 2
+                vk_menu_read || return 2
+                [[ "$VK_MENU_CHOICE" == /* && -n "$VK_MENU_CHOICE" ]] || {
+                    echo 'STOP: только абсолютный путь к закрытому bundle.' >&2; return 2;
+                }
+                VK_CASCADE_BUNDLE_ARG=$VK_MENU_CHOICE
+                echo 'Режим: каскадная нода. Параметры будут проверены до установки.'
+                return 0 ;;
+            *) echo 'Некорректный выбор. Допустимы только 1 или 2.' >&2 ;;
+        esac
+    done
+    echo 'STOP: превышено число попыток выбора режима.' >&2
+    return 2
+}
 [[ $EUID -eq 0 ]] || { echo 'Запустите через sudo bash или от root.' >&2; exit 1; }
+# No role migration or implicit ordinary downgrade. These tests precede host writes.
+if [[ -n "$VK_CASCADE_ROLE_ARG" || -n "$VK_CASCADE_BUNDLE_ARG" ]]; then
+    [[ -n "$VK_CASCADE_ROLE_ARG" && -n "$VK_CASCADE_BUNDLE_ARG" ]] || {
+        echo 'STOP: specify BOTH --cascade-role and --cascade-bundle.' >&2; return 2;
+    }
+    [[ ! -e "$STATE/owned-installation" && ! -e "$STATE/INSTALL_COMPLETE" && ! -e "$STATE/finalization" && ! -e "$ETC/config.json" && ! -e "$STATE/role.json" && ! -e "$ETC/cascade-role.json" ]] || {
+        echo 'STOP: cascade role change or second enrollment on an owned VPS is forbidden.' >&2; return 2;
+    }
+fi
+if [[ -e "$STATE/role.json" || -e "$ETC/cascade-role.json" || -L "$STATE/role.json" || -L "$ETC/cascade-role.json" ]]; then
+    [[ -f "$STATE/role.json" && -f "$ETC/cascade-role.json" && ! -L "$STATE/role.json" && ! -L "$ETC/cascade-role.json" ]] || {
+        echo 'STOP: partial/unsafe cascade enrollment: inspect with provider console.' >&2; return 2;
+    }
+    VK_CASCADE_ACTIVE=1
+fi
+# The interactive menu is only for NEW unowned hosts, not pending resumptions.
+if [[ ! -e "$STATE/owned-installation" && ! -e "$STATE/INSTALL_COMPLETE" && ! -e "$STATE/finalization" && ! -e "$ETC/config.json" && $VK_CASCADE_ACTIVE -eq 0 && -z "$VK_CASCADE_ROLE_ARG" ]]; then
+    vk_initial_install_menu || return $?
+fi
+if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then VK_CASCADE_ACTIVE=1; fi
+if [[ $VK_CASCADE_ACTIVE -eq 1 && $WEEKLY_REBOOT -eq 1 ]]; then
+    echo 'STOP: cascade weekly reboot requires peer coordination and is prohibited.' >&2; return 2
+fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
-        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.9 use --finish-install.' >&2; exit 1
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.10 use --finish-install.' >&2; exit 1
     fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
@@ -7062,6 +7246,26 @@ VK_SOURCE_PATH=$(readlink -f -- "${BASH_SOURCE[0]}")
 [[ -f "$VK_SOURCE_PATH" && -r "$VK_SOURCE_PATH" ]] || { echo 'STOP: complete local install.sh required.' >&2; exit 1; }
 VK_SOURCE_SHA256=$(sha256sum -- "$VK_SOURCE_PATH")
 VK_SOURCE_SHA256=${VK_SOURCE_SHA256%% *}
+# First-run bundle preflight: no apt, network, SSH, file creation or secret output.
+if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
+    if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then
+        VK_CASCADE_HELPER=$(dirname -- "$VK_SOURCE_PATH")/integrations/cascade_deployment.py
+        [[ -f "$VK_CASCADE_HELPER" && -f "$(dirname -- "$VK_CASCADE_HELPER")/cascade_profiles.py" ]] || {
+            echo 'STOP: cascade requires the FULL project archive (integrations/ missing).' >&2; return 2;
+        }
+        command -v python3 >/dev/null || { echo 'STOP: Python3 required for cascade preflight.' >&2; return 2; }
+        python3 "$VK_CASCADE_HELPER" validate --bundle "$VK_CASCADE_BUNDLE_ARG" \
+            --role "$VK_CASCADE_ROLE_ARG" --structure-only || return 2
+        VK_CASCADE_BUNDLE_SHA=$(sha256sum -- "$VK_CASCADE_BUNDLE_ARG")
+        VK_CASCADE_BUNDLE_SHA=${VK_CASCADE_BUNDLE_SHA%% *}
+    else
+        [[ -f "$LIB/cascade_deployment.py" && -f "$LIB/cascade_profiles.py" ]] || {
+            echo 'STOP: installed cascade helpers missing; no implicit ordinary resume.' >&2; return 2;
+        }
+        VK_CASCADE_HELPER="$LIB/cascade_deployment.py"
+        python3 "$VK_CASCADE_HELPER" check-installed --etc "$ETC" --state "$STATE" || return 2
+    fi
+fi
 if [[ -e "$STATE/network-rollback-armed" || -e "$STATE/network-rollback-running" ]]; then
     echo 'STOP: не завершён сетевой откат. Используйте консоль VPS и /usr/local/sbin/vkarmani-network-rollback; не удаляйте backup.'; exit 1
 fi
@@ -7225,6 +7429,13 @@ if [[ $FRESH -eq 1 ]]; then
 fi
 # Input is from /dev/tty, never from the downloaded shell script stream.
 vk_collect_inputs
+if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$VK_CASCADE_ROLE_ARG" ]]; then
+    # Validate operator-entered domain against the already pinned, private
+    # role bundle BEFORE writing any host configuration or doing APT work.
+    python3 "$VK_CASCADE_HELPER" validate --bundle "$VK_CASCADE_BUNDLE_ARG" \
+        --role "$VK_CASCADE_ROLE_ARG" --structure-only --domain "$VK_INPUT_DOMAIN" \
+        || { echo 'STOP: cascade bundle and entered DNS domain disagree; no OS mutation.' >&2; return 2; }
+fi
 # Package maintainer scripts must not read answers from the operator's terminal.
 # All installer questions have been answered; unexpected package prompts fail safely.
 exec </dev/null
@@ -7234,6 +7445,24 @@ install -m 0700 -- "$VK_SOURCE_PATH" "$STATE/installer-$INSTALLER_VERSION.sh"
 printf '%s  %s\n' "$VK_SOURCE_SHA256" "$STATE/installer-$INSTALLER_VERSION.sh" | sha256sum --check --status || {
     echo 'STOP: installer source changed during preflight.' >&2; exit 1;
 }
+if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
+    if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then
+        # Self-contained ordinary install.sh is unchanged; cascade needs two
+        # trusted local Python modules from the same reviewed ZIP.
+        for module in cascade_profiles.py cascade_deployment.py; do
+            source_file="$(dirname -- "$VK_CASCADE_HELPER")/$module"
+            [[ -f "$source_file" && ! -L "$source_file" ]] || { echo "STOP: missing cascade module: $module" >&2; exit 1; }
+            install -o root -g root -m 0700 -- "$source_file" "$LIB/$module"
+            cmp -s -- "$source_file" "$LIB/$module" || { echo "STOP: cascade module changed during staging: $module" >&2; exit 1; }
+        done
+        python3 "$LIB/cascade_deployment.py" enroll --bundle "$VK_CASCADE_BUNDLE_ARG" \
+            --role "$VK_CASCADE_ROLE_ARG" --sha256 "$VK_CASCADE_BUNDLE_SHA" \
+            --etc "$ETC" --state "$STATE" || { echo 'STOP: CASCADE_ENROLLMENT_FAILED' >&2; exit 1; }
+    else
+        python3 "$LIB/cascade_deployment.py" check-installed --etc "$ETC" --state "$STATE" \
+            || { echo 'STOP: CASCADE_ENROLLMENT_DRIFT' >&2; exit 1; }
+    fi
+fi
 if [[ ! -s "$ETC/config.json" ]]; then
     printf '%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" > "$ETC/inputs.pending.tmp"
     chmod 0600 "$ETC/inputs.pending.tmp"
@@ -7316,7 +7545,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.9: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.10: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -7582,6 +7811,26 @@ def dns_check(c, wait_seconds=0):
         raise Failure('DNS не соответствует выбранному IPv4 ноды ' + c['public_ipv4'] + ': ' + _fmt_dns_snapshot(snap))
 
 def make_keys_profile(c):
+    if (ETC / 'cascade-role.json').exists():
+        import cascade_deployment as cascade
+        bundle = cascade.installed_role(ETC, STATE)
+        cascade.ensure_local_identity(bundle, c['domain'], c['public_ipv4'])
+        keys = {'private_key': bundle['self']['private_key'],
+                'public_key': bundle['self']['public_key'],
+                'short_id': bundle['self']['short_id']}
+        reality_path = ETC / 'reality.json'
+        if reality_path.exists():
+            if read_json(reality_path) != keys:
+                raise Failure('CASCADE_REALITY_KEYS_DRIFT_REFUSE_OVERWRITE')
+        else:
+            atomic_json(reality_path, keys)
+        profile = cascade.role_profile(bundle)
+        existing_profile = ETC / 'profile.json'
+        if existing_profile.exists() and read_json(existing_profile) != profile:
+            raise Failure('CASCADE_PROFILE_DRIFT_REFUSE_OVERWRITE')
+        if not existing_profile.exists():
+            atomic_json(existing_profile, profile)
+        return 'VK-CASCADE-' + bundle['role'], bundle['self']['inbound_tag'], profile
     from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
     path = ETC / 'reality.json'
@@ -7859,6 +8108,15 @@ def audit_profile(path, c):
                              parse_constant=_profile_nonfinite)
     except (OSError, ValueError, UnicodeError) as exc:
         raise Failure('PROFILE_INPUT_READ_OR_JSON_INVALID') from exc
+    if (ETC / 'cascade-role.json').exists():
+        import cascade_deployment as cascade
+        bundle = cascade.installed_role(ETC, STATE)
+        cascade.ensure_local_identity(bundle, c['domain'], c['public_ipv4'])
+        if profile != cascade.role_profile(bundle):
+            raise Failure('CASCADE_IMPORT_PROFILE_DRIFT')
+        print('CASCADE_IMPORT_PROFILE_POLICY=PASS role=' + bundle['role'])
+        print('CASCADE_CORE_AND_PANEL_CLIENT=NOT_VERIFIED')
+        return
     validate_profile(profile, c)
     # Use the same recognized aliases as validate_profile(). It deliberately
     # accepts either Xray `network` or the reviewed `method` representation.
@@ -7913,7 +8171,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.9\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.10\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -8087,9 +8345,17 @@ def init_config(node_port='2222', inputs=None):
     print('Параметры проверены. IPv4 ноды=' + selected + '; SECRET_KEY сохранён с правами 0600.')
 
 def write_panel_guide(c):
+    if (ETC / 'cascade-role.json').exists():
+        import cascade_deployment as cascade
+        bundle = cascade.installed_role(ETC, STATE)
+        cascade.ensure_local_identity(bundle, c['domain'], c['public_ipv4'])
+        make_keys_profile(c)
+        atomic_text(ETC / 'PANEL-SETUP.txt',
+                    cascade.panel_guidance(bundle, c['panel_ipv4'], c['node_port']))
+        return
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.9 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.10 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -8236,6 +8502,10 @@ if [[ $ALLOW_NET_ADMIN -eq 1 ]]; then helper allow-net-admin true; fi
 if [[ $WEEKLY_REBOOT -eq 1 ]]; then helper weekly-reboot true; fi
 [[ $(helper get allow_net_admin) != true ]] || ALLOW_NET_ADMIN=1
 [[ $(helper get weekly_reboot) != true ]] || WEEKLY_REBOOT=1
+if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
+    python3 "$LIB/cascade_deployment.py" check-installed --etc "$ETC" --state "$STATE" \
+        --domain "$DOMAIN" --ipv4 "$PUBLIC_IP" || die 'CASCADE_ROLE_CRYPTO_OR_IDENTITY_INVALID'
+fi
 PANEL_IP_TEXT=$(helper get panel_ipv4)
 mapfile -t PANEL_IPS <<< "$PANEL_IP_TEXT"
 [[ ${#PANEL_IPS[@]} -ge 1 && ${#PANEL_IPS[@]} -le 16 ]] || die 'Некорректный список IP технички.'
@@ -8884,10 +9154,15 @@ fi
 docker exec remnanode rm -f /tmp/vkarmani-profile-test.json
 # XHTTP is an ALTERNATIVE import template on this same 443 listener. Validate it
 # against the actual bundled core before declaring installation complete.
+if [[ $VK_CASCADE_ACTIVE -eq 0 ]]; then
 vk_write_xhttp_profile_helper "$LIB/xhttp_profile.py"
+fi
 # Compatibility must not turn a fully working RAW installation into a partial
 # installation merely because this image build does not understand XHTTP.
-if vk_xhttp_prepare_template "$LIB/xhttp_profile.py" "$ETC" "$CORE" "$STATE"; then
+if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
+    echo 'CASCADE_XHTTP=DISABLED RAW_REALITY_BRIDGE_ONLY'
+    [[ ! -e "$ETC/profile-xhttp.json" ]] || die 'CASCADE_HAS_UNEXPECTED_XHTTP_TEMPLATE'
+elif vk_xhttp_prepare_template "$LIB/xhttp_profile.py" "$ETC" "$CORE" "$STATE"; then
     echo 'XHTTP_IMPORT_TEMPLATE_READY=PASS'
 else
     echo 'WARN: XHTTP_IMPORT_TEMPLATE=NOT_READY; RAW remains unchanged. After image compatibility review, retry with --prepare-xhttp.' >&2
@@ -8895,7 +9170,8 @@ fi
 
 stage 'RAW / XHTTP + REALITY профили и параметры для панели (без API-токена)'
 helper panel-guide
-printf 'Шаблон RAW: /etc/vkarmani-node/profile.json. XHTTP: /etc/vkarmani-node/profile-xhttp.json (только если проверка Core успешна).\nИнструкция: /etc/vkarmani-node/PANEL-SETUP.txt\n'
+printf 'Шаблон RAW: /etc/vkarmani-node/profile.json. Подробности: /etc/vkarmani-node/PANEL-SETUP.txt\n'
+if [[ $VK_CASCADE_ACTIVE -eq 0 ]]; then echo 'XHTTP: /etc/vkarmani-node/profile-xhttp.json (только при проверенном Core).'; fi
 printf 'Карточка ноды и назначение профиля выполняются в панели. Секрет не является API-токеном.\n' 
 
 stage 'Расписание обслуживания: weekly reboot только по --weekly-reboot'

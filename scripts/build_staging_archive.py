@@ -33,6 +33,46 @@ UNTRACKED_ALLOWED = {
     'tests/test_edge_security_258.py',
     'tests/test_259_fault_regressions.py',
     'docs/RKN_FAILSAFE_2.5.9.md',
+    'docs/CASCADE_REFERENCE_2.5.10.md',
+    'examples/cascade-entry-profile.reference.json',
+    'examples/cascade-exit-profile.reference.json',
+    'tests/test_2510_menu_cascade_docs.py',
+    'docs/R4_8_POINT_ENGINEERING_20261015.md',
+    'docs/COVER_VARIANTS_AND_PROXY_R4.md',
+    'integrations/cascade_profiles.py',
+    'integrations/panel_acl_audit.py',
+    'scripts/staging_acceptance.py',
+    'scripts/cover_variants.py',
+    'scripts/nginx_proxy_plan.py',
+    'tests/test_2510_r4_preparation.py',
+    'cover-variants/01-atelier/index.html',
+    'cover-variants/01-atelier/style.css',
+    'cover-variants/02-archive/index.html',
+    'cover-variants/02-archive/style.css',
+    'cover-variants/03-observatory/index.html',
+    'cover-variants/03-observatory/style.css',
+    'cover-variants/04-fieldnotes/index.html',
+    'cover-variants/04-fieldnotes/style.css',
+    'cover-variants/05-readingroom/index.html',
+    'cover-variants/05-readingroom/style.css',
+    'cover-variants/06-foundry/index.html',
+    'cover-variants/06-foundry/style.css',
+    'integrations/cascade_deployment.py',
+    'integrations/cascade_panel_audit.py',
+    'tests/test_2510_r5_cascade_roles.py',
+    'tests/test_2510_r5_cascade_panel.py',
+    'docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md',
+    'docs/R5_CASCADE_QA.md',
+    'docs/R6_CASCADE_OPERATIONS_AND_GATES.md',
+    'integrations/cascade_live_gate.py',
+    'integrations/cascade_panel_inventory.py',
+    'integrations/cascade_recovery.py',
+    'tests/test_2510_r6_remaining_gates.py',
+    'scripts/staging_web_deploy.py',
+    'scripts/cascade_live_probe.py',
+    'tests/test_2510_r7_web_deploy.py',
+    'tests/test_2510_r7_live_probe.py',
+    'docs/R7_SITES_TCP_AND_LIVE_PROBES.md',
 }
 
 
@@ -102,7 +142,7 @@ def build(out_dir, build_id):
         data = p.read_bytes()
         entries.append({'path':name, 'size':len(data), 'sha256':sha256(data), 'mode':f'{mode:04o}'})
     manifest = {
-        'version': '2.5.9',
+        'version': '2.5.10',
         'build_id': build_id,
         'source_commit': source_commit,
         'release_status': 'INCOMPLETE_STAGING_ONLY',
@@ -121,7 +161,7 @@ def build(out_dir, build_id):
     data[SUMS] = sums_bytes
     verify_bytes(data)
     out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / f'Node_Install_2.5.9-qa-fixes_{build_id}.zip'
+    dest = out_dir / f'Node_Install_2.5.10-docs-menu_{build_id}.zip'
     if dest.exists():
         raise FileExistsError('already built; use a new unique build ID')
     fd, tmp = tempfile.mkstemp(prefix='.node-install-staging-', suffix='.zip', dir=out_dir)
@@ -152,7 +192,7 @@ def build(out_dir, build_id):
     print('SHA256=' + digest)
     print('FILES=' + str(len(data)))
     print('BUILD_ID=' + build_id)
-    print('UNPUBLISHED=YES; FULL_CASCADE_NOT_IMPLEMENTED=YES')
+    print('UNPUBLISHED=YES; CASCADE_ROLES_STAGING_CODE=YES; PANEL_AND_LIVE_UNVERIFIED=YES')
     return dest
 
 
