@@ -136,8 +136,12 @@ class CascadeReference2510(unittest.TestCase):
 
     def test_readme_first_command_and_references_are_not_falsely_published(self):
         content=(ROOT/'README.md').read_text()
-        self.assertTrue(content.splitlines()[1].startswith('## ⚡ УСТАНОВКА'))
-        self.assertIn('2.5.10 — локальный непубликованный staging',content)
+        self.assertTrue(content.startswith('<div align="center">'))
+        self.assertIn('2.5.10',content)
+        self.assertIn('локальный непубликованный staging',content)
+        self.assertIn('### 🟦 Карта 1',content)
+        self.assertIn('### 🟪 Карта 2',content)
+        self.assertEqual(content.count('```mermaid\nflowchart'),2)
         self.assertIn('2.5.9',content)
         self.assertIn('STAGING_ROLE_INSTALLER',(ROOT/'docs/CASCADE_REFERENCE_2.5.10.md').read_text())
         for name in ('cascade-entry-profile.reference.json','cascade-exit-profile.reference.json'):

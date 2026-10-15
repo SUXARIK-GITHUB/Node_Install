@@ -1,33 +1,40 @@
+<div align="center">
+
+# 🌌 VKARMANI · NODE INSTALL
+
+**VLESS · REALITY · Vision · IPv4-only · Nginx Selfsteal**
+
+**[⚡ Установка](#install) · [🟦 Обычная нода](#ordinary-map) · [🟪 Каскад](#cascade-map) · [🎛 Remnawave](#panel) · [🧪 Проверки](#verification)**
+
+</div>
+
 <a id="install"></a>
-## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10
+## ⚡ Установка
 
-**Remnawave Node · IPv4-only · VLESS + REALITY · Nginx Selfsteal · обычная нода / Entry / Exit**
-
-> [!WARNING]
-> **2.5.10 r7e — локальный непубликованный staging-кандидат, не production-release.** В GitHub опубликована **2.5.10 r7d** (исходный код той же версии установщика), а эти README и справочные JSON обновлены в локальном **r7e**. **Не выполняйте обе команды установки на одном сервере.** Установка меняет SSH, UFW, Docker, Nginx, systemd и GRUB; нужны **новая VPS**, проверенный snapshot и консоль провайдера.
+**Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
 
 <a id="github-install"></a>
-## 📦 GitHub · опубликованная версия 2.5.10 r7d
+### 🐙 1. Из GitHub · 2.5.10 r7e
 
-**Первая команда — с GitHub.** Закреплены опубликованный коммит `817b9c0` и SHA-256 установщика. GitHub r7d уже содержит каскад, шесть сайтов и сетевые тесты; **r7e меняет только README и справочные JSON**. Запускать только на новой VPS после snapshot и проверки консоли провайдера.
+Исходники закреплены на коммите `2c2caa35c98ad5badd44f49fc651c17278e63e9e`; SHA-256 `install.sh` проверяется **до запуска**.
 
 ```bash
-git clone https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-github-2.5.10-r7d
-cd Node_Install-github-2.5.10-r7d
-git checkout --detach 817b9c0e10914b09162c6aa8aacd6cebec328d3f
+git clone https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-github-2.5.10-r7e
+cd Node_Install-github-2.5.10-r7e
+git checkout --detach 2c2caa35c98ad5badd44f49fc651c17278e63e9e
 printf '%s  %s\n' 'f00c1433b83421de3d21b61d3e85e99e96b537c6ed16c0fed7a77b588d846378' 'install.sh' | sha256sum --check
 bash -n install.sh
-bash install.sh --version
+bash ./install.sh --version
 sudo bash ./install.sh --no-reboot
 ```
 
 <a id="archive-install"></a>
-### 📁 Локальная версия 2.5.10 r7e — из полного ZIP
+### 📁 2. Из полного ZIP · 2.5.10 r7f
 
-Нужен **именно этот** локальный архив, если требуются Entry/Exit, шесть сайтов и проверка каскада. Перенесите ZIP на **новую тестовую VPS** из доверенного источника; сначала проверьте независимый SHA-256 ZIP, затем выполните:
+Альтернативный способ установки **на отдельную чистую VPS**. ZIP заранее перенесён на сервер и проверен по SHA-256 из независимого доверенного источника.
 
 ```bash
-unzip Node_Install_2.5.10-docs-menu_20261015-r7e-readme.zip
+unzip -q Node_Install_2.5.10-docs-menu_20261015-r7f-two-maps.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
@@ -35,69 +42,86 @@ bash -n install.sh
 sudo bash ./install.sh --no-reboot
 ```
 
-**Статус:** 2.5.10 — локальный непубликованный staging (r7e).
-
-**Для каскада:** сначала подготовьте индивидуальные секретные role-bundles, затем устанавливайте роли **на двух отдельных чистых staging VPS** — по одной роли на сервер. Команды приведены в [разделе каскада](#cascade-setup). Не запускайте обычную и каскадную установку поверх существующих нод.
+**Для каскада:** сначала [создайте два закрытых role-bundle](#cascade-setup), затем установите Exit и Entry **на разных чистых VPS**. Установку с GitHub и ZIP **не совмещают** на одной ноде.
 
 ---
-
-<div align="center">
-
-# 🚀 VKARMANI · NODE INSTALL
-
-**Обычная нода · Entry → Exit · проверяемые конфигурации и откат**
-
-`2.5.10 r7e (документация)` · `staging only` · `IPv4-only` · `RAW / Vision`
-
-[Начало](#install) · [Режимы](#roles) · [Профили](#inbounds) · [Каскад](#cascade) · [Сайты / TCP](#sites-tcp-probes) · [Команды](#operations) · [Проверки](#verification)
-
-</div>
-
----
-
-<a id="navigation"></a>
-## 🧭 Быстрая навигация
-
-| Нужно | Открыть |
-|---|---|
-| Установить обычную ноду / выбрать роль | [Режимы](#roles) · [Требования](#requirements) |
-| Взять правильный VLESS + REALITY inbound | [RAW](#raw) · [XHTTP](#xhttp) · [Entry и Exit](#cascade) |
-| Настроить объекты в Remnawave | [Схема и назначение](#panel) · [Ролевой runbook](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md) |
-| Сменить сайт или настроить TCP stream | [Шесть тем / Nginx TCP](#sites-tcp-probes) |
-| Проверить клиентов, DNS, UDP и отказ Exit | [Приёмка](#verification) · [Live-процедура](docs/R7_SITES_TCP_AND_LIVE_PROBES.md) |
-| Обслужить/восстановить ноду | [CLI](#operations) · [Security](SECURITY.md) · [Operations](docs/OPERATIONS.md) |
 
 <a id="roles"></a>
-## 🔀 Режимы установки
+## 🧩 Два режима — две карты
 
-| Режим | Назначение | Статус |
-|---|---|---|
-| **1 · Ordinary** | Одна публичная нода, RAW+REALITY+Vision, прямой выход, Nginx Selfsteal | Код реализован, live r7e не подтверждён |
-| **2 · Entry** | Принимает клиентов, пересылает трафик в Exit, **без DIRECT** | Код и offline-проверки, live не подтверждён |
-| **2 · Exit** | Принимает служебный мост Entry и выпускает трафик в Интернет | Код и offline-проверки, live не подтверждён |
+| 🟦 **Обычная нода** | 🟪 **Каскад Entry → Exit** |
+|:---|:---|
+| **Клиент → Node → Интернет** | **Клиент → Entry → Exit → Интернет** |
+| Одна VPS, RAW + REALITY + Vision; XHTTP — отдельная альтернатива | Две VPS, RAW + REALITY + Vision, отдельный мостовой пользователь |
+| `DIRECT` доступен на обычной ноде после фильтрации | На Entry **нет DIRECT**, выход в Интернет только с Exit |
+| [🗺️ Схема](#ordinary-map) · [⚡ RAW](#raw) · [🌐 XHTTP](#xhttp) | [🗺️ Схема](#cascade-map) · [🔗 Entry и Exit JSON](#cascade) |
 
-**Обычная:** установщик спросит скрытый `SECRET_KEY`, домен и IPv4 backend панели. **Каскад:** заранее требуется свой `role-bundle.json` с правами `0600`, роль `entry` или `exit` фиксируется до изменения ОС. Повторная смена роли запрещена. В каскаде используется **только RAW + Vision**; XHTTP здесь не включён.
+Установка: **режим 1 — Ordinary**, **режим 2 — каскад** с выбором роли `entry` / `exit`. Каждую роль устанавливают отдельно. Не менять роль или ключи поверх действующей ноды.
+
+<a id="navigation"></a>
+## 🧭 Быстрые переходы
+
+| Что нужно | Где смотреть |
+|:---|:---|
+| Установить и выбрать роль | [GitHub / ZIP](#install) · [Требования](#requirements) |
+| Настроить объекты в панели | [🎛 Remnawave](#panel) · [Ролевой runbook](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md) |
+| Взять полный профиль Xray | [Ordinary RAW](#raw) · [Ordinary XHTTP](#xhttp) · [Entry / Exit](#cascade) |
+| Поменять оформление сайта или TCP | [6 сайтов / Nginx stream](#sites-tcp-probes) |
+| Проверить маршруты, DNS/UDP и откат | [Диагностика](#verification) · [Эксплуатация](#operations) |
 
 <a id="requirements"></a>
-### Перед установкой
+### ⚙️ Перед установкой
 
-- Выделенная **чистая** VPS, глобальный IPv4, корректный DNS A, совместимый Ubuntu/Debian, доступная консоль провайдера.
-- Snapshot **с проверкой восстановления** и сохранённый доступ по SSH. Не устанавливать на техничке, панели или действующих нодах.
-- Remnawave Panel и клиентские профили настраиваются отдельно. `clients: []` в JSON — **нормально для шаблона**, пользователей назначает панель.
+**Чистая VPS**, глобальный IPv4, DNS A, совместимый Ubuntu/Debian, консоль провайдера и проверенный snapshot. Для Ordinary нужен `SECRET_KEY` Node и исходящий IPv4 backend панели; для каждой каскадной роли — **собственный** приватный `role-bundle.json` (`0600`). Никаких изменений на техничке, панели или работающих нодах.
 
 <a id="architecture"></a>
-## 🗺️ Схема подключения
+<a id="ordinary-map"></a>
+### 🟦 Карта 1 · Обычная нода
 
 ```mermaid
 flowchart LR
-    A[Клиент] -->|VLESS / REALITY| B[Entry · 443]
-    B -->|VLESS / REALITY · service-user| C[Exit · 443]
-    C -->|DIRECT · фильтр private IP| D[Интернет]
-    B -.->|Неавторизованный TLS| N1[Nginx Selfsteal · Unix socket]
-    C -.->|Неавторизованный TLS| N2[Nginx Selfsteal · Unix socket]
+    C["📱 Клиент"] -->|"VLESS · REALITY :443"| O["🟦 Ordinary Node<br/>Xray / RemnaNode"]
+    O -->|"DIRECT · IPv4"| I["🌍 Интернет"]
+    O -.->|Неавторизованный TLS| W["🪟 Nginx Selfsteal<br/>Unix socket · PROXY v1"]
+    P["🎛 Remnawave Panel"] -.->|Node API · IP allowlist| O
+    classDef user fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
+    classDef node fill:#cffafe,stroke:#0891b2,color:#164e63,stroke-width:2px;
+    classDef web fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
+    classDef control fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
+    class C user;
+    class O node;
+    class I,W web;
+    class P control;
 ```
 
-Ordinary работает без Entry/Exit: клиент → ordinary inbound → DIRECT. На каждом узле **Xray занимает TCP/443**, host Nginx выдаёт сайт через `/dev/shm/nginx.sock` с PROXY v1 (`xver: 1`). Для Nginx TCP используется **только localhost**, публичный 443 не перехватывается.
+**Remnawave:** один Node, один активный Config Profile, публичный Host на его inbound и пользовательский Internal Squad. Выберите **RAW или XHTTP** для порта 443, не два независимых слушателя одновременно.
+
+<a id="cascade-map"></a>
+### 🟪 Карта 2 · Каскад Entry → Exit
+
+```mermaid
+flowchart LR
+    C["📱 Клиент"] -->|"VLESS · REALITY :443"| E["🟪 Entry<br/>клиентский inbound"]
+    E -->|"TO_EXIT_VLESS · REALITY :443"| X["🟩 Exit<br/>служебный inbound"]
+    X -->|"DIRECT · IPv4"| I["🌍 Интернет"]
+    E -.->|Exit недоступен| B["⛔ Нет DIRECT fallback"]
+    P["🎛 Remnawave Panel"] -.->|управление| E
+    P -.->|управление| X
+    E -.->|Selfsteal| W1["🖥 Nginx Entry"]
+    X -.->|Selfsteal| W2["🖥 Nginx Exit"]
+    classDef user fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
+    classDef entry fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,stroke-width:2px;
+    classDef exit fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px;
+    classDef ctl fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
+    classDef denied fill:#fee2e2,stroke:#dc2626,color:#7f1d1d,stroke-width:1.5px;
+    class C user;
+    class E entry;
+    class X,I,W1,W2 exit;
+    class P ctl;
+    class B denied;
+```
+
+**Remnawave:** два отдельных Node и Config Profile. Публичный Host — **только Entry**; Exit разрешён **только service-user** через собственный Internal Squad. При недоступности Exit Entry не должен выпускать клиентский трафик через свой `DIRECT`.
 
 <a id="selfsteal"></a>
 <a id="firewall"></a>
@@ -110,15 +134,23 @@ Ordinary работает без Entry/Exit: клиент → ordinary inbound �
 - Cover/REALITY **не гарантируют** доступность из любой сети, отсутствие блокировок или обход ограничений провайдера: проверять внешними клиентами и независимыми точками.
 
 <a id="panel"></a>
-## 🔑 Remnawave Panel
+## 🎛 Remnawave · что создать в панели
 
-1. Создать/проверить отдельные Node и Config Profile для каждой staging-ноды; применить профиль из её `/etc/vkarmani-node/profile.json`.
-2. Для **Entry** создать клиентский Host и пользовательский Internal Squad только с inbound Entry.
-3. Для **Exit** создать **отдельный service-user** (`vlessUuid` из приватного bundle) и Internal Squad **только** для Exit inbound. Не публиковать клиентский Host Exit.
-4. После назначений сверить вычисленный Xray JSON и cold dump реальной ноды: `integrations/cascade_panel_audit.py` и [инструкция](docs/R6_CASCADE_OPERATIONS_AND_GATES.md). Никакой автоматической правки панели этими проверками нет.
+В **Config Profiles** вставляют полный JSON для соответствующей роли. В **Nodes** назначают профиль и его inbound, в **Internal Squads** разрешают доступ пользователям, а в **Hosts** задают клиентский вход. <a href="https://docs.rw/learn-en/config-profiles/">Config Profiles</a> · <a href="https://docs.rw/learn-en/squads/">Internal Squads</a> · <a href="https://docs.rw/learn-en/hosts/">Hosts</a>.
 
-> [!IMPORTANT]
-> Наличие красивого inbound в README **не создаёт** пользователей и Squad в Remnawave. Вставлять JSON на действующую ноду нельзя; у новых inbound должен быть **уникальный `tag`** во всей панели.
+| Объект Remnawave | 🟦 Обычная нода | 🟪 Каскад |
+|:---|:---|:---|
+| **Node** | Один Ordinary | Два: **Entry** и **Exit** |
+| **Config Profile** | [RAW](#raw) либо [XHTTP](#xhttp) | [Entry JSON](#cascade-entry-json) + [Exit JSON](#cascade-exit-json), **разные профили** |
+| **Активный inbound** | Уникальный `VK_RAW_*` | Уникальные `VK_CASCADE_ENTRY_*` и `VK_CASCADE_EXIT_*` |
+| **Host в подписке** | Публичный Ordinary :443 | Публичный **Entry :443**; на Exit **не создавать** клиентский Host |
+| **Internal Squad** | Для клиентов Ordinary | Клиенты → **Entry**; service-user → **только Exit** |
+| **VLESS UUID** | Назначает Panel | На мосту Entry используется именно **VLESS UUID service-user на Exit**, а не ID записи пользователя |
+| **Как подписать Host** | `🌐 VKARMANI · Ordinary` | `🔗 VKARMANI · Cascade` (для Entry) |
+
+**Порядок:** Config Profile → Node → включить inbound → Internal Squad → пользователь / service-user → публичный Host. `clients: []` в шаблонах корректно: список заполняет Panel. Не копируйте примеры с `REPLACE_WITH_*` прямо в действующую панель — используйте профиль, созданный на вашей VPS.
+
+**Контроль:** после назначения проверьте [фактический Xray JSON и роли](docs/R6_CASCADE_OPERATIONS_AND_GATES.md). Инструкция здесь **не подключается к вашей панели и не меняет её настройки**. Нельзя повторять существующий `inbound.tag`.
 
 <a id="inbounds"></a>
 ## 📋 Готовые образцы профилей для Remnawave
@@ -413,6 +445,7 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
 
 Полные JSON ниже **синхронизированы с `integrations/cascade_profiles.py`**. Они включают inbound, outbound, правила private-IP/IPv6 block и обработку клиентских соединений. При замене всех плейсхолдеров важны совпадение UUID, публичного ключа и `shortId` Exit с мостовым outbound Entry. Разные inbound tags обязательны: дубликат `tag` Remnawave отклонит.
 
+<a id="cascade-entry-json"></a>
 ### 🧭 1. Entry — клиентский inbound и мост в Exit
 
 [Справочный JSON Entry](examples/cascade-entry-profile.reference.json) · [Ролевой генератор](integrations/cascade_profiles.py)
@@ -561,6 +594,7 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
 
 </details>
 
+<a id="cascade-exit-json"></a>
 ### 🌍 2. Exit — bridge inbound и фильтр выхода
 
 [Справочный JSON Exit](examples/cascade-exit-profile.reference.json) · [Сценарий установки](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md)
@@ -797,6 +831,8 @@ sudo bash ./install.sh --rkn-sync-panel
 <a id="verification"></a>
 ## ✅ Проверки и границы готовности
 
+**Статус:** 2.5.10 — локальный непубликованный staging; реальные две VPS, панель и клиентские испытания пока не подтверждены.
+
 ```bash
 bash -n install.sh
 python3 scripts/verify_release.py --root .
@@ -811,27 +847,17 @@ sudo bash ./install.sh --check
 
 **Для двухсерверной приёмки** нужны: живой клиент, внешний IPv4 именно Exit, HTTPS через SOCKS, DNS A через UDP ASSOCIATE, отдельный UDP echo, фазы `baseline → outage → recovery`, проверка отсутствия DIRECT/DNS утечек на Entry и восстановления после reboot. Скрипт `scripts/cascade_live_probe.py` **не останавливает Exit** — это делает оператор **только на TEST VPS**, с независимой фиксацией факта. [Live-процедура, параметры и безопасность](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
 
-| Гейт | Статус r7e |
+| Гейт | Статус r7f |
 |---|---|
 | Генерация/синтаксис профилей и offline-регрессии | Подготовлены; перепроверяются в точной сборке |
 | Полная установка на новую VPS, Remnawave Panel, сертификаты | **NOT RUN** |
 | REALITY-клиент, TCP/UDP/DNS, внешний IP, отключение Exit | **NOT RUN** |
 | Restore snapshot, reboot, 24-часовая нагрузка | **NOT RUN** |
 
-<a id="versions"></a>
-<a id="limits"></a>
-## ⚠️ Версии и ограничения
-
-**2.5.10 r7e — локальный непубликованный staging.** r7e — изменение README и справочных каскадных JSON относительно r7d; не изменяет `install.sh`, Xray-генератор, инфраструктуру и рабочие серверы. GitHub pinned r7d содержит тот же `install.sh`, что и r7e, но не изменения README r7e; обе версии остаются staging. Release-проверка архива означает контроль целостности, **не** наличие подтверждённого production VPN.
-
-История: базовый проверенный выпуск 2.5.6 → опубликованный r7d → локальный r7e.
-
-[История](CHANGELOG.md) · [Security](SECURITY.md) · [Operations](docs/OPERATIONS.md) · [Core и совместимость](docs/XRAY_CORE_UPDATES_2.5.5.md) · [Старая документация 2.5.4](docs/history/README_2.5.4.md) · [Каскадная архитектура](docs/CASCADE_REFERENCE_2.5.10.md)
-
 ---
 
 <div align="center">
 
-**VKARMANI · Node Install 2.5.10 r7e** · [⬆️ К установке](#install) · [🔐 Security](SECURITY.md)
+**VKARMANI · 2.5.10** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
 
 </div>

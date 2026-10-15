@@ -20,21 +20,23 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         cls.security = (ROOT / 'SECURITY.md').read_text(encoding='utf-8')
 
     def test_main_install_command_at_top_is_pinned_verified_and_syntax_valid(self):
-        # The user-facing order is GitHub first (published 2.5.10 r7d), then a
-        # DIFFERENT complete local archive (unpublished 2.5.10). Never mix.
-        self.assertTrue(self.readme.startswith('<a id="install"></a>\n## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10'))
-        self.assertIn('В GitHub опубликована **2.5.10 r7d**', self.readme)
-        self.assertIn('на двух отдельных чистых staging VPS', self.readme)
+        # The published GitHub commit must be shown before the candidate ZIP.
+        # No redundant staging banners, yet readiness must remain explicit.
+        self.assertTrue(self.readme.startswith('<div align="center">\n'))
+        self.assertIn('## ⚡ Установка', self.readme)
+        self.assertNotIn('## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10', self.readme)
+        self.assertNotIn('## ⚠️ Версии и ограничения', self.readme)
+        self.assertIn('локальный непубликованный staging', self.readme)
+        self.assertIn('на разных чистых VPS', self.readme)
         self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
-        github_section = self.readme.split('## 📦 GitHub · опубликованная версия 2.5.10 r7d', 1)[1]
-        archive_section = self.readme.split('### 📁 Локальная версия 2.5.10', 1)[1]
-        self.assertLess(self.readme.index('## 📦 GitHub · опубликованная версия 2.5.10 r7d'),
-                        self.readme.index('### 📁 Локальная версия 2.5.10'))
-        github_cmd = github_section.split('```bash\n', 1)[1].split('\n```', 1)[0]
-        archive_cmd = archive_section.split('```bash\n', 1)[1].split('\n```', 1)[0]
+        published = '### 🐙 1. Из GitHub · 2.5.10 r7e'
+        archive = '### 📁 2. Из полного ZIP · 2.5.10 r7f'
+        self.assertLess(self.readme.index(published),self.readme.index(archive))
+        github_cmd = self.readme.split(published,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        archive_cmd = self.readme.split(archive,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
         self.assertIn('git clone https://github.com/SUXARIK-GITHUB/Node_Install.git', github_cmd)
-        self.assertIn('817b9c0e10914b09162c6aa8aacd6cebec328d3f', github_cmd)
+        self.assertIn('2c2caa35c98ad5badd44f49fc651c17278e63e9e', github_cmd)
         self.assertIn('f00c1433b83421de3d21b61d3e85e99e96b537c6ed16c0fed7a77b588d846378', github_cmd)
         self.assertIn('sha256sum --check', github_cmd)
         self.assertIn('Node_Install_2.5.10-docs-menu_' + build_id + '.zip', archive_cmd)
@@ -46,7 +48,20 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
                                             capture_output=True).returncode, 0)
             self.assertNotIn('curl | bash', command)
             self.assertNotIn('/main/install.sh', command)
-        self.assertIn('Node_Install-github-2.5.10-r7d', github_cmd)
+        self.assertIn('Node_Install-github-2.5.10-r7e', github_cmd)
+
+    def test_two_visual_route_maps_and_remnawave_binding(self):
+        self.assertIn('### 🟦 Карта 1 · Обычная нода',self.readme)
+        self.assertIn('### 🟪 Карта 2 · Каскад Entry → Exit',self.readme)
+        self.assertEqual(self.readme.count('```mermaid\nflowchart'),2)
+        for marker in ('ordinary-map','cascade-map','cascade-entry-json','cascade-exit-json'):
+            self.assertEqual(self.readme.count(f'<a id="{marker}"></a>'),1)
+        self.assertIn('TO_EXIT_VLESS',self.readme)
+        self.assertIn('Нет DIRECT fallback',self.readme)
+        self.assertIn('**только Exit**',self.readme)
+        self.assertIn('VLESS UUID service-user на Exit',self.readme)
+        self.assertIn('Host в подписке',self.readme)
+        self.assertIn('https://docs.rw/learn-en/config-profiles/',self.readme)
 
     def test_full_cascade_profiles_are_documented_and_match_generator(self):
         import sys
@@ -144,7 +159,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
                     anchor = link.split('#',1)[1]
                     linked=(ROOT/target).read_text(encoding='utf-8')
                     self.assertIn(f'<a id="{anchor}"></a>', linked, f'{name}: bad link anchor: {link}')
-        self.assertIn('## 🧭 Быстрая навигация', self.readme)
+        self.assertIn('## 🧭 Быстрые переходы', self.readme)
         self.assertIn('## 🧭 Быстрые карты безопасности',self.security)
 
     def test_security_report_model_and_preserved_originals(self):
@@ -165,8 +180,10 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
     def test_previous_documentation_is_preserved_on_hotfix(self):
         for path in ('docs/history/README_2.5.5.md', 'docs/history/SECURITY_2.5.5.md'):
             self.assertTrue((ROOT/path).is_file())
-        self.assertIn('## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10', self.readme)
-        self.assertIn('2.5.6', self.readme)
+        self.assertIn('## ⚡ Установка', self.readme)
+        self.assertIn('2.5.10', self.readme)
+        self.assertIn('docs/history/README_2.5.4.md', self.readme)
+        self.assertNotIn('## ⚠️ Версии и ограничения', self.readme)
 
 
 if __name__ == '__main__':
