@@ -1,5 +1,5 @@
 {
-  "build_id": "20261015-r7d-readme",
+  "build_id": "20261015-r7e-readme",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
     "SHA256SUMS"
@@ -32,8 +32,8 @@
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "fe41b9681237c4a5c5ddb14e4b52ef44e65c8c1668a47e84c54c2479c437c3b4",
-      "size": 44826
+      "sha256": "b8e8c605e914e5bf0fd35254d976db5233870d2703a61d9290e3c148057a1514",
+      "size": 34378
     },
     {
       "mode": "0644",
@@ -1232,14 +1232,14 @@
     {
       "mode": "0644",
       "path": "examples/cascade-entry-profile.reference.json",
-      "sha256": "f9c21ca8832b04b618245dda6f5f3d20a94b7277fecf1b403bba76792811c57a",
-      "size": 2508
+      "sha256": "4988b51a5eeb599ba0c23d830b2fd4e78142d1551854067536e8669d0ca40891",
+      "size": 2833
     },
     {
       "mode": "0644",
       "path": "examples/cascade-exit-profile.reference.json",
-      "sha256": "5745ebb94e1ddd1071a02b21c0590bd337baf94ac74fc44b216e13bf6d754f61",
-      "size": 2332
+      "sha256": "0c90ce18c00fc9542856e207b28cdf58e601f5b7fbf9ecf9781fff708d376b83",
+      "size": 2878
     },
     {
       "mode": "0644",
@@ -1790,8 +1790,8 @@
     {
       "mode": "0644",
       "path": "tests/test_docs_ui_255.py",
-      "sha256": "a95fd320f5e8a884d824072b72e1cfebaf9270115ba1a04b686f9e44f5f4c1c9",
-      "size": 7910
+      "sha256": "4be3cb7ff135df0fd713d9afb134cee1dc49fd9a33a0d214e449478be1f5d1ef",
+      "size": 10974
     },
     {
       "mode": "0644",
@@ -2017,7 +2017,7 @@
     }
   ],
   "release_status": "INCOMPLETE_STAGING_ONLY",
-  "source_commit": "3a4d277e2d9d0f80671656a917409efeade781f6",
+  "source_commit": "817b9c0e10914b09162c6aa8aacd6cebec328d3f",
   "source_tree_has_local_changes": true,
   "version": "2.5.10"
 }

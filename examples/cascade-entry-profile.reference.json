@@ -5,8 +5,8 @@
   "inbounds": [
     {
       "tag": "VK_CASCADE_ENTRY_REALITY_REPLACE_WITH_REAL_TAG",
-      "listen": "0.0.0.0",
       "port": 443,
+      "listen": "0.0.0.0",
       "protocol": "vless",
       "settings": {
         "clients": [],
@@ -34,9 +34,9 @@
           "serverNames": [
             "entry.example.com"
           ],
-          "privateKey": "REPLACE_WITH_PRIVATE_KEY_FROM_NODE",
+          "privateKey": "REPLACE_WITH_ENTRY_PRIVATE_KEY",
           "shortIds": [
-            "REPLACE_WITH_SHORT_ID_FROM_NODE"
+            "REPLACE_WITH_ENTRY_SHORT_ID"
           ]
         }
       }
@@ -71,7 +71,7 @@
         "realitySettings": {
           "serverName": "exit.example.com",
           "fingerprint": "chrome",
-          "publicKey": "REPLACE_WITH_EXIT_REALITY_PUBLIC_KEY",
+          "publicKey": "REPLACE_WITH_EXIT_PUBLIC_KEY",
           "shortId": "REPLACE_WITH_EXIT_SHORT_ID",
           "spiderX": "/"
         }
@@ -98,7 +98,20 @@
       {
         "type": "field",
         "ip": [
-          "geoip:private",
+          "0.0.0.0/8",
+          "10.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "169.254.0.0/16",
+          "172.16.0.0/12",
+          "192.0.0.0/24",
+          "192.0.2.0/24",
+          "192.168.0.0/16",
+          "198.18.0.0/15",
+          "198.51.100.0/24",
+          "203.0.113.0/24",
+          "224.0.0.0/4",
+          "240.0.0.0/4",
           "::/0"
         ],
         "outboundTag": "BLOCK"

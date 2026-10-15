@@ -20,25 +20,72 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         cls.security = (ROOT / 'SECURITY.md').read_text(encoding='utf-8')
 
     def test_main_install_command_at_top_is_pinned_verified_and_syntax_valid(self):
-        # This ZIP is NOT on GitHub. The first command must install these local bytes.
+        # The user-facing order is GitHub first (published 2.5.10 r7d), then a
+        # DIFFERENT complete local archive (unpublished 2.5.10). Never mix.
         self.assertTrue(self.readme.startswith('<a id="install"></a>\n## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10'))
-        command = self.readme.split('```bash\n', 1)[1].split('\n```', 1)[0]
-        build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
-        self.assertIn('Node_Install_2.5.10-docs-menu_' + build_id + '.zip', command)
-        self.assertIn('python3 scripts/verify_release.py --root .', command)
-        self.assertIn('sha256sum --check SHA256SUMS', command)
-        self.assertIn('sudo bash ./install.sh --no-reboot', command)
-        self.assertEqual(subprocess.run(['bash', '-n'],input=command,text=True,capture_output=True).returncode, 0)
-        self.assertIn('публичном `main` сейчас опубликована **2.5.9**', self.readme)
-        self.assertIn('отдельную чистую staging VPS', self.readme)
+        self.assertIn('В GitHub опубликована **2.5.10 r7d**', self.readme)
+        self.assertIn('на двух отдельных чистых staging VPS', self.readme)
         self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
-        self.assertIn('**не** подтверждение live-каскада', self.readme)
-        published = self.readme.split('## 📦 Уже опубликованная версия GitHub 2.5.9',1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
-        self.assertIn('3a4d277e2d9d0f80671656a917409efeade781f6',published)
-        self.assertIn('f61e219fc58035a29ad8be99713378fb464fe7e36d1cd7bee8d3e74a9ae701f0', published)
-        self.assertEqual(subprocess.run(['bash','-n'],input=published,text=True,capture_output=True).returncode,0)
-        self.assertNotIn('/main/install.sh', published)
-        self.assertNotIn('curl | bash', published)
+        github_section = self.readme.split('## 📦 GitHub · опубликованная версия 2.5.10 r7d', 1)[1]
+        archive_section = self.readme.split('### 📁 Локальная версия 2.5.10', 1)[1]
+        self.assertLess(self.readme.index('## 📦 GitHub · опубликованная версия 2.5.10 r7d'),
+                        self.readme.index('### 📁 Локальная версия 2.5.10'))
+        github_cmd = github_section.split('```bash\n', 1)[1].split('\n```', 1)[0]
+        archive_cmd = archive_section.split('```bash\n', 1)[1].split('\n```', 1)[0]
+        build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
+        self.assertIn('git clone https://github.com/SUXARIK-GITHUB/Node_Install.git', github_cmd)
+        self.assertIn('817b9c0e10914b09162c6aa8aacd6cebec328d3f', github_cmd)
+        self.assertIn('f00c1433b83421de3d21b61d3e85e99e96b537c6ed16c0fed7a77b588d846378', github_cmd)
+        self.assertIn('sha256sum --check', github_cmd)
+        self.assertIn('Node_Install_2.5.10-docs-menu_' + build_id + '.zip', archive_cmd)
+        self.assertIn('python3 scripts/verify_release.py --root .', archive_cmd)
+        self.assertIn('sha256sum --check SHA256SUMS', archive_cmd)
+        self.assertIn('sudo bash ./install.sh --no-reboot', archive_cmd)
+        for command in (github_cmd, archive_cmd):
+            self.assertEqual(subprocess.run(['bash', '-n'], input=command, text=True,
+                                            capture_output=True).returncode, 0)
+            self.assertNotIn('curl | bash', command)
+            self.assertNotIn('/main/install.sh', command)
+        self.assertIn('Node_Install-github-2.5.10-r7d', github_cmd)
+
+    def test_full_cascade_profiles_are_documented_and_match_generator(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'integrations'))
+        import cascade_profiles as cp
+        configs = {}
+        for name in ('entry', 'exit'):
+            begin = f'<!-- BEGIN CASCADE {name.upper()} FULL EXAMPLE -->'
+            end = f'<!-- END CASCADE {name.upper()} FULL EXAMPLE -->'
+            self.assertEqual(self.readme.count(begin), 1)
+            self.assertEqual(self.readme.count(end), 1)
+            block = self.readme.split(begin, 1)[1].split(end, 1)[0].strip()
+            self.assertTrue(block.startswith('```json\n') and block.endswith('\n```'))
+            literal = block[len('```json\n'):-len('\n```')]
+            source = (ROOT / f'examples/cascade-{name}-profile.reference.json').read_text().strip()
+            self.assertEqual(literal, source)
+            self.assertIn('REPLACE_WITH_', source)
+            configs[name] = json.loads(source)
+        entry, exit_cfg = configs['entry'], configs['exit']
+        e_in, x_in = entry['inbounds'][0], exit_cfg['inbounds'][0]
+        vnext = entry['outbounds'][1]['settings']['vnext'][0]
+        remote = entry['outbounds'][1]['streamSettings']['realitySettings']
+        cfg = {
+            'entry': {'inbound_tag':e_in['tag'], 'domain':e_in['streamSettings']['realitySettings']['serverNames'][0],
+                      'short_id':e_in['streamSettings']['realitySettings']['shortIds'][0],
+                      'private_key':e_in['streamSettings']['realitySettings']['privateKey'],
+                      'public_key':'REPLACE_WITH_ENTRY_PUBLIC_KEY', 'ipv4':'203.0.113.10'},
+            'exit': {'inbound_tag':x_in['tag'], 'domain':remote['serverName'],
+                     'short_id':x_in['streamSettings']['realitySettings']['shortIds'][0],
+                     'private_key':x_in['streamSettings']['realitySettings']['privateKey'],
+                     'public_key':remote['publicKey'], 'ipv4':vnext['address']},
+            'bridge': {'service_user_uuid':vnext['users'][0]['id']}
+        }
+        self.assertEqual(entry, cp.entry_profile(cfg))
+        self.assertEqual(exit_cfg, cp.exit_profile(cfg))
+        self.assertNotIn('dns', entry)
+        self.assertEqual([x['tag'] for x in entry['outbounds']], ['BLOCK','TO_EXIT_VLESS'])
+        self.assertEqual([x['tag'] for x in exit_cfg['outbounds']], ['DIRECT','BLOCK'])
+        self.assertIn('::/0', exit_cfg['outbounds'][0]['settings']['finalRules'][0]['ip'])
 
     def test_full_advanced_profiles_are_single_listener_and_align(self):
         examples = {k: json.loads((ROOT / f'examples/inbound-{k}-full.example.json').read_text())
@@ -97,7 +144,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
                     anchor = link.split('#',1)[1]
                     linked=(ROOT/target).read_text(encoding='utf-8')
                     self.assertIn(f'<a id="{anchor}"></a>', linked, f'{name}: bad link anchor: {link}')
-        self.assertIn('## 🗺️ Навигация', self.readme)
+        self.assertIn('## 🧭 Быстрая навигация', self.readme)
         self.assertIn('## 🧭 Быстрые карты безопасности',self.security)
 
     def test_security_report_model_and_preserved_originals(self):
