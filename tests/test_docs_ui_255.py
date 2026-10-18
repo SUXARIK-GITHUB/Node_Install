@@ -30,7 +30,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertIn('на разных чистых VPS', self.readme)
         self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
         published = '### 🐙 1. Из GitHub · 2.5.10 r7e'
-        archive = '### 📁 2. Из полного ZIP · 2.5.10 r7f'
+        archive = '### 📁 2. Из полного ZIP · 2.5.11 r10'
         self.assertLess(self.readme.index(published),self.readme.index(archive))
         github_cmd = self.readme.split(published,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         archive_cmd = self.readme.split(archive,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
@@ -39,7 +39,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertIn('2c2caa35c98ad5badd44f49fc651c17278e63e9e', github_cmd)
         self.assertIn('f00c1433b83421de3d21b61d3e85e99e96b537c6ed16c0fed7a77b588d846378', github_cmd)
         self.assertIn('sha256sum --check', github_cmd)
-        self.assertIn('Node_Install_2.5.10-docs-menu_' + build_id + '.zip', archive_cmd)
+        self.assertIn('Node_Install_2.5.11-docs-menu_' + build_id + '.zip', archive_cmd)
         self.assertIn('python3 scripts/verify_release.py --root .', archive_cmd)
         self.assertIn('sha256sum --check SHA256SUMS', archive_cmd)
         self.assertIn('sudo bash ./install.sh --no-reboot', archive_cmd)
@@ -181,7 +181,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         for path in ('docs/history/README_2.5.5.md', 'docs/history/SECURITY_2.5.5.md'):
             self.assertTrue((ROOT/path).is_file())
         self.assertIn('## ⚡ Установка', self.readme)
-        self.assertIn('2.5.10', self.readme)
+        self.assertIn('2.5.11', self.readme)
         self.assertIn('docs/history/README_2.5.4.md', self.readme)
         self.assertNotIn('## ⚠️ Версии и ограничения', self.readme)
 

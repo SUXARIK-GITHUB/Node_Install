@@ -17,7 +17,7 @@ class PlatformTests(unittest.TestCase):
             for arch in ('amd64','arm64'):
                 with self.subTest(os=version,arch=arch):
                     r=self.call([distro,version,code,arch]);self.assertEqual(r.returncode,0,r.stderr)
-                    self.assertIn('1536' if version=='26.04' else '900',r.stdout)
+                    self.assertIn('900',r.stdout)
 
     def test_wrong_release_codename_arch_refused(self):
         for args in [('ubuntu','26.04','noble','amd64'),('ubuntu','24.04','resolute','amd64'),('ubuntu','26.04','resolute','i386'),('ubuntu','26.10','sassy','amd64'),('linuxmint','26.04','resolute','arm64')]:

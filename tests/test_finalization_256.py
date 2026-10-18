@@ -36,14 +36,14 @@ class Finalization256(unittest.TestCase):
             self.write(name, 'fixture\n')
         self.write('etc/vkarmani-node/config.json', json.dumps({'installation_mode':'secret-key-only',
                    'domain':'node.example.test','public_ipv4':'192.0.2.10','panel_ipv4':['192.0.2.20'],'node_port':2222}))
-        self.write(self.m.STATE+'/install-version','2.5.10\n')
+        self.write(self.m.STATE+'/install-version','2.5.11\n')
         self.write(self.m.STATE+'/image-digest', self.digest+'\n')
         self.write('etc/ufw/before.rules','*filter\n:ufw-before-input - [0:0]\nCOMMIT\n')
         self.write('proc/cmdline','quiet ipv6.disable=1\n')
         self.write(self.m.STATE+'/backups/original/config','old fixture\n')
         self.write(self.m.STATE+'/backups/original/MANIFEST.sha256',self.m.sha(b'old fixture\n')+'  ./config\n')
         self.write(self.m.STATE+'/latest-backup-path','/'+self.m.STATE+'/backups/original\n')
-        self.source=self.write(self.m.STATE+'/installer-2.5.10.sh', SCRIPT)
+        self.source=self.write(self.m.STATE+'/installer-2.5.11.sh', SCRIPT)
 
     def write(self, path, value, mode=0o600):
         p=self.root/path
@@ -68,6 +68,7 @@ class Finalization256(unittest.TestCase):
         if argv[0]=='python3' and argv[-1]=='reality-export':
             self.assertTrue(quiet, 'private key export must not go to stdout')
             self.write('root/reality-keys.txt','PRIVATE-TEST-CANARY\n')
+            self.write('root/vkarmani-raw-profile.json', (self.root/'etc/vkarmani-node/profile.json').read_text())
             return ''
         if argv[0]=='bash':
             code=argv[4]
@@ -115,6 +116,19 @@ class Finalization256(unittest.TestCase):
             if argv[0]=='systemctl': self.assertIn(argv[1],('is-enabled','is-active'))
             if argv[0]=='docker': self.assertIn('inspect',argv)
 
+    def test_missing_ordinary_operator_profile_refuses_install_complete(self):
+        self.prepare()
+        real_runner = self.f.runner
+        def lose_export(argv, timeout=30, quiet=False):
+            result = real_runner(argv, timeout=timeout, quiet=quiet)
+            if argv[0] == 'python3' and argv[-1] == 'reality-export':
+                (self.root/'root/vkarmani-raw-profile.json').unlink()
+            return result
+        self.f.runner = lose_export
+        with self.assertRaises((OSError, self.m.Failure)):
+            self.f.finish()
+        self.assertFalse((self.f.state/'INSTALL_COMPLETE').exists())
+
     def test_ntp_failure_then_retry_never_replays_os(self):
         self.prepare();self.fail_check={1}
         with self.assertRaisesRegex(self.m.Failure,'NTP_TIMEOUT'):self.f.finish()
@@ -135,7 +149,7 @@ class Finalization256(unittest.TestCase):
 
     def test_unreviewed_legacy_install_not_automatically_finalized(self):
         self.write(self.m.STATE+'/install-version','2.5.5\n')
-        with self.assertRaisesRegex(self.m.Failure,'2_5_6'):self.f.prepare(self.source)
+        with self.assertRaisesRegex(self.m.Failure,'2_5_11'):self.f.prepare(self.source)
         self.assertFalse(self.f.tx.exists())
 
     def test_missing_checkpoint_does_not_create_success(self):
@@ -297,3 +311,34 @@ class Runner256Tests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class FinalizerDockerArgvRegression(unittest.TestCase):
+    """The real vkarmani-docker-local wrapper always adds --host itself."""
+
+    def test_docker_call_has_no_second_host_flag(self):
+        import importlib.util, sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_file_location('fin_reg', root / 'integrations/finalize_install.py')
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        seen = []
+        class Stop(Exception): pass
+        def runner(argv, timeout=30, quiet=False):
+            if argv[0] == 'docker':
+                seen.append(argv); raise Stop()
+            if argv[0] == 'ip':
+                return '[{"addr_info":[{"family":"inet","local":"192.0.2.10"}]}]'
+            return ''
+        f = m.Finalizer(root=Path('/nonexistent'), runner=runner)
+        f.read = lambda path, private=False: {
+            'install-version': b'2.5.11\n', 'owned-installation': b'',
+            'config.json': b'{"installation_mode":"secret-key-only","public_ipv4":"192.0.2.10"}',
+            'image-digest': b'remnawave/node@sha256:' + b'a' * 64 + b'\n'}.get(path.name, b'')
+        f.safe = lambda *a, **k: None
+        f.absent = lambda p: None
+        with self.assertRaises(Stop):
+            f.base_checks()
+        self.assertEqual(len(seen), 1)
+        self.assertNotIn('--host', seen[0])
+        self.assertNotIn('-H', seen[0])

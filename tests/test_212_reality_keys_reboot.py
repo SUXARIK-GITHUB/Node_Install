@@ -25,6 +25,7 @@ class RealityKeyExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, \
              patch.object(self.h, 'ETC', Path(folder) / 'etc'), \
              patch.object(self.h, 'REALITY_EXPORT', Path(folder) / 'reality-keys.txt'), \
+             patch.object(self.h, 'PROFILE_EXPORT', Path(folder) / 'profile-export.json'), \
              patch.object(self.h, 'detect_local_public_ipv4s', return_value={'8.8.8.8': 'eth0'}):
             out = self.h.export_reality_keys_file(self.config())
             self.assertEqual(out, Path(folder) / 'reality-keys.txt')
@@ -44,6 +45,7 @@ class RealityKeyExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, \
              patch.object(self.h, 'ETC', Path(folder) / 'etc'), \
              patch.object(self.h, 'REALITY_EXPORT', Path(folder) / 'reality-keys.txt'), \
+             patch.object(self.h, 'PROFILE_EXPORT', Path(folder) / 'profile-export.json'), \
              patch.object(self.h, 'detect_local_public_ipv4s', return_value={'8.8.8.8': 'eth0'}):
             first = self.h.export_reality_keys_file(self.config()).read_text()
             keys_before = (self.h.ETC / 'reality.json').read_bytes()
@@ -55,6 +57,7 @@ class RealityKeyExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, \
              patch.object(self.h, 'ETC', Path(folder) / 'etc'), \
              patch.object(self.h, 'REALITY_EXPORT', Path(folder) / 'reality-keys.txt'), \
+             patch.object(self.h, 'PROFILE_EXPORT', Path(folder) / 'profile-export.json'), \
              patch.object(self.h, 'detect_local_public_ipv4s', return_value={'8.8.8.8': 'eth0'}):
             target = Path(folder) / 'foreign'
             target.write_text('DO NOT TOUCH')
@@ -67,6 +70,7 @@ class RealityKeyExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, \
              patch.object(self.h, 'ETC', Path(folder) / 'etc'), \
              patch.object(self.h, 'REALITY_EXPORT', Path(folder) / 'reality-keys.txt'), \
+             patch.object(self.h, 'PROFILE_EXPORT', Path(folder) / 'profile-export.json'), \
              patch.object(self.h, 'detect_local_public_ipv4s', return_value={'8.8.8.8': 'eth0'}):
             self.h.REALITY_EXPORT.write_text('FOREIGN SECRET')
             self.h.REALITY_EXPORT.chmod(0o644)

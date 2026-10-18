@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.10 (README and guarded installation-choice candidate). Read README.md before running as root.
+# VKarmani Node 2.5.11 (README and guarded installation-choice candidate). Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1499,7 +1499,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1521,6 +1521,19 @@ else
     fi
 fi
 
+# A 1 GiB installation must not silently lose its verified swap on reboot.
+if [[ "$INSTALL_VERSION" == 2.5.11 ]]; then
+    RAM_KIB=$(awk '$1=="MemTotal:" {print $2}' /proc/meminfo)
+    if [[ "$RAM_KIB" =~ ^[0-9]+$ ]] && (( RAM_KIB < 1536 * 1024 )); then
+        SWAP_KIB=$(awk '$1=="SwapTotal:" {print $2}' /proc/meminfo)
+        if [[ "$SWAP_KIB" =~ ^[0-9]+$ ]] && (( SWAP_KIB >= 1048576 )); then
+            pass LOWMEM_ACTIVE_SWAP_1G
+        else
+            fail LOWMEM_ACTIVE_SWAP_1G 'under 1536 MiB RAM but less than 1 GiB active swap'
+        fi
+    fi
+fi
+
 vk_check_import_profile() {
     case "$INSTALLED_CONTRACT_CLASS" in
         modern)
@@ -1539,7 +1552,7 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 ]]; then
         if [[ -f "$ETC/cascade-role.json" ]]; then
             warn XHTTP_IMPORT_PROFILE_POLICY 'CASCADE_RAW_ONLY: XHTTP not available for this peer bridge'
         elif [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
@@ -2553,7 +2566,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3114,10 +3127,88 @@ vk_platform_settings() {
     case "$arch" in amd64|arm64) ;; *) echo 'STOP: only amd64/arm64 are supported.' >&2; return 1 ;; esac
     OS_ID=$id
     OS_CODENAME=$codename
+    # The 1-GiB VPS profile relies on verified swap before APT, not a different
+    # OS-specific acceptance threshold. No RAM capacity guarantee is inferred.
     MIN_MEMORY_MB=900
-    if [[ "$id:$version" == ubuntu:26.04 ]]; then
-        MIN_MEMORY_MB=1536
+}
+
+# For 900..1535 MiB hosts, require >=1 GiB *active* swap before APT/dpkg.
+# Only root-owned dedicated fresh VPS or a recognized installer resume may write
+# /swapfile-vkarmani. Never replace existing swap devices or foreign files.
+vk_lowmem_swap_total_kib() {
+    awk '$1=="SwapTotal:" && $2 ~ /^[0-9]+$/ {print $2;found=1} END {if (!found) exit 1}' /proc/meminfo
+}
+
+vk_lowmem_swap_preflight() {
+    local ram_mib=$1 total_kib rootfs c
+    [[ "$ram_mib" =~ ^[0-9]+$ ]] || { echo 'STOP: некорректный MemTotal.' >&2; return 1; }
+    (( ram_mib < 1536 )) || return 0
+    total_kib=$(vk_lowmem_swap_total_kib) || { echo 'STOP: SwapTotal не читается.' >&2; return 1; }
+    if (( total_kib >= 1048576 )); then
+        printf 'LOWMEM_PREFLIGHT=PASS existing_swap_kib=%s\n' "$total_kib"
+        return 0
     fi
+    for c in findmnt mkswap swapon blkid dd ln mv chmod stat awk; do
+        command -v "$c" >/dev/null || { echo "STOP: для VPS 1 GiB требуется предварительно установленная утилита $c." >&2; return 1; }
+    done
+    rootfs=$(findmnt -n -o FSTYPE /) || return 1
+    case "$rootfs" in
+        ext4|xfs) ;;
+        *) echo "STOP: VPS 1 GiB без достаточного swap: файловая система $rootfs не прошла проверку безопасного swapfile (нужны ext4/xfs либо настроенный заранее >=1 GiB swap)." >&2; return 1 ;;
+    esac
+    [[ -f /etc/fstab && ! -L /etc/fstab ]] || { echo 'STOP: небезопасный /etc/fstab.' >&2; return 1; }
+    [[ ! -L /swapfile-vkarmani && ! -L /swapfile-vkarmani.tmp ]] || { echo 'STOP: swapfile symlink.' >&2; return 1; }
+    [[ ! -e /swapfile-vkarmani.tmp ]] || { echo 'STOP: existing temporary swapfile requires manual recovery.' >&2; return 1; }
+    if [[ -e /swapfile-vkarmani ]]; then
+        # Only a previous owned-installation run is allowed to leave this file.
+        [[ -f /var/lib/vkarmani-node/owned-installation && ! -L /var/lib/vkarmani-node/owned-installation ]] || {
+            echo 'STOP: чужой swapfile: отказываюсь переиспользовать.' >&2; return 1;
+        }
+        [[ $(stat -c '%u:%a:%h:%s' /swapfile-vkarmani) == '0:600:1:1073741824' ]] &&
+        [[ $(blkid -p -s TYPE -o value /swapfile-vkarmani) == swap ]] || {
+            echo 'STOP: existing swapfile not a reviewed owned 1 GiB swap.' >&2; return 1;
+        }
+    fi
+    if grep -Eq '^[[:space:]]*[^#[:space:]].*[[:space:]]/swapfile-vkarmani([[:space:]]|$)' /etc/fstab; then
+        echo 'STOP: нестандартная запись /swapfile-vkarmani в fstab.' >&2; return 1
+    fi
+    printf 'LOWMEM_PREFLIGHT=PASS ram_mib=%s needs_1GiB_swap=YES fs=%s\n' "$ram_mib" "$rootfs"
+}
+
+vk_prepare_lowmem_swap() {
+    local ram_mib=$1 total_kib name
+    (( ram_mib < 1536 )) || return 0
+    total_kib=$(vk_lowmem_swap_total_kib) || return 1
+    if (( total_kib >= 1048576 )); then
+        printf 'LOWMEM_SWAP=PASS already_active_kib=%s\n' "$total_kib"
+        return 0
+    fi
+    vk_lowmem_swap_preflight "$ram_mib" || return 1
+    if [[ ! -e /swapfile-vkarmani ]]; then
+        name="/swapfile-vkarmani.tmp"
+        [[ ! -e "$name" && ! -L "$name" ]] || return 1
+        # Real data blocks (not sparse/fallocate) are necessary on ext4/XFS.
+        dd if=/dev/zero of="$name" bs=1M count=1024 conv=fsync status=none || return 1
+        chmod 0600 "$name" || return 1
+        mkswap "$name" >/dev/null || return 1
+        [[ $(blkid -p -s TYPE -o value "$name") == swap ]] || return 1
+        [[ ! -e /swapfile-vkarmani && ! -L /swapfile-vkarmani ]] || return 1
+        # Hardlink creation fails rather than silently replacing a concurrent file.
+        ln -- "$name" /swapfile-vkarmani || return 1
+        rm -- "$name" || return 1
+    fi
+    [[ $(stat -c '%u:%a:%h:%s' /swapfile-vkarmani) == '0:600:1:1073741824' ]] || return 1
+    [[ $(blkid -p -s TYPE -o value /swapfile-vkarmani) == swap ]] || return 1
+    if ! swapon --show=NAME --noheadings --raw | grep -Fxq /swapfile-vkarmani; then
+        swapon /swapfile-vkarmani || return 1
+    fi
+    total_kib=$(vk_lowmem_swap_total_kib) || return 1
+    (( total_kib >= 1048576 )) || { echo 'STOP: low-memory swap still unavailable.' >&2; return 1; }
+    if ! grep -Eq '^[[:space:]]*/swapfile-vkarmani[[:space:]]+none[[:space:]]+swap[[:space:]]+sw[[:space:]]+0[[:space:]]+0[[:space:]]*$' /etc/fstab; then
+        # The verified backup was saved immediately before this phase.
+        printf '/swapfile-vkarmani none swap sw 0 0\n' >> /etc/fstab || return 1
+    fi
+    printf 'LOWMEM_SWAP=PASS active_kib=%s persistent=YES\n' "$total_kib"
 }
 
 vk_kernel_plugins_supported() {
@@ -3667,7 +3758,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -4187,6 +4278,41 @@ vkarmani_site_main() (
     [[ $EUID -eq 0 && -d /run/systemd/system ]] || { echo 'STOP: run as root on the installed node.'; exit 1; }
     exec 9>/run/lock/vkarmani-node-installer.lock
     flock -n 9 || { echo 'STOP: another installer/maintenance operation is running.'; exit 1; }
+    # R7 site deployment owns the same index.html. Never bypass its transaction
+    # journal with the older cover updater; leave a rolled-back receipt alone.
+    python3 -I -B -S - <<'VK_LEGACY_COVER_R7_GUARD' || exit 1
+import json, os, stat, sys
+from pathlib import Path
+journal = Path('/var/lib/vkarmani-node/r7-web-deploy')
+receipt = journal / 'site.json'
+try:
+    if journal.is_symlink():
+        raise ValueError('JOURNAL_SYMLINK')
+    if receipt.is_symlink():
+        raise ValueError('RECEIPT_SYMLINK')
+    if receipt.exists():
+        d = journal.lstat()
+        if not stat.S_ISDIR(d.st_mode) or d.st_uid != 0 or (d.st_mode & 0o077):
+            raise ValueError('JOURNAL_PERMISSIONS')
+        fd = os.open(receipt, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1 or (info.st_mode & 0o077):
+                raise ValueError('RECEIPT_PERMISSIONS')
+            raw = stream.read(32769)
+        if len(raw) > 32768:
+            raise ValueError('RECEIPT_TOO_LARGE')
+        data = json.loads(raw)
+        if (not isinstance(data, dict) or data.get('schema') != 1
+                or data.get('kind') != 'site'
+                or data.get('stage') not in ('active','pending','rolled_back')):
+            raise ValueError('RECEIPT_UNRECOGNIZED')
+        if data['stage'] != 'rolled_back':
+            raise ValueError('R7_SITE_DEPLOY_ACTIVE_OR_PENDING')
+except (OSError, ValueError, TypeError) as exc:
+    print('STOP: old --update-cover/--rollback-cover conflicts with R7 site journal: ' + str(exc),file=sys.stderr)
+    sys.exit(1)
+VK_LEGACY_COVER_R7_GUARD
     work=$(mktemp -d /root/vkarmani-cover.XXXXXXXX)
     trap 'rm -rf -- "$work"' EXIT
     vk_write_site_tool "$work/site_tool.py"
@@ -5623,8 +5749,8 @@ vkarmani_rkn_command() {
         [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
-        grep -Eq '^version=2\.5\.([2-9]|10)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2–2.5.10 nodes.' >&2; return 1;
+        grep -Eq '^version=2\.5\.([2-9]|10|11)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+            echo 'RKN integration supports only completed 2.5.2–2.5.11 nodes.' >&2; return 1;
         }
         vk_rkn_activate
         return
@@ -5940,7 +6066,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -6136,7 +6262,7 @@ vk_write_finalizer_helper() {
     local destination=$1
     cat > "$destination" <<'VK_FINALIZER_PY'
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.10 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.11 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -6157,7 +6283,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.10'
+VERSION = '2.5.11'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -6312,7 +6438,7 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_6_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_11_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
@@ -6328,8 +6454,10 @@ class Finalizer:
         if not IMAGE.fullmatch(digest):
             raise Failure('FINALIZATION_IMAGE_DIGEST_INVALID')
         fmt = '{{.Config.Image}}|{{.State.Running}}|{{.State.Restarting}}'
-        current = self.runner(['docker', '--host', 'unix:///var/run/docker.sock',
-                               'inspect', 'remnanode', '--format', fmt], quiet=True).strip()
+        # run() maps 'docker' to vkarmani-docker-local, which already pins the
+        # local socket with --host. A second --host makes Docker CLI exit 125.
+        current = self.runner(['docker', 'inspect', 'remnanode', '--format', fmt],
+                              quiet=True).strip()
         if current != digest + '|true|false':
             raise Failure('FINALIZATION_IMAGE_OR_CONTAINER_DRIFT')
         return digest
@@ -6472,6 +6600,12 @@ class Finalizer:
         self.acceptance()
         self.runner(['python3', '-I', '-B', str(self.path(KEY_HELPER.lstrip('/'))), 'reality-export'], quiet=True)
         self.read(self.path('root/reality-keys.txt'), private=True)
+        if not self.path('etc/vkarmani-node/cascade-role.json').exists():
+            # Operator convenience copy is part of the ordinary finalization
+            # contract, but never an active configuration nor extra key source.
+            operator_profile = self.read(self.path('root/vkarmani-raw-profile.json'), private=True)
+            if operator_profile != self.read(self.path('etc/vkarmani-node/profile.json'), private=True):
+                raise Failure('ORDINARY_OPERATOR_PROFILE_EXPORT_DRIFT')
         self.verify(obj)  # export must not regenerate keys, config or profiles
         if obj['phase'] == 'rkn-started':
             self.rollback_rkn(obj)  # safely abandon a previously interrupted owned attempt
@@ -6551,7 +6685,7 @@ vkarmani_finish_install_main() (
     # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
     local state=/var/lib/vkarmani-node work
     [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
-        echo 'STOP: no supported 2.5.10 finalization checkpoint; no installation state changed.' >&2; exit 1;
+        echo 'STOP: no supported 2.5.11 finalization checkpoint; no installation state changed.' >&2; exit 1;
     }
     local lock=/run/lock/vkarmani-node-installer.lock
     if [[ ! -e "$lock" && ! -L "$lock" ]]; then
@@ -6903,8 +7037,8 @@ vkarmani_maintenance_command() {
             [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE && ! -L /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
                 echo 'MAINTENANCE: завершите установку перед включением' >&2; return 1;
             }
-            grep -Eq '^version=2\.5\.(8|9|10)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8/2.5.9/2.5.10; старые ноды не мигрируются автоматически' >&2; return 1;
+            grep -Eq '^version=2\.5\.(8|9|10|11)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.11; старые ноды не мигрируются автоматически' >&2; return 1;
             }
             [[ -x /usr/local/sbin/vkarmani-docker-local ]] || {
                 echo 'MAINTENANCE: локальный Docker wrapper не установлен' >&2; return 1;
@@ -6921,7 +7055,7 @@ vkarmani_maintenance_command() {
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.10 — 2026-10-15
+# VKarmani Remnawave Node Installer 2.5.11 — 2026-10-18
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -6933,7 +7067,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.10
+INSTALLER_VERSION=2.5.11
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -6954,7 +7088,7 @@ VK_CASCADE_HELPER=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.10
+VKarmani Remnawave Node Installer 2.5.11
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -6969,7 +7103,7 @@ VKarmani Remnawave Node Installer 2.5.10
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
-  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.10, без переустановки/reboot
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.11, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -6978,7 +7112,7 @@ VKarmani Remnawave Node Installer 2.5.10
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.10 ноде
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.11 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
@@ -6996,7 +7130,7 @@ VKarmani Remnawave Node Installer 2.5.10
 Три обязательных значения обычной ноды: SECRET_KEY → домен ноды → исходящий IPv4 технички.
 IP самой ноды выбирается по DNS среди публичных IPv4 её интерфейсов.
 Чистая выделенная Ubuntu 22.04/24.04/26.04 или Debian 12/13; amd64/arm64; systemd + GRUB.
-Минимум: 900 MiB RAM (26.04: 1536 MiB), 6 GiB свободно. NAT, LXC/OpenVZ, IPv6 SSH, чужая установка не поддержаны.
+Минимум: 900 MiB RAM, 6 GiB свободно; при RAM <1536 MiB нужен >=1 GiB активного swap до APT. NAT, LXC/OpenVZ, IPv6 SSH, чужая установка не поддержаны.
 SSH: только логин/пароль; ключевой вход отключается, authorized_keys не удаляются. Существующие порты, без IP-allowlist. Пароли/аккаунты не создаются.
 26.04: адаптация по документации; полный цикл на VPS ещё требует приёмки.
 До запуска нужны снимок VPS, консоль хостера и действующий пароль администратора.
@@ -7154,7 +7288,7 @@ vk_menu_display_prompt() {
 }
 vk_initial_install_menu() {
     local tries=0
-    echo 'VKarmani Node Install 2.5.10 — выбор режима первой установки:'
+    echo 'VKarmani Node Install 2.5.11 — выбор режима первой установки:'
     echo '  1 — Обычная нода (доступна в этой версии)'
     echo '  2 — Каскад: отдельная входная/выходная нода (только чистая staging VPS)'
     while ((tries < 5)); do
@@ -7217,7 +7351,7 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 && $WEEKLY_REBOOT -eq 1 ]]; then
 fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
-        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.10 use --finish-install.' >&2; exit 1
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.11 use --finish-install.' >&2; exit 1
     fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
@@ -7427,6 +7561,8 @@ if [[ $FRESH -eq 1 ]]; then
     fi
     [[ ! -e /swapfile-vkarmani ]] || { echo 'STOP: /swapfile-vkarmani уже существует без маркера нашей установки.'; exit 1; }
 fi
+# On a 1 GiB VPS fail before making any system changes if safe swap is impossible.
+vk_lowmem_swap_preflight "$MEM_MB" || exit 1
 # Input is from /dev/tty, never from the downloaded shell script stream.
 vk_collect_inputs
 if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$VK_CASCADE_ROLE_ARG" ]]; then
@@ -7532,6 +7668,9 @@ if [[ -n "$RESUME_FROM" ]]; then
     printf 'RESUME_FROM=%s BACKUP=%s\n' "$RESUME_FROM" "$BK"
 fi
 
+stage 'Подготовка проверенного swap ДО APT для VPS с 1 GiB RAM'
+vk_prepare_lowmem_swap "$MEM_MB" || die 'LOWMEM_SWAP_PREPARE_FAILED; снимок сохранён, продолжать APT нельзя.'
+
 stage 'Базовые инструменты из подписанного репозитория ОС'
 cat > /etc/apt/apt.conf.d/99-vkarmani-ipv4 <<'EOF'
 Acquire::ForceIPv4 "true";
@@ -7545,7 +7684,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.10: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.11: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -7559,15 +7698,21 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import stat
 import subprocess
 import sys
 
 ETC = Path('/etc/vkarmani-node')
 STATE = Path('/var/lib/vkarmani-node')
 REALITY_EXPORT = Path('/root/reality-keys.txt')
+PROFILE_EXPORT = Path('/root/vkarmani-raw-profile.json')
 MODE = 'secret-key-only'
 PROFILE_MIN_CLIENT_VERSION = '0.0.0'
 PROFILE_FLOW = 'xtls-rprx-vision'
+PROFILE_PRIVATE_RANGES = ['0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
+                          '169.254.0.0/16', '172.16.0.0/12', '192.0.0.0/24', '192.0.2.0/24',
+                          '192.168.0.0/16', '198.18.0.0/15', '198.51.100.0/24',
+                          '203.0.113.0/24', '224.0.0.0/4', '240.0.0.0/4']
 
 class Failure(Exception):
     pass
@@ -7877,12 +8022,17 @@ def make_keys_profile(c):
                                               'serverNames': [c['domain']],
                                               'privateKey': keys['private_key'],
                                               'shortIds': [keys['short_id']]}}}],
-        'outbounds': [{'tag': 'DIRECT', 'protocol': 'freedom', 'settings': {'domainStrategy': 'UseIPv4'}},
+        # finalRules re-check the RESOLVED destination inside freedom, so a
+        # domain that resolves to a private/IPv6 address cannot bypass routing.
+        'outbounds': [{'tag': 'DIRECT', 'protocol': 'freedom',
+                       'settings': {'domainStrategy': 'UseIPv4',
+                                    'finalRules': [{'ip': PROFILE_PRIVATE_RANGES + ['::/0'],
+                                                    'action': 'block'}]}},
                       {'tag': 'BLOCK', 'protocol': 'blackhole'}],
         'routing': {'domainStrategy': 'IPOnDemand', 'rules': [
-            {'type': 'field', 'ip': ['0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
-                                    '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16',
-                                    '224.0.0.0/4', '240.0.0.0/4', c['public_ipv4'] + '/32', '::/0'] +
+            {'type': 'field', 'protocol': ['bittorrent'], 'outboundTag': 'BLOCK'},
+            {'type': 'field', 'domain': ['geosite:private'], 'outboundTag': 'BLOCK'},
+            {'type': 'field', 'ip': PROFILE_PRIVATE_RANGES + [c['public_ipv4'] + '/32', '::/0'] +
                                    [ip + '/32' for ip in sorted((set(c['panel_ipv4']) | set(detect_local_public_ipv4s())) - {c['public_ipv4']})],
              'outboundTag': 'BLOCK'}]}}
     validate_profile(profile, c)
@@ -8162,8 +8312,42 @@ def atomic_text(path, text):
 
 def export_reality_keys_file(c):
     # Derived convenience copy for the operator. reality.json remains authoritative.
-    make_keys_profile(c)
+    _, _, profile = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
+    # Only an ordinary node gets this extra private ready-to-import Config Profile.
+    # Cascade role-bundles are deliberately not duplicated under /root.
+    if not (ETC / 'cascade-role.json').exists():
+        target = PROFILE_EXPORT
+        source = ETC / 'profile.json'
+        # Preserve exact authoritative JSON bytes; never export a locally
+        # reconstructed approximation or follow a symlink to a foreign file.
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            source_info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(source_info.st_mode) or source_info.st_uid != os.geteuid()
+                    or source_info.st_nlink != 1 or source_info.st_mode & 0o077):
+                raise Failure('Исходный RAW профиль небезопасен; экспорт отменён.')
+            profile_bytes = stream.read(512*1024+1)
+        if len(profile_bytes) > 512*1024:
+            raise Failure('Исходный RAW профиль слишком большой; экспорт отменён.')
+        try:
+            if json.loads(profile_bytes) != profile:
+                raise ValueError()
+        except (ValueError, TypeError) as exc:
+            raise Failure('Профиль отличается от проверенного генератора; экспорт отменён.') from exc
+        if target.exists() or target.is_symlink():
+            info = target.lstat()
+            if (target.is_symlink() or not target.is_file() or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1 or (info.st_mode & 0o777) != 0o600):
+                raise Failure('/root/vkarmani-raw-profile.json имеет небезопасные права/тип; не перезаписываю.')
+            if target.read_bytes() != profile_bytes:
+                raise Failure('/root/vkarmani-raw-profile.json изменён относительно профиля; не перезаписываю.')
+        else:
+            atomic_text(target, profile_bytes.decode('utf-8'))
+        info = target.lstat()
+        if (info.st_uid != os.geteuid() or not target.is_file()
+                or info.st_nlink != 1 or (info.st_mode & 0o777) != 0o600):
+            raise Failure('Не удалось безопасно сохранить /root/vkarmani-raw-profile.json.')
     path = REALITY_EXPORT
     if path.exists() or path.is_symlink():
         st = path.lstat()
@@ -8171,7 +8355,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.10\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.11\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -8355,7 +8539,7 @@ def write_panel_guide(c):
         return
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.10 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.11 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -8363,6 +8547,7 @@ def write_panel_guide(c):
 
 1. Config Profiles: создайте профиль {name} и вставьте JSON из
    /etc/vkarmani-node/profile.json (RAW+REALITY+Vision — режим по умолчанию).
+   Для ordinary: приватная копия полного Config Profile — /root/vkarmani-raw-profile.json.
    Альтернатива /etc/vkarmani-node/profile-xhttp.json (XHTTP+REALITY без Vision).
    Оба шаблона используют ОДИН tag inbound и одни REALITY-ключи, но НЕ
    предназначены для одновременного запуска на TCP/443. В панели заменяйте
@@ -8877,6 +9062,10 @@ if [[ $(helper get create_swap) == true && "$MEM_MB" -lt 2048 && -z "$(swapon --
     fi
 fi
 
+if (( MEM_MB < 1536 )); then
+    [[ $(vk_lowmem_swap_total_kib) -ge 1048576 ]] || die 'LOWMEM_SWAP_LOST_BEFORE_DOCKER'
+fi
+
 stage 'Официальный Docker Engine и Compose plugin'
 for package in docker.io docker-compose docker-compose-v2 podman-docker containerd runc; do
     if dpkg-query -W -f='${Status}' "$package" 2>/dev/null | _contains -F 'ok installed'; then
@@ -9289,6 +9478,9 @@ printf 'Внешний firewall хостера (если есть): разреш
 printf 'Транспорт: VLESS + RAW + REALITY + Vision ИЛИ XHTTP + REALITY без Vision; Selfsteal: /dev/shm/nginx.sock (xver=1)\n'
 printf 'Профиль и действия в панели: /etc/vkarmani-node/PANEL-SETUP.txt\n'
 printf 'REALITY_KEYS_FILE: %s (root:0600; PrivateKey не записывается в install log)\n' "$REALITY_KEYS_FILE"
+if [[ $VK_CASCADE_ACTIVE -eq 0 ]]; then
+    printf 'ORDINARY_PROFILE_EXPORT=/root/vkarmani-raw-profile.json (root:0600; полный Config Profile для панели)\n'
+fi
 printf 'SSH-порты сохранены: %s\n' "${SSH_PORTS[*]}"
 printf 'Проверка после входа: sudo vkarmani-node-check\nЖурнал: /var/log/vkarmani-node-postboot.log\n'
 printf 'Резервная копия: %s\nПолное отключение IPv6 проверяется ПОСЛЕ загрузки нового ядра.\n' "$BK"

@@ -60,7 +60,9 @@ REQUIRED = {'install.sh', 'README.md', 'CHANGELOG.md', '.gitattributes',
             'tests/test_2510_r6_remaining_gates.py',
             'scripts/staging_web_deploy.py', 'scripts/cascade_live_probe.py',
             'tests/test_2510_r7_web_deploy.py', 'tests/test_2510_r7_live_probe.py',
-            'docs/R7_SITES_TCP_AND_LIVE_PROBES.md',}
+            'docs/R7_SITES_TCP_AND_LIVE_PROBES.md',
+            'docs/R8_INTEGRATION_REVIEW_20261018.md', 'tests/test_2510_r9_reviewed_fixes.py',
+            'docs/RELEASE_2.5.11_R10_REVIEW.md', 'tests/test_2511_r10_lowmem_and_site.py',}
 
 
 def sha256(value):
@@ -83,7 +85,7 @@ def verify_name(value):
 
 
 def verify_manifest(m):
-    if m.get('version') != '2.5.10' or m.get('release_status') != 'INCOMPLETE_STAGING_ONLY':
+    if m.get('version') != '2.5.11' or m.get('release_status') != 'INCOMPLETE_STAGING_ONLY':
         raise ValueError('wrong release version or safety status')
     commit = m.get('source_commit')
     if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
@@ -143,12 +145,12 @@ def verify_bytes(files):
         if sha256(files[name]) != digest:
             raise ValueError('SHA256SUMS failed: ' + name)
     installer = files['install.sh'].decode('utf-8')
-    if not re.search(r'(?m)^INSTALLER_VERSION=2\.5\.10$', installer):
+    if not re.search(r'(?m)^INSTALLER_VERSION=2\.5\.11$', installer):
         raise ValueError('version of installer differs from manifest')
     readme = files['README.md'].decode('utf-8')
-    if '2.5.10' not in readme or 'локальный непубликованный staging' not in readme:
+    if '2.5.11' not in readme or 'локальный непубликованный staging' not in readme:
         raise ValueError('README release state/version inconsistent')
-    expected_archive = 'Node_Install_2.5.10-docs-menu_' + m['build_id'] + '.zip'
+    expected_archive = 'Node_Install_2.5.11-docs-menu_' + m['build_id'] + '.zip'
     if expected_archive not in readme.split('---', 1)[0]:
         raise ValueError('README release command/build ID inconsistent')
     for word in ('vk_rkn_safe_shutdown()', 'vk_write_docker_local()', 'vk_write_nightly_maintenance()'):

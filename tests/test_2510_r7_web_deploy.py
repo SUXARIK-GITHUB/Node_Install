@@ -17,12 +17,12 @@ class DeployerTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name)
         for name in ('var/lib/vkarmani-node', 'etc/vkarmani-node',
-                     'var/www/vkarmani-node/site', 'etc/nginx/conf.d','etc/nginx'):
+                     'var/www/vkarmani-node/site/assets', 'etc/nginx/conf.d','etc/nginx'):
             (self.root/name).mkdir(parents=True,exist_ok=True)
         state=self.root/'var/lib/vkarmani-node'
-        (state/'owned-installation').write_text('node\n')
-        (state/'install-version').write_text('2.5.10\n')
-        (state/'INSTALL_COMPLETE').write_text('version=2.5.10\n')
+        (state/'owned-installation').touch()  # installer creates a zero-byte marker
+        (state/'install-version').write_text('2.5.11\n')
+        (state/'INSTALL_COMPLETE').write_text('version=2.5.11\n')
         (self.root/'etc/vkarmani-node/config.json').write_text(json.dumps({
             'installation_mode':'secret-key-only','domain':'entry.example.com',
             'public_ipv4':'8.8.8.8'}))
@@ -33,6 +33,7 @@ class DeployerTests(unittest.TestCase):
  listen unix:/run/vkarmani-selfsteal/nginx.sock ssl proxy_protocol;
  root /var/www/vkarmani-node/site;
     location = /index.html { try_files $uri =404; }
+    location ~ "^/assets/(style-[0-9a-f]{20}[.]css|icon-[0-9a-f]{20}[.]svg)$" { try_files $uri =404; }
 }
 '''
         (self.root/'etc/nginx/conf.d/20-vkarmani-selfsteal.conf').write_bytes(self.original_conf)
@@ -40,7 +41,12 @@ class DeployerTests(unittest.TestCase):
         (self.root/'etc/nginx/nginx.conf').write_bytes(self.original_nginx)
         self.calls=[]
         self.app=deploy.NodeWeb(self.root,run=lambda argv:self.calls.append(argv),
-                                css_check=lambda config,css:self.assertGreater(len(css),0))
+                                css_check=self.check_css)
+        self.css_urls=[]
+
+    def check_css(self, config, css, css_name):
+        self.assertGreater(len(css),0)
+        self.css_urls.append(css_name)
 
     def test_all_six_sites_install_and_rollback_preserve_original(self):
         for name in deploy.NAMES:
@@ -48,13 +54,20 @@ class DeployerTests(unittest.TestCase):
                 a=self.app.site_install(name,'entry.example.com')
                 self.assertIn('SITE_DEPLOY=PASS',a)
                 site=self.app.site
-                self.assertIn(b'style.css',(site/'index.html').read_bytes())
-                self.assertEqual((site/'style.css').read_bytes(),(deploy.SITES/name/'style.css').read_bytes())
-                self.assertIn(b'location = /style.css',self.app.webconf.read_bytes())
+                css=(deploy.SITES/name/'style.css').read_bytes()
+                css_name=deploy.NodeWeb.css_name(css)
+                html=(site/'index.html').read_bytes()
+                self.assertIn(('href="'+css_name+'"').encode(),html)
+                self.assertNotIn(b'href="style.css"',html)
+                self.assertEqual((site/css_name).read_bytes(),css)
+                self.assertFalse((site/'style.css').exists())
+                self.assertEqual(self.css_urls[-1],css_name)
+                # Selfsteal Nginx must not be edited at all.
+                self.assertEqual(self.app.webconf.read_bytes(),self.original_conf)
                 self.assertIn('nginx',str(self.calls))
                 self.assertEqual(self.app.site_rollback(),'SITE_ROLLBACK=PASS')
                 self.assertEqual((site/'index.html').read_bytes(),self.old)
-                self.assertFalse((site/'style.css').exists())
+                self.assertFalse((site/css_name).exists())
                 self.assertEqual(self.app.webconf.read_bytes(),self.original_conf)
         self.assertEqual(self.app.status()['site'],'rolled_back')
 
@@ -121,6 +134,16 @@ class DeployerTests(unittest.TestCase):
         (self.app.state/'install-version').write_text('2.5.9')
         with self.assertRaisesRegex(deploy.DeployError,'ONLY_NEW'):
             self.app.tcp_install(9200,9300,portcheck=False)
+
+    def test_empty_installer_ownership_marker_and_missing_marker(self):
+        self.assertEqual((self.app.state/'owned-installation').stat().st_size,0)
+        self.assertEqual(self.app.ready()['installation_mode'],'secret-key-only')
+        marker=self.app.state/'owned-installation'
+        marker.unlink()
+        with self.assertRaisesRegex(deploy.DeployError,'REQUIRED_PATH_MISSING'):
+            self.app.ready()
+        marker.write_text('legacy-nonempty\n')
+        self.assertEqual(self.app.ready()['installation_mode'],'secret-key-only')
 
     def test_tcp_fragment_top_level_no_443(self):
         out=self.app.tcp_install(9200,9300,portcheck=False)

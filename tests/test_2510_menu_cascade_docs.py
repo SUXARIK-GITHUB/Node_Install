@@ -77,8 +77,8 @@ vk_initial_install_menu
         self.assertIn('[[ ! -e "$STATE/owned-installation"', SCRIPT[sel-230:sel])
 
     def test_new_version_remains_eligible_for_explicit_maintenance_and_rkn(self):
-        self.assertIn(r"'^version=2\.5\.(8|9|10)$'", SCRIPT)
-        self.assertIn(r"'^version=2\.5\.([2-9]|10)$'", SCRIPT)
+        self.assertIn(r"'^version=2\.5\.(8|9|10|11)$'", SCRIPT)
+        self.assertIn(r"'^version=2\.5\.([2-9]|10|11)$'", SCRIPT)
         self.assertIn("2.5.10", SCRIPT)
 
     def test_version_and_help_remain_inert(self):
@@ -86,7 +86,7 @@ vk_initial_install_menu
             p = subprocess.run(['bash', str(ROOT/'install.sh'), arg], capture_output=True, text=True, timeout=7)
             self.assertEqual(p.returncode, 2 if arg=='--not-a-real-flag' else 0)
             if arg != '--not-a-real-flag':
-                self.assertIn('2.5.10', p.stdout)
+                self.assertIn('2.5.11', p.stdout)
             self.assertNotIn('Выберите 1 или 2:', p.stdout)
 
 
@@ -137,7 +137,7 @@ class CascadeReference2510(unittest.TestCase):
     def test_readme_first_command_and_references_are_not_falsely_published(self):
         content=(ROOT/'README.md').read_text()
         self.assertTrue(content.startswith('<div align="center">'))
-        self.assertIn('2.5.10',content)
+        self.assertIn('2.5.11',content)
         self.assertIn('локальный непубликованный staging',content)
         self.assertIn('### 🟦 Карта 1',content)
         self.assertIn('### 🟪 Карта 2',content)

@@ -128,23 +128,23 @@ class NodeWeb:
             raise DeployError('SERVICE_CHECK_FAILED_' + Path(args[0]).name.upper().replace('-', '_'))
         return r.stdout
 
-    def _check_css(self, config, expected):
+    def _check_css(self, config, expected, css_name='style.css'):
         domain, ip = config['domain'], config['public_ipv4']
         cmd=['curl','-q','--noproxy','*','-4','--fail','--silent','--show-error',
              '--http2','--tlsv1.3','--tls-max','1.3','--connect-timeout','5',
              '--max-time','15','--max-filesize',str(128*1024),
-             '--resolve',f'{domain}:443:{ip}',f'https://{domain}/style.css']
+             '--resolve',f'{domain}:443:{ip}',f'https://{domain}/{css_name}']
         actual=self.run(cmd)
         must(actual==expected,'LIVE_CSS_NOT_SERVED')
 
-    def _activate(self, css=None, config=None):
+    def _activate(self, css=None, config=None, css_name='style.css'):
         # Staging changes must be activated, not only syntactically validated.
         self.run(['nginx','-t'])
         self.run(['systemctl','reload','nginx'])
         self.run(['systemctl','is-active','--quiet','nginx'])
         self.run(['/usr/local/sbin/vkarmani-selfsteal-check'])
         if css is not None:
-            self.css_check(config,css)
+            self.css_check(config,css,css_name)
 
     def _check(self, full=True):
         self.run(['nginx','-t'])
@@ -168,11 +168,14 @@ class NodeWeb:
                 st=target.lstat()
                 must(st.st_uid==0 and stat.S_ISREG(st.st_mode) and
                      stat.S_IMODE(st.st_mode)&0o077==0,'UNSAFE_PRIVATE_STATE_FILE')
-        must(read(self.state/'owned-installation',self.root,256), 'FOREIGN_NODE')
+        # install.sh creates this ownership marker with `touch` (zero bytes).
+        # Existence, regular-file type, single link and private ownership/mode
+        # are checked by read() and the root-only checks above, not contents.
+        read(self.state/'owned-installation',self.root,256)
         version=read(self.state/'install-version',self.root,32).decode().strip()
-        must(version in ('2.5.10',), 'ONLY_NEW_2_5_10_STAGING')
+        must(version in ('2.5.11',), 'ONLY_NEW_2_5_11_STAGING')
         complete=read(self.state/'INSTALL_COMPLETE',self.root,2048).decode()
-        must(re.search(r'(?m)^version=2\.5\.10$',complete) is not None, 'INSTALL_NOT_COMPLETE')
+        must(re.search(r'(?m)^version=2\.5\.11$',complete) is not None, 'INSTALL_NOT_COMPLETE')
         for marker in SENSITIVE:
             must(not (self.state/marker).exists() and not (self.state/marker).is_symlink(),
                  'OTHER_TRANSACTION_PENDING')
@@ -289,10 +292,25 @@ class NodeWeb:
         self.write_receipt(kind,r)
         return kind.upper()+'_ROLLBACK=PASS'
 
-    def site_files(self):
-        return {'index':self.site/'index.html',
-                'css':self.site/'style.css',
-                'nginx':self.webconf}
+    @staticmethod
+    def css_name(css):
+        # The installed Selfsteal checker and Nginx location accept ONLY local,
+        # content-addressed assets: assets/style-<first 20 hex of sha256>.css.
+        return 'assets/style-'+digest(css)[:20]+'.css'
+
+    def site_files(self, receipt=None, css_name=None):
+        if receipt is not None:
+            meta=receipt.get('metadata') or {}
+            if 'nginx' in receipt.get('files',{}):
+                # r7..r7f journal: unversioned style.css + edited Nginx location.
+                return {'index':self.site/'index.html',
+                        'css':self.site/'style.css',
+                        'nginx':self.webconf}
+            css_name=meta.get('css')
+        must(isinstance(css_name,str) and
+             re.fullmatch(r'assets/style-[0-9a-f]{20}[.]css',css_name) is not None,
+             'INVALID_THEME_ASSET_NAME')
+        return {'index':self.site/'index.html','css':self.site/css_name}
 
     def site_install(self,theme,expect_domain):
         must(theme in NAMES,'UNKNOWN_THEME')
@@ -302,34 +320,42 @@ class NodeWeb:
         must(expect_domain==config['domain'],'DOMAIN_CONFIRMATION_MISMATCH')
         for d in (self.site,self.webconf.parent):
             path_check(d,self.root); must(d.is_dir(),'DIR_INVALID')
-        files=self.site_files()
         source=SITES/theme
         html=read(source/'index.html',SITES.parent,128*1024)
         css=read(source/'style.css',SITES.parent,128*1024)
-        must(b'"style.css"' in html and b'<script' not in html and b'@import' not in css,
+        must(html.count(b'href="style.css"')==1 and b'<script' not in html
+             and b'@import' not in css and b'url(' not in css,
              'UNREVIEWED_THEME_CONTENT')
-        before=read(files['nginx'],self.root)
-        marker=b'    location = /index.html {'
-        must(before.count(marker)==1 and before.count(b'root /var/www/vkarmani-node/site;')==1
-             and b'listen unix:/run/vkarmani-selfsteal/nginx.sock' in before
-             and MARKER_BEGIN.encode() not in before and b'location = /style.css' not in before,
-             'FOREIGN_OR_ALREADY_MODIFIED_SELFSTEAL')
-        new_nginx=before.replace(marker, STYLE_LOCATION.encode()+marker,1)
+        css_name=self.css_name(css)
+        html=html.replace(b'href="style.css"',b'href="'+css_name.encode()+b'"')
+        files=self.site_files(css_name=css_name)
+        assets=self.site/'assets'
+        path_check(assets,self.root); must(assets.is_dir(),'DIR_INVALID')
+        # The existing Selfsteal Nginx already serves versioned assets with
+        # its security headers and cache policy; it is verified, never edited.
+        conf=read(self.webconf,self.root)
+        must(b'listen unix:/run/vkarmani-selfsteal/nginx.sock' in conf and
+             b'root /var/www/vkarmani-node/site;' in conf and
+             b'style-[0-9a-f]{20}[.]css' in conf,
+             'FOREIGN_OR_UNSUPPORTED_SELFSTEAL')
+        must(not files['css'].exists() and not files['css'].is_symlink(),
+             'THEME_ASSET_ALREADY_PRESENT')
         self._check()
         with self.lock():
-            r,old=self.backup('site',files,{'theme':theme,'domain':config['domain']})
-            targets={'index':html,'css':css,'nginx':new_nginx}
+            r,old=self.backup('site',files,{'theme':theme,'domain':config['domain'],
+                                             'css':css_name})
+            targets={'index':html,'css':css}
             for label in targets: r['files'][label]['after_sha']=digest(targets[label])
             self.write_receipt('site',r)
             try:
                 # Publish CSS before HTML, so existing cover stays intact until final swap.
-                for label in ('css','nginx','index'):
+                for label in ('css','index'):
                     expected=old[label]
                     cur=None if not files[label].exists() else read(files[label],self.root)
                     must(cur==expected,'CONCURRENT_SITE_MODIFICATION')
                     atomic(files[label],targets[label],self.root,
                            self.original_mode(r['files'][label]))
-                self._activate(css=css,config=config)
+                self._activate(css=css,config=config,css_name=css_name)
                 r['stage']='active';self.write_receipt('site',r)
                 return 'SITE_DEPLOY=PASS theme='+theme+' SELFSTEAL_LOCAL_CHECK=PASS'
             except BaseException:
@@ -344,7 +370,7 @@ class NodeWeb:
         with self.lock():
             r=self.receipt('site')
             must(r is not None and r['stage'] in ('pending','active'), 'NO_SITE_ROLLBACK')
-            return self.recovery('site',r,self.site_files(),self._activate)
+            return self.recovery('site',r,self.site_files(receipt=r),self._activate)
 
     def tcp_files(self):
         return {'main':self.mainconf,'fragment':self.streamconf}

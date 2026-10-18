@@ -18,6 +18,9 @@
 
 Исходники закреплены на коммите `2c2caa35c98ad5badd44f49fc651c17278e63e9e`; SHA-256 `install.sh` проверяется **до запуска**.
 
+> [!WARNING]
+> В r7e/r7f финальная фаза установки падает (двойной `--host` у Docker CLI). Используйте локальный непубликованный staging ZIP **r10** ниже; ветка GitHub всё ещё содержит старую версию и не равна этому ZIP.
+
 ```bash
 git clone https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-github-2.5.10-r7e
 cd Node_Install-github-2.5.10-r7e
@@ -25,22 +28,28 @@ git checkout --detach 2c2caa35c98ad5badd44f49fc651c17278e63e9e
 printf '%s  %s\n' 'f00c1433b83421de3d21b61d3e85e99e96b537c6ed16c0fed7a77b588d846378' 'install.sh' | sha256sum --check
 bash -n install.sh
 bash ./install.sh --version
-sudo bash ./install.sh --no-reboot
+# Только проверка исходников. Не запускать этот исторический r7e на VPS.
 ```
 
 <a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.10 r7f
+### 📁 2. Из полного ZIP · 2.5.11 r10
 
 Альтернативный способ установки **на отдельную чистую VPS**. ZIP заранее перенесён на сервер и проверен по SHA-256 из независимого доверенного источника.
 
 ```bash
-unzip -q Node_Install_2.5.10-docs-menu_20261015-r7f-two-maps.zip
+unzip -q Node_Install_2.5.11-docs-menu_20261018-r10-1g-selfsteal-staging.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
 bash -n install.sh
 sudo bash ./install.sh --no-reboot
 ```
+
+Для обычной ноды после финальной фазы формируются два приватных файла: `/root/reality-keys.txt` и `/root/vkarmani-raw-profile.json` (полный RAW Config Profile; содержит PrivateKey, `0600`). Они предназначены для переноса в панель только по защищённому каналу.
+
+**VPS 1 vCPU / 1 GiB RAM (Ubuntu 22.04/24.04/26.04, Debian 12/13):** минимальный порог `900 MiB` фактически обнаруженной памяти и `6 GiB` свободного места на `/`. Для RAM менее `1536 MiB` обязателен **минимум 1 GiB активного swap** *до* первого `apt update/install`. Если подходящий swap уже активен — используем без замены. Иначе на выделенной чистой VPS с ext4/XFS создаётся защищённый `/swapfile-vkarmani` (0600) с проверкой сигнатуры, активацией и записью в `/etc/fstab`; чужие файлы и неподдерживаемые ФС не трогаются. **Перед установкой проверьте снимок VPS и console access**: на 1 GiB установка может замедлиться или не пройти из-за лимитов хостера, нагрузки, диска и kernel OOM. Реальная гарантия появится только после независимой установки/reboot и приёмки на такой VPS.
+
+**История r8/r9:** [аудит интеграции](docs/R8_INTEGRATION_REVIEW_20261018.md). **Новая r10:** [изменения, ограничения и тесты](docs/RELEASE_2.5.11_R10_REVIEW.md). Поставщик Nginx остаётся системным, принудительный weekly reboot не включён, чтобы не менять production-поведение без испытаний.
 
 **Для каскада:** сначала [создайте два закрытых role-bundle](#cascade-setup), затем установите Exit и Entry **на разных чистых VPS**. Установку с GitHub и ZIP **не совмещают** на одной ноде.
 
@@ -831,7 +840,7 @@ sudo bash ./install.sh --rkn-sync-panel
 <a id="verification"></a>
 ## ✅ Проверки и границы готовности
 
-**Статус:** 2.5.10 — локальный непубликованный staging; реальные две VPS, панель и клиентские испытания пока не подтверждены.
+**Статус:** 2.5.11 r10 — локальный непубликованный staging; реальные две VPS, панель и клиентские испытания пока не подтверждены.
 
 ```bash
 bash -n install.sh
@@ -847,7 +856,7 @@ sudo bash ./install.sh --check
 
 **Для двухсерверной приёмки** нужны: живой клиент, внешний IPv4 именно Exit, HTTPS через SOCKS, DNS A через UDP ASSOCIATE, отдельный UDP echo, фазы `baseline → outage → recovery`, проверка отсутствия DIRECT/DNS утечек на Entry и восстановления после reboot. Скрипт `scripts/cascade_live_probe.py` **не останавливает Exit** — это делает оператор **только на TEST VPS**, с независимой фиксацией факта. [Live-процедура, параметры и безопасность](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
 
-| Гейт | Статус r7f |
+| Гейт | Статус r10 |
 |---|---|
 | Генерация/синтаксис профилей и offline-регрессии | Подготовлены; перепроверяются в точной сборке |
 | Полная установка на новую VPS, Remnawave Panel, сертификаты | **NOT RUN** |
@@ -858,6 +867,6 @@ sudo bash ./install.sh --check
 
 <div align="center">
 
-**VKARMANI · 2.5.10** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
+**VKARMANI · 2.5.11** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
 
 </div>

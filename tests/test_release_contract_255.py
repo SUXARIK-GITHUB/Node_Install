@@ -12,7 +12,7 @@ class ReleaseContract255(unittest.TestCase):
         self.assertIn("'version=2.5.4', 'version=2.5.5'", SCRIPT)
         self.assertIn("'2.5.4', '2.5.5'", SCRIPT)
         self.assertIn('"$version" == 2.5.4 || "$version" == 2.5.5', SCRIPT)
-        self.assertIn("'^version=2\\.5\\.([2-9]|10)$'", SCRIPT)
+        self.assertIn("'^version=2\\.5\\.([2-9]|10|11)$'", SCRIPT)
         self.assertIn('"$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5',
                       payload('VK_PAYLOAD_VK_WRITE_ACCEPTANCE'))
 
@@ -26,7 +26,7 @@ class ReleaseContract255(unittest.TestCase):
             with patch.object(helper, 'detect_local_public_ipv4s',
                               return_value={'8.8.4.4':'eth0'}):
                 _, _, profile = helper.make_keys_profile(config)
-            ip_list = profile['routing']['rules'][0]['ip']
+            ip_list = next(r for r in profile['routing']['rules'] if 'ip' in r)['ip']
             self.assertEqual(ip_list.count('8.8.4.4/32'), 1)
             self.assertEqual(ip_list.count('1.1.1.1/32'), 1)
             self.assertEqual(len(ip_list), len(set(ip_list)))

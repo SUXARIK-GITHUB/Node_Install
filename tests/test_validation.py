@@ -126,7 +126,7 @@ class ValidationTests(unittest.TestCase):
             self.assertEqual(profile['inbounds'][0]['settings']['clients'], [])
             reality = profile['inbounds'][0]['streamSettings']['realitySettings']
             self.assertEqual((reality['target'], reality['xver'], reality['minClientVer']), ('/dev/shm/nginx.sock', 1, '0.0.0'))
-            blocked = profile['routing']['rules'][0]['ip']
+            blocked = next(r for r in profile['routing']['rules'] if 'ip' in r)['ip']
             for target in ('127.0.0.0/8', '169.254.0.0/16', '1.1.1.1/32', '9.9.9.9/32', '::/0'):
                 self.assertIn(target, blocked)
 

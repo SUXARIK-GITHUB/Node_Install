@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.10 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.11 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.10'
+VERSION = '2.5.11'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -175,7 +175,7 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_6_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_11_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
@@ -191,8 +191,10 @@ class Finalizer:
         if not IMAGE.fullmatch(digest):
             raise Failure('FINALIZATION_IMAGE_DIGEST_INVALID')
         fmt = '{{.Config.Image}}|{{.State.Running}}|{{.State.Restarting}}'
-        current = self.runner(['docker', '--host', 'unix:///var/run/docker.sock',
-                               'inspect', 'remnanode', '--format', fmt], quiet=True).strip()
+        # run() maps 'docker' to vkarmani-docker-local, which already pins the
+        # local socket with --host. A second --host makes Docker CLI exit 125.
+        current = self.runner(['docker', 'inspect', 'remnanode', '--format', fmt],
+                              quiet=True).strip()
         if current != digest + '|true|false':
             raise Failure('FINALIZATION_IMAGE_OR_CONTAINER_DRIFT')
         return digest
@@ -335,6 +337,12 @@ class Finalizer:
         self.acceptance()
         self.runner(['python3', '-I', '-B', str(self.path(KEY_HELPER.lstrip('/'))), 'reality-export'], quiet=True)
         self.read(self.path('root/reality-keys.txt'), private=True)
+        if not self.path('etc/vkarmani-node/cascade-role.json').exists():
+            # Operator convenience copy is part of the ordinary finalization
+            # contract, but never an active configuration nor extra key source.
+            operator_profile = self.read(self.path('root/vkarmani-raw-profile.json'), private=True)
+            if operator_profile != self.read(self.path('etc/vkarmani-node/profile.json'), private=True):
+                raise Failure('ORDINARY_OPERATOR_PROFILE_EXPORT_DRIFT')
         self.verify(obj)  # export must not regenerate keys, config or profiles
         if obj['phase'] == 'rkn-started':
             self.rollback_rkn(obj)  # safely abandon a previously interrupted owned attempt
