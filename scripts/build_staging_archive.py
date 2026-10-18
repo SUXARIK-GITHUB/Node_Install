@@ -57,6 +57,42 @@ UNTRACKED_ALLOWED = {
     'cover-variants/05-readingroom/style.css',
     'cover-variants/06-foundry/index.html',
     'cover-variants/06-foundry/style.css',
+    'cover-variants/01-atelier/404.html',
+    'cover-variants/01-atelier/favicon.svg',
+    'cover-variants/02-archive/404.html',
+    'cover-variants/02-archive/favicon.svg',
+    'cover-variants/03-observatory/404.html',
+    'cover-variants/03-observatory/favicon.svg',
+    'cover-variants/04-fieldnotes/404.html',
+    'cover-variants/04-fieldnotes/favicon.svg',
+    'cover-variants/05-readingroom/404.html',
+    'cover-variants/05-readingroom/favicon.svg',
+    'cover-variants/06-foundry/404.html',
+    'cover-variants/06-foundry/favicon.svg',
+    'cover-variants/07-botanica/404.html',
+    'cover-variants/07-botanica/favicon.svg',
+    'cover-variants/07-botanica/index.html',
+    'cover-variants/07-botanica/style.css',
+    'cover-variants/08-nocturne/404.html',
+    'cover-variants/08-nocturne/favicon.svg',
+    'cover-variants/08-nocturne/index.html',
+    'cover-variants/08-nocturne/style.css',
+    'cover-variants/09-kitchen/404.html',
+    'cover-variants/09-kitchen/favicon.svg',
+    'cover-variants/09-kitchen/index.html',
+    'cover-variants/09-kitchen/style.css',
+    'cover-variants/10-atlas/404.html',
+    'cover-variants/10-atlas/favicon.svg',
+    'cover-variants/10-atlas/index.html',
+    'cover-variants/10-atlas/style.css',
+    'cover-variants/11-tides/404.html',
+    'cover-variants/11-tides/favicon.svg',
+    'cover-variants/11-tides/index.html',
+    'cover-variants/11-tides/style.css',
+    'cover-variants/12-cinema/404.html',
+    'cover-variants/12-cinema/favicon.svg',
+    'cover-variants/12-cinema/index.html',
+    'cover-variants/12-cinema/style.css',
     'integrations/cascade_deployment.py',
     'integrations/cascade_panel_audit.py',
     'tests/test_2510_r5_cascade_roles.py',
@@ -75,6 +111,8 @@ UNTRACKED_ALLOWED = {
     'docs/R7_SITES_TCP_AND_LIVE_PROBES.md',
     'docs/R8_INTEGRATION_REVIEW_20261018.md', 'tests/test_2510_r9_reviewed_fixes.py',
     'docs/RELEASE_2.5.11_R10_REVIEW.md', 'tests/test_2511_r10_lowmem_and_site.py',
+    'docs/RELEASE_2.5.12_R11_REVIEW.md', 'tests/test_2512_r11_ready_profiles_and_cover.py',
+    'docs/RELEASE_2.5.13_R12_SITES.md', 'tests/test_2513_r12_twelve_sites.py',
 }
 
 
@@ -144,7 +182,7 @@ def build(out_dir, build_id):
         data = p.read_bytes()
         entries.append({'path':name, 'size':len(data), 'sha256':sha256(data), 'mode':f'{mode:04o}'})
     manifest = {
-        'version': '2.5.11',
+        'version': '2.5.13',
         'build_id': build_id,
         'source_commit': source_commit,
         'release_status': 'INCOMPLETE_STAGING_ONLY',
@@ -163,7 +201,7 @@ def build(out_dir, build_id):
     data[SUMS] = sums_bytes
     verify_bytes(data)
     out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / f'Node_Install_2.5.11-docs-menu_{build_id}.zip'
+    dest = out_dir / f'Node_Install_2.5.13-docs-menu_{build_id}.zip'
     if dest.exists():
         raise FileExistsError('already built; use a new unique build ID')
     fd, tmp = tempfile.mkstemp(prefix='.node-install-staging-', suffix='.zip', dir=out_dir)

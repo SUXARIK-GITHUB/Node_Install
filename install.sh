@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.11 (README and guarded installation-choice candidate). Read README.md before running as root.
+# VKarmani Node 2.5.13 (README and guarded installation-choice candidate). Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1499,7 +1499,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11|2.5.12|2.5.13) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1522,7 +1522,7 @@ else
 fi
 
 # A 1 GiB installation must not silently lose its verified swap on reboot.
-if [[ "$INSTALL_VERSION" == 2.5.11 ]]; then
+if [[ "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 ]]; then
     RAM_KIB=$(awk '$1=="MemTotal:" {print $2}' /proc/meminfo)
     if [[ "$RAM_KIB" =~ ^[0-9]+$ ]] && (( RAM_KIB < 1536 * 1024 )); then
         SWAP_KIB=$(awk '$1=="SwapTotal:" {print $2}' /proc/meminfo)
@@ -1552,7 +1552,7 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 ]]; then
         if [[ -f "$ETC/cascade-role.json" ]]; then
             warn XHTTP_IMPORT_PROFILE_POLICY 'CASCADE_RAW_ONLY: XHTTP not available for this peer bridge'
         elif [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
@@ -2566,7 +2566,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11', 'version=2.5.12', 'version=2.5.13') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3582,6 +3582,7 @@ def render(domain, seed=None):
     css += variants[variant]
     # Long hostnames and intermediate viewports must not stretch grid tracks.
     css += '.hero>*{min-width:0}.copy,.brand,.domain{overflow-wrap:anywhere}.sculpture{overflow:hidden}.quiet-link{max-width:100%}.header>a{min-width:0}.header>.status{flex-shrink:0}'
+    css += '.section-tabs{display:flex;flex-wrap:wrap;gap:12px;border-bottom:1px solid #ffffff26;padding:16px 0 20px}.section-tabs a{font-size:11px;letter-spacing:.075em;padding:10px 13px;border-radius:20px;border:1px solid currentColor;opacity:.8}.section-tabs a:hover{opacity:1}.module{padding:72px 0;border-top:1px solid #ffffff20;scroll-margin-top:30px}.module h2{font-size:clamp(27px,4vw,47px);line-height:1.18;font-weight:500;letter-spacing:-.035em;margin:8px 0 12px}.module .lead{max-width:680px;font-size:14px;line-height:1.9;margin:0 0 26px;color:inherit;opacity:.75}.mini-articles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.mini-articles article{min-width:0;border:1px solid currentColor;border-radius:10px;padding:26px;opacity:.92;transition:transform .25s}.mini-articles article:hover{transform:translateY(-4px)}.mini-articles small{letter-spacing:.15em;opacity:.6;font-size:10px}.mini-articles h3{font-size:21px;line-height:1.25;font-weight:500;margin:27px 0 13px}.mini-articles p{font-size:13px;line-height:1.8;margin:0;opacity:.72}.module details{padding:17px 0;border-bottom:1px solid #ffffff28}.module summary{cursor:pointer;font-size:15px;font-weight:500;line-height:1.5}.module details p{font-size:13px;line-height:1.8;max-width:620px;opacity:.76}@media(max-width:780px){.mini-articles{grid-template-columns:1fr}.module{padding:40px 0}.section-tabs{gap:7px}}@media(prefers-reduced-motion:reduce){.mini-articles article{transition:none}.mini-articles article:hover{transform:none}}'
     headings = (('Новая глава.', 'Скоро здесь.'), ('Место для идей.', 'Скоро откроемся.'),
                 ('Всё начинается', 'с первого шага.'), ('Новый взгляд.', 'Скоро на сайте.'))
     heading, subheading = headings[variant]
@@ -3592,7 +3593,7 @@ def render(domain, seed=None):
     icon_name = 'assets/icon-' + sha(icon_bytes)[:20] + '.svg'
     index = f'''<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="{theme_color}"><meta name="description" content="Сайт в разработке. Мы создаём новое пространство и скоро откроем его для вас."><title>{safe_domain} — скоро открытие</title><link rel="icon" type="image/svg+xml" href="{icon_name}"><link rel="stylesheet" href="{css_name}"></head>
-<body><div class="shell"><header class="header"><a class="brand" href="#" aria-label="На главную"><span class="emblem" aria-hidden="true"></span>{label}</a><span class="status">СКОРО ОТКРЫТИЕ</span></header><main><section class="hero" aria-labelledby="title"><div class="copy"><p class="eyebrow">НОВОЕ ПРОСТРАНСТВО</p><h1 id="title">{heading}<em>{subheading}</em></h1><p class="description"><strong>Сайт в разработке.</strong><br>Мы продумываем каждую деталь, чтобы создать нечто особенное. Совсем скоро здесь появится наш новый проект.</p><a class="quiet-link" href="#about">Всё начинается с идеи <span aria-hidden="true">↗</span></a></div><div class="sculpture" aria-hidden="true"><div class="halo"></div><div class="orb"></div><div class="ring"></div><div class="point"></div><div class="art-caption">ФОРМА. СМЫСЛ. ДЕТАЛИ.</div></div></section><section class="detail" id="about" aria-labelledby="about-title"><h2 id="about-title">Хорошие вещи требуют внимания.</h2><p>Сейчас мы работаем над новым сайтом.<br>Спасибо за интерес и до скорой встречи.</p></section></main><footer class="footer"><span class="domain">© {safe_domain}</span><span>СОЗДАЁМ НОВОЕ</span></footer></div></body></html>
+<body><div class="shell"><header class="header"><a class="brand" href="#" aria-label="На главную"><span class="emblem" aria-hidden="true"></span>{label}</a><span class="status">СКОРО ОТКРЫТИЕ</span></header><nav class="section-tabs" aria-label="Разделы сайта"><a href="#about">О проекте</a><a href="#materials">Материалы</a><a href="#questions">Вопросы</a></nav><main><section class="hero" aria-labelledby="title"><div class="copy"><p class="eyebrow">НОВОЕ ПРОСТРАНСТВО</p><h1 id="title">{heading}<em>{subheading}</em></h1><p class="description"><strong>Сайт в разработке.</strong><br>Мы продумываем каждую деталь, чтобы создать нечто особенное. Совсем скоро здесь появится наш новый проект.</p><a class="quiet-link" href="#about">Всё начинается с идеи <span aria-hidden="true">↗</span></a></div><div class="sculpture" aria-hidden="true"><div class="halo"></div><div class="orb"></div><div class="ring"></div><div class="point"></div><div class="art-caption">ФОРМА. СМЫСЛ. ДЕТАЛИ.</div></div></section><section class="detail" id="about" aria-labelledby="about-title"><h2 id="about-title">Хорошие вещи требуют внимания.</h2><p>Сейчас мы работаем над новым сайтом.<br>Спасибо за интерес и до скорой встречи.</p></section><section class="module" id="materials" aria-labelledby="materials-title"><p class="eyebrow">РЕДАКЦИОННЫЙ ОБЗОР</p><h2 id="materials-title">Несколько идей для знакомства</h2><p class="lead">Демонстрационная коллекция коротких материалов о творчестве и процессе. Здесь нет обещаний услуг и ссылок на внешние ресурсы.</p><div class="mini-articles"><article><small>ЗАМЕТКА / 01</small><h3>Идея и направление</h3><p>Как наблюдения превращаются в темы, которые хочется рассмотреть внимательнее.</p></article><article><small>ИСТОРИЯ / 02</small><h3>Материалы и формы</h3><p>Цвет, ритм и текстура в проектировании спокойных цифровых пространств.</p></article><article><small>КАТАЛОГ / 03</small><h3>Процесс и детали</h3><p>Небольшая подборка вопросов, подходов и визуальных набросков.</p></article></div></section><section class="module" id="questions" aria-labelledby="questions-title"><p class="eyebrow">СПРАВОЧНЫЙ РАЗДЕЛ</p><h2 id="questions-title">Вопросы и ответы</h2><details><summary>Что это за страница?</summary><p>Независимый демонстрационный макет будущего сайта. Материалы — примеры редакционного наполнения.</p></details><details><summary>Как работают вкладки?</summary><p>Ссылки переходят к тематическим разделам, а ответы раскрываются без JavaScript.</p></details></section></main><footer class="footer"><span class="domain">© {safe_domain}</span><span>СОЗДАЁМ НОВОЕ</span></footer></div></body></html>
 '''.encode()
     assert len(index) < MAX_INDEX
     return index, {css_name: css_bytes, icon_name: icon_bytes}
@@ -3742,7 +3743,16 @@ def install_site(root=Path('/')):
     # existing robots/favicon/404 files, so older pages remain rollback-ready.
     defaults = {
         'robots.txt': b'User-agent: *\nDisallow:\n',
-        '404.html': '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Страница не найдена</title><h1>404</h1><p>Страница не найдена.</p><a href="/">На главную</a></html>\n'.encode(),
+        '404.html': ('<!doctype html><html lang="ru"><head><meta charset="utf-8">'
+                     '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'self\'; img-src \'self\'; base-uri \'none\'; form-action \'none\'">'
+                     '<title>Страница не найдена</title><link rel="stylesheet" href="/'
+                     + next(k for k in assets if k.endswith('.css')) + '"></head>'
+                     '<body><div class="shell"><header class="header"><strong class="brand">Заметки и материалы</strong></header>'
+                     '<main class="hero"><div class="copy"><p class="eyebrow">404 · Страница не найдена</p>'
+                     '<h1>Здесь пока ничего нет.</h1><p class="description">Проверьте адрес страницы или перейдите на главную.</p>'
+                     '<a class="quiet-link" href="/">На главную <span>↗</span></a>'
+                     '</div></main></div></body></html>\n').encode(),
         'favicon.svg': next(value for key, value in assets.items() if key.endswith('.svg')),
     }
     for name, data in defaults.items():
@@ -3758,7 +3768,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -5749,8 +5759,8 @@ vkarmani_rkn_command() {
         [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
-        grep -Eq '^version=2\.5\.([2-9]|10|11)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2–2.5.11 nodes.' >&2; return 1;
+        grep -Eq '^version=2\.5\.([2-9]|10|11|12|13)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+            echo 'RKN integration supports only completed 2.5.2–2.5.13 nodes.' >&2; return 1;
         }
         vk_rkn_activate
         return
@@ -6066,7 +6076,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 || "$version" == 2.5.12 || "$version" == 2.5.13 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -6098,6 +6108,9 @@ vkarmani_prepare_xhttp_main() {
     vk_write_xhttp_profile_helper "$tmp/xhttp_profile.py"
     local rc=0
     vk_xhttp_prepare_template "$tmp/xhttp_profile.py" "$etc" "$core" "$state" || rc=$?
+    if [[ "$rc" -eq 0 && "$version" == 2.5.13 ]]; then
+        python3 -I -B /usr/local/lib/vkarmani-node/node_helper.py reality-export-xhttp >/dev/null || rc=$?
+    fi
     rm -f -- "$tmp/xhttp_profile.py"
     rmdir -- "$tmp"
     return "$rc"
@@ -6262,7 +6275,7 @@ vk_write_finalizer_helper() {
     local destination=$1
     cat > "$destination" <<'VK_FINALIZER_PY'
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.11 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.13 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -6283,7 +6296,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.11'
+VERSION = '2.5.13'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -6438,13 +6451,21 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_11_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_13_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
         cfg = json.loads(self.read(self.path('etc/vkarmani-node/config.json'), private=True))
         if cfg.get('installation_mode') != 'secret-key-only':
             raise Failure('WRONG_INSTALLATION_MODE')
+        if not self.path('etc/vkarmani-node/cascade-role.json').exists():
+            # Three secret operator files are mandatory on a NEW ordinary 2.5.13.
+            # Without this gate, a removed XHTTP template would quietly publish
+            # INSTALL_COMPLETE with only RAW + keys.
+            xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')
+            if not xhttp_source.is_file() or xhttp_source.is_symlink():
+                raise Failure('ORDINARY_XHTTP_CORE_TESTED_TEMPLATE_REQUIRED')
+            self.read(xhttp_source, private=True)
         addr = str(ipaddress.IPv4Address(cfg['public_ipv4']))
         rows = json.loads(self.runner(['ip', '-j', '-4', 'address', 'show'], quiet=True))
         actual = {a.get('local') for row in rows for a in row.get('addr_info', []) if a.get('family') == 'inet'}
@@ -6606,6 +6627,14 @@ class Finalizer:
             operator_profile = self.read(self.path('root/vkarmani-raw-profile.json'), private=True)
             if operator_profile != self.read(self.path('etc/vkarmani-node/profile.json'), private=True):
                 raise Failure('ORDINARY_OPERATOR_PROFILE_EXPORT_DRIFT')
+            # The mandatory core-validated XHTTP source was checked in base_checks.
+            # Failure to export the third file prevents INSTALL_COMPLETE.
+            xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')
+            self.runner(['python3', '-I', '-B', str(self.path(KEY_HELPER.lstrip('/'))),
+                         'reality-export-xhttp'], quiet=True)
+            exported = self.read(self.path('root/vkarmani-xhttp-profile.json'), private=True)
+            if exported != self.read(xhttp_source, private=True):
+                raise Failure('ORDINARY_XHTTP_OPERATOR_EXPORT_DRIFT')
         self.verify(obj)  # export must not regenerate keys, config or profiles
         if obj['phase'] == 'rkn-started':
             self.rollback_rkn(obj)  # safely abandon a previously interrupted owned attempt
@@ -6685,7 +6714,7 @@ vkarmani_finish_install_main() (
     # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
     local state=/var/lib/vkarmani-node work
     [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
-        echo 'STOP: no supported 2.5.11 finalization checkpoint; no installation state changed.' >&2; exit 1;
+        echo 'STOP: no supported 2.5.13 finalization checkpoint; no installation state changed.' >&2; exit 1;
     }
     local lock=/run/lock/vkarmani-node-installer.lock
     if [[ ! -e "$lock" && ! -L "$lock" ]]; then
@@ -7037,8 +7066,8 @@ vkarmani_maintenance_command() {
             [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE && ! -L /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
                 echo 'MAINTENANCE: завершите установку перед включением' >&2; return 1;
             }
-            grep -Eq '^version=2\.5\.(8|9|10|11)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.11; старые ноды не мигрируются автоматически' >&2; return 1;
+            grep -Eq '^version=2\.5\.(8|9|10|11|12|13)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.13; старые ноды не мигрируются автоматически' >&2; return 1;
             }
             [[ -x /usr/local/sbin/vkarmani-docker-local ]] || {
                 echo 'MAINTENANCE: локальный Docker wrapper не установлен' >&2; return 1;
@@ -7055,7 +7084,7 @@ vkarmani_maintenance_command() {
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.11 — 2026-10-18
+# VKarmani Remnawave Node Installer 2.5.13 — 2026-10-18
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -7067,7 +7096,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.11
+INSTALLER_VERSION=2.5.13
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -7088,7 +7117,7 @@ VK_CASCADE_HELPER=''
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.11
+VKarmani Remnawave Node Installer 2.5.13
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -7103,7 +7132,7 @@ VKarmani Remnawave Node Installer 2.5.11
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
-  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.11, без переустановки/reboot
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.13, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -7112,7 +7141,7 @@ VKarmani Remnawave Node Installer 2.5.11
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.11 ноде
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.13 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
@@ -7288,7 +7317,7 @@ vk_menu_display_prompt() {
 }
 vk_initial_install_menu() {
     local tries=0
-    echo 'VKarmani Node Install 2.5.11 — выбор режима первой установки:'
+    echo 'VKarmani Node Install 2.5.13 — выбор режима первой установки:'
     echo '  1 — Обычная нода (доступна в этой версии)'
     echo '  2 — Каскад: отдельная входная/выходная нода (только чистая staging VPS)'
     while ((tries < 5)); do
@@ -7351,7 +7380,7 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 && $WEEKLY_REBOOT -eq 1 ]]; then
 fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
-        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.11 use --finish-install.' >&2; exit 1
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.13 use --finish-install.' >&2; exit 1
     fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
@@ -7684,7 +7713,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.11: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.13: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -7706,6 +7735,7 @@ ETC = Path('/etc/vkarmani-node')
 STATE = Path('/var/lib/vkarmani-node')
 REALITY_EXPORT = Path('/root/reality-keys.txt')
 PROFILE_EXPORT = Path('/root/vkarmani-raw-profile.json')
+XHTTP_EXPORT = Path('/root/vkarmani-xhttp-profile.json')
 MODE = 'secret-key-only'
 PROFILE_MIN_CLIENT_VERSION = '0.0.0'
 PROFILE_FLOW = 'xtls-rprx-vision'
@@ -8355,7 +8385,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.11\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.13\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -8372,6 +8402,64 @@ def export_reality_keys_file(c):
     if st.st_uid != os.geteuid() or (st.st_mode & 0o777) != 0o600:
         raise Failure('Не удалось зафиксировать владельца и 0600 для /root/reality-keys.txt.')
     return path
+
+
+def export_xhttp_profile(c):
+    """Export only a core-tested, private ordinary XHTTP alternative, no live mutation.
+
+    The caller has validated profile-xhttp.json with the bundled Xray/rw-core.
+    It is an alternative on TCP/443, not a second simultaneously active inbound.
+    """
+    if (ETC / 'cascade-role.json').exists():
+        raise Failure('CASCADE_XHTTP_OPERATOR_EXPORT_NOT_SUPPORTED')
+    source = ETC / 'profile-xhttp.json'
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    try:
+        fd = os.open(source, flags)
+        with os.fdopen(fd, 'rb') as f:
+            info = os.fstat(f.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1 or (info.st_mode & 0o777) != 0o600
+                    or info.st_size > 512 * 1024):
+                raise Failure('XHTTP_SOURCE_OWNER_MODE_OR_SIZE_INVALID')
+            content = f.read(512 * 1024 + 1)
+    except OSError as exc:
+        raise Failure('XHTTP_CORE_TESTED_SOURCE_UNAVAILABLE') from exc
+    if len(content) > 512 * 1024:
+        raise Failure('XHTTP_SOURCE_TOO_LARGE')
+    try:
+        def unique_pairs(pairs):
+            result = {}
+            for name, value in pairs:
+                if name in result:
+                    raise Failure('XHTTP_DUPLICATE_JSON_PROPERTY')
+                result[name] = value
+            return result
+        obj = json.loads(content, object_pairs_hook=unique_pairs)
+        validate_profile(obj, c)
+        inbound = next(i for i in obj['inbounds'] if i['protocol'] == 'vless')
+        stream = inbound['streamSettings']
+        if stream.get('network', stream.get('method')) != 'xhttp' or inbound['settings'].get('flow', '') != '':
+            raise Failure('XHTTP_EXPORT_TRANSPORT_OR_FLOW_INVALID')
+    except (ValueError, TypeError, KeyError) as exc:
+        raise Failure('XHTTP_SOURCE_SCHEMA_OR_IDENTITY_INVALID') from exc
+    # Preserve original bytes and fail closed on an existing unknown/edited file.
+    target = XHTTP_EXPORT
+    if target.exists() or target.is_symlink():
+        info = target.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_nlink != 1 or (info.st_mode & 0o777) != 0o600):
+            raise Failure('XHTTP_OPERATOR_EXPORT_UNSAFE_EXISTING_PATH')
+        if target.read_bytes() != content:
+            raise Failure('XHTTP_OPERATOR_EXPORT_CHANGED_REFUSE_OVERWRITE')
+    else:
+        atomic_text(target, content.decode('utf-8'))
+    info = target.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+            or info.st_nlink != 1 or (info.st_mode & 0o777) != 0o600
+            or target.read_bytes() != content):
+        raise Failure('XHTTP_OPERATOR_EXPORT_INTEGRITY_FAILED')
+    return target
 
 
 def normalize_config(raw):
@@ -8539,7 +8627,7 @@ def write_panel_guide(c):
         return
     name, tag, _ = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.11 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.13 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -8614,7 +8702,7 @@ def control_ready(c):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['init', 'get', 'dns', 'keys', 'reality-export', 'secret', 'docker-config', 'panel-guide', 'control-ready', 'image', 'allow-net-admin', 'weekly-reboot', 'profile-check'])
+    parser.add_argument('action', choices=['init', 'get', 'dns', 'keys', 'reality-export', 'reality-export-xhttp', 'secret', 'docker-config', 'panel-guide', 'control-ready', 'image', 'allow-net-admin', 'weekly-reboot', 'profile-check'])
     parser.add_argument('arg', nargs='?')
     args = parser.parse_args()
     if args.action == 'init':
@@ -8646,6 +8734,8 @@ def main():
         make_keys_profile(c)
     elif args.action == 'reality-export':
         print(export_reality_keys_file(c))
+    elif args.action == 'reality-export-xhttp':
+        print(export_xhttp_profile(c))
     elif args.action == 'secret':
         check_secret(c)
         print('SECRET_KEY_VALID=PASS')
@@ -9210,6 +9300,9 @@ server {
     add_header Strict-Transport-Security "max-age=300" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     add_header Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     # No child add_header: preserve parent security headers on older Nginx.
     location = / { try_files /index.html =404; expires -1; }
@@ -9352,9 +9445,9 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
     echo 'CASCADE_XHTTP=DISABLED RAW_REALITY_BRIDGE_ONLY'
     [[ ! -e "$ETC/profile-xhttp.json" ]] || die 'CASCADE_HAS_UNEXPECTED_XHTTP_TEMPLATE'
 elif vk_xhttp_prepare_template "$LIB/xhttp_profile.py" "$ETC" "$CORE" "$STATE"; then
-    echo 'XHTTP_IMPORT_TEMPLATE_READY=PASS'
+    echo 'XHTTP_IMPORT_TEMPLATE_READY=PASS (alternative profile; not active alongside RAW)'
 else
-    echo 'WARN: XHTTP_IMPORT_TEMPLATE=NOT_READY; RAW remains unchanged. After image compatibility review, retry with --prepare-xhttp.' >&2
+    die 'XHTTP_IMPORT_TEMPLATE_NOT_VALIDATED_BY_BUNDLED_CORE; third profile required by 2.5.13. Investigate private log/snapshot; NO INSTALL_COMPLETE.'
 fi
 
 stage 'RAW / XHTTP + REALITY профили и параметры для панели (без API-токена)'

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.11 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.13 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.11'
+VERSION = '2.5.13'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -175,13 +175,21 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_11_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_13_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
         cfg = json.loads(self.read(self.path('etc/vkarmani-node/config.json'), private=True))
         if cfg.get('installation_mode') != 'secret-key-only':
             raise Failure('WRONG_INSTALLATION_MODE')
+        if not self.path('etc/vkarmani-node/cascade-role.json').exists():
+            # Three secret operator files are mandatory on a NEW ordinary 2.5.13.
+            # Without this gate, a removed XHTTP template would quietly publish
+            # INSTALL_COMPLETE with only RAW + keys.
+            xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')
+            if not xhttp_source.is_file() or xhttp_source.is_symlink():
+                raise Failure('ORDINARY_XHTTP_CORE_TESTED_TEMPLATE_REQUIRED')
+            self.read(xhttp_source, private=True)
         addr = str(ipaddress.IPv4Address(cfg['public_ipv4']))
         rows = json.loads(self.runner(['ip', '-j', '-4', 'address', 'show'], quiet=True))
         actual = {a.get('local') for row in rows for a in row.get('addr_info', []) if a.get('family') == 'inet'}
@@ -343,6 +351,14 @@ class Finalizer:
             operator_profile = self.read(self.path('root/vkarmani-raw-profile.json'), private=True)
             if operator_profile != self.read(self.path('etc/vkarmani-node/profile.json'), private=True):
                 raise Failure('ORDINARY_OPERATOR_PROFILE_EXPORT_DRIFT')
+            # The mandatory core-validated XHTTP source was checked in base_checks.
+            # Failure to export the third file prevents INSTALL_COMPLETE.
+            xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')
+            self.runner(['python3', '-I', '-B', str(self.path(KEY_HELPER.lstrip('/'))),
+                         'reality-export-xhttp'], quiet=True)
+            exported = self.read(self.path('root/vkarmani-xhttp-profile.json'), private=True)
+            if exported != self.read(xhttp_source, private=True):
+                raise Failure('ORDINARY_XHTTP_OPERATOR_EXPORT_DRIFT')
         self.verify(obj)  # export must not regenerate keys, config or profiles
         if obj['phase'] == 'rkn-started':
             self.rollback_rkn(obj)  # safely abandon a previously interrupted owned attempt

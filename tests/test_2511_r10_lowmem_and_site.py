@@ -105,14 +105,14 @@ vk_prepare_lowmem_swap 1024
         self.assertLess(a,b)
         self.assertLess(b,c)
         self.assertIn('LOWMEM_ACTIVE_SWAP_1G',SCRIPT)
-        self.assertIn(r"'^version=2\.5\.([2-9]|10|11)$'",SCRIPT)
-        self.assertIn('FINISH_ONLY_RECORDED_2_5_11_SUPPORTED',SCRIPT)
+        self.assertIn(r"'^version=2\.5\.([2-9]|10|11|12|13)$'",SCRIPT)
+        self.assertIn('FINISH_ONLY_RECORDED_2_5_13_SUPPORTED',SCRIPT)
 
 
 class SiteAndSelfstealSecurityContracts(unittest.TestCase):
-    def test_all_six_themes_are_local_csp_no_js_no_remote_assets(self):
+    def test_all_twelve_themes_are_local_csp_no_js_no_remote_assets(self):
         roots=sorted(x for x in (ROOT/'cover-variants').iterdir() if x.is_dir())
-        self.assertEqual(len(roots),6)
+        self.assertEqual(len(roots),12)
         for theme in roots:
             with self.subTest(theme=theme.name):
                 html=(theme/'index.html').read_text()
@@ -120,7 +120,7 @@ class SiteAndSelfstealSecurityContracts(unittest.TestCase):
                 self.assertIn('href="style.css"',html)
                 self.assertIn("default-src 'none'",html)
                 self.assertIn("style-src 'self'",html)
-                self.assertNotRegex(html,r'(?i)<script|https?://|src="//')
+                self.assertNotRegex(html.replace('xmlns="http://www.w3.org/2000/svg"',''),r'(?i)<script|https?://|src="//')
                 self.assertNotRegex(css,r'(?i)@import|url\(\s*["\']?https?://')
                 self.assertIn('<meta name="viewport"',html)
                 self.assertTrue(css.strip())
@@ -130,11 +130,11 @@ class SiteAndSelfstealSecurityContracts(unittest.TestCase):
         self.assertIn('def css_name(',source)
         self.assertIn('def site_rollback(',source)
         self.assertIn('def tcp_rollback(',source)
-        self.assertIn('ONLY_NEW_2_5_11_STAGING',source)
+        self.assertIn("version in ('2.5.11','2.5.12','2.5.13')",source)
         self.assertIn('THIRD_PARTY_CHANGE',source)
         self.assertIn('nginx',source)
 
-    def test_generator_is_still_original_with_no_external_requests(self):
+    def test_generator_keeps_offline_no_external_requests(self):
         script=(ROOT/'scripts/cover_variants.py').read_text()
         self.assertIn('def ',script)
         preview=(ROOT/'preview')

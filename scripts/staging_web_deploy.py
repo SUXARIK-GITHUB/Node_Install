@@ -23,10 +23,10 @@ import sys
 import tempfile
 
 try:
-    from cover_variants import NAMES, SITES
+    from cover_variants import NAMES, SITES, render
     from nginx_proxy_plan import generate, port
 except ImportError:
-    from scripts.cover_variants import NAMES, SITES
+    from scripts.cover_variants import NAMES, SITES, render
     from scripts.nginx_proxy_plan import generate, port
 
 MARKER_BEGIN = '    # VKARMANI_R7_STYLE_BEGIN\n'
@@ -173,9 +173,11 @@ class NodeWeb:
         # are checked by read() and the root-only checks above, not contents.
         read(self.state/'owned-installation',self.root,256)
         version=read(self.state/'install-version',self.root,32).decode().strip()
-        must(version in ('2.5.11',), 'ONLY_NEW_2_5_11_STAGING')
+        must(version in ('2.5.11','2.5.12','2.5.13'), 'UNSUPPORTED_STAGING_INSTALL_VERSION')
         complete=read(self.state/'INSTALL_COMPLETE',self.root,2048).decode()
-        must(re.search(r'(?m)^version=2\.5\.11$',complete) is not None, 'INSTALL_NOT_COMPLETE')
+        # Refuse an incompatible marker rather than assuming all sites are 2.5.11.
+        must(re.search(r'(?m)^version='+re.escape(version)+r'$',complete) is not None,
+             'INSTALL_NOT_COMPLETE')
         for marker in SENSITIVE:
             must(not (self.state/marker).exists() and not (self.state/marker).is_symlink(),
                  'OTHER_TRANSACTION_PENDING')
@@ -310,7 +312,11 @@ class NodeWeb:
         must(isinstance(css_name,str) and
              re.fullmatch(r'assets/style-[0-9a-f]{20}[.]css',css_name) is not None,
              'INVALID_THEME_ASSET_NAME')
-        return {'index':self.site/'index.html','css':self.site/css_name}
+        targets={'index':self.site/'index.html','css':self.site/css_name}
+        if receipt is None or (receipt.get('metadata') or {}).get('theme_bundle')==2:
+            targets['error']=self.site/'404.html'
+            targets['favicon']=self.site/'favicon.svg'
+        return targets
 
     def site_install(self,theme,expect_domain):
         must(theme in NAMES,'UNKNOWN_THEME')
@@ -321,13 +327,27 @@ class NodeWeb:
         for d in (self.site,self.webconf.parent):
             path_check(d,self.root); must(d.is_dir(),'DIR_INVALID')
         source=SITES/theme
-        html=read(source/'index.html',SITES.parent,128*1024)
-        css=read(source/'style.css',SITES.parent,128*1024)
-        must(html.count(b'href="style.css"')==1 and b'<script' not in html
-             and b'@import' not in css and b'url(' not in css,
+        # Verify reviewed catalog files and symlink absence. Rendering changes
+        # only deterministic editorial choices based on the validated domain.
+        for filename in ('index.html','style.css','404.html','favicon.svg'):
+            read(source/filename,SITES.parent,128*1024)
+        try:
+            content=render(theme,config['domain'])
+        except (OSError,ValueError) as exc:
+            raise DeployError('THEME_RENDER_FAILED') from exc
+        html,css,error,icon=(content[name] for name in
+                              ('index.html','style.css','404.html','favicon.svg'))
+        must(html.count(b'href="style.css"')==1 and
+             error.count(b'href="style.css"')==1 and
+             b'<script' not in html.lower() and b'<script' not in error.lower() and
+             b'@import' not in css and b'url(' not in css and
+             b'<script' not in icon.lower() and b'<foreignobject' not in icon.lower(),
              'UNREVIEWED_THEME_CONTENT')
         css_name=self.css_name(css)
-        html=html.replace(b'href="style.css"',b'href="'+css_name.encode()+b'"')
+        for_page=b'href="/'+css_name.encode()+b'"'
+        html=html.replace(b'href="style.css"',for_page)
+        html=html.replace(b'href="favicon.svg"', b'href="/favicon.svg"')
+        error=error.replace(b'href="style.css"',for_page)
         files=self.site_files(css_name=css_name)
         assets=self.site/'assets'
         path_check(assets,self.root); must(assets.is_dir(),'DIR_INVALID')
@@ -343,13 +363,14 @@ class NodeWeb:
         self._check()
         with self.lock():
             r,old=self.backup('site',files,{'theme':theme,'domain':config['domain'],
-                                             'css':css_name})
-            targets={'index':html,'css':css}
+                                             'css':css_name,'theme_bundle':2})
+            targets={'index':html,'css':css,'error':error,'favicon':icon}
             for label in targets: r['files'][label]['after_sha']=digest(targets[label])
             self.write_receipt('site',r)
             try:
-                # Publish CSS before HTML, so existing cover stays intact until final swap.
-                for label in ('css','index'):
+                # Publish independent assets and error page before the atomic
+                # homepage swap. All four files are journaled for rollback.
+                for label in ('css','favicon','error','index'):
                     expected=old[label]
                     cur=None if not files[label].exists() else read(files[label],self.root)
                     must(cur==expected,'CONCURRENT_SITE_MODIFICATION')

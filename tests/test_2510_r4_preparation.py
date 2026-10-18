@@ -161,20 +161,23 @@ class EvidenceGate(unittest.TestCase):
 
 
 class PreviewAndProxy(unittest.TestCase):
-    def test_exactly_six_complete_static_sites_without_external_deps(self):
-        self.assertEqual(len(cover.NAMES),6)
+    def test_exactly_twelve_complete_static_sites_without_external_deps(self):
+        self.assertEqual(len(cover.NAMES),12)
         titles=[]
         for name in cover.NAMES:
             html=(ROOT/'cover-variants'/name/'index.html').read_text()
             css=(ROOT/'cover-variants'/name/'style.css').read_text()
             self.assertIn('viewport',html)
             self.assertIn('Content-Security-Policy',html)
-            self.assertIn('max-width:700px',css)
-            self.assertNotIn('http://',html)
-            self.assertNotIn('https://',html)
+            self.assertIn('max-width:1440px',css)
+            self.assertRegex(css, r'@media\(max-width:\d+px\)')
+            # Standard inline-SVG namespace is NOT an external request.
+            tested=html.replace('xmlns="http://www.w3.org/2000/svg"', '')
+            self.assertNotIn('http://',tested)
+            self.assertNotIn('https://',tested)
             self.assertNotIn('<script',html)
             titles.append(html.split('<title>')[1].split('</title>')[0])
-        self.assertEqual(len(set(titles)),6)
+        self.assertEqual(len(set(titles)),12)
 
     def test_preview_never_overwrites(self):
         with tempfile.TemporaryDirectory() as t:

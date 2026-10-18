@@ -48,18 +48,20 @@ class DeployerTests(unittest.TestCase):
         self.assertGreater(len(css),0)
         self.css_urls.append(css_name)
 
-    def test_all_six_sites_install_and_rollback_preserve_original(self):
+    def test_all_twelve_sites_install_and_rollback_preserve_original(self):
         for name in deploy.NAMES:
             with self.subTest(name=name):
                 a=self.app.site_install(name,'entry.example.com')
                 self.assertIn('SITE_DEPLOY=PASS',a)
                 site=self.app.site
-                css=(deploy.SITES/name/'style.css').read_bytes()
+                css=deploy.render(name,'entry.example.com')['style.css']
                 css_name=deploy.NodeWeb.css_name(css)
                 html=(site/'index.html').read_bytes()
-                self.assertIn(('href="'+css_name+'"').encode(),html)
+                self.assertIn(('href="/'+css_name+'"').encode(),html)
                 self.assertNotIn(b'href="style.css"',html)
                 self.assertEqual((site/css_name).read_bytes(),css)
+                self.assertIn(b'href=\"/assets/style-', (site/'404.html').read_bytes())
+                self.assertIn(b'<svg', (site/'favicon.svg').read_bytes())
                 self.assertFalse((site/'style.css').exists())
                 self.assertEqual(self.css_urls[-1],css_name)
                 # Selfsteal Nginx must not be edited at all.
@@ -68,6 +70,8 @@ class DeployerTests(unittest.TestCase):
                 self.assertEqual(self.app.site_rollback(),'SITE_ROLLBACK=PASS')
                 self.assertEqual((site/'index.html').read_bytes(),self.old)
                 self.assertFalse((site/css_name).exists())
+                self.assertFalse((site/'404.html').exists())
+                self.assertFalse((site/'favicon.svg').exists())
                 self.assertEqual(self.app.webconf.read_bytes(),self.original_conf)
         self.assertEqual(self.app.status()['site'],'rolled_back')
 
@@ -132,7 +136,7 @@ class DeployerTests(unittest.TestCase):
             self.app.site_install(deploy.NAMES[0],'entry.example.com')
         bad.unlink()
         (self.app.state/'install-version').write_text('2.5.9')
-        with self.assertRaisesRegex(deploy.DeployError,'ONLY_NEW'):
+        with self.assertRaisesRegex(deploy.DeployError,'UNSUPPORTED_STAGING'):
             self.app.tcp_install(9200,9300,portcheck=False)
 
     def test_empty_installer_ownership_marker_and_missing_marker(self):

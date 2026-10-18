@@ -14,44 +14,60 @@
 **Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
 
 <a id="github-install"></a>
-### 🐙 1. Из GitHub · 2.5.10 r7e
+### 🐙 1. Из GitHub · 2.5.13 r12 (только после публикации)
 
-Исходники закреплены на коммите `2c2caa35c98ad5badd44f49fc651c17278e63e9e`; SHA-256 `install.sh` проверяется **до запуска**.
+Версия `2.5.13 r12` собрана и проверяется как **staging**, GitHub `main` может пока содержать `2.5.11` или `2.5.12`. **Не выполняйте установку из GitHub, пока commit и ожидаемая сумма `install.sh` не проверены независимо.** Этот блок рассчитан на будущую публикацию r12 и намеренно завершится на SHA256, если в GitHub осталось старое содержимое.
 
-> [!WARNING]
-> В r7e/r7f финальная фаза установки падает (двойной `--host` у Docker CLI). Используйте локальный непубликованный staging ZIP **r10** ниже; ветка GitHub всё ещё содержит старую версию и не равна этому ZIP.
+**Только новая чистая staging VPS; snapshot и аварийная консоль обязательны.** Запуск от root:
 
 ```bash
-git clone https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-github-2.5.10-r7e
-cd Node_Install-github-2.5.10-r7e
-git checkout --detach 2c2caa35c98ad5badd44f49fc651c17278e63e9e
-printf '%s  %s\n' 'f00c1433b83421de3d21b61d3e85e99e96b537c6ed16c0fed7a77b588d846378' 'install.sh' | sha256sum --check
+set -Eeuo pipefail
+[[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
+cd /root
+[[ ! -e Node_Install-2.5.13 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
+git clone https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.13
+cd /root/Node_Install-2.5.13
+git checkout --detach "$(git rev-parse HEAD)"
+printf '%s  %s\n' 'aa4770804dc56680fa89dea07be560426f225d2b7939b8d614a0eb3ed2f0ceff' 'install.sh' | sha256sum --check
+sha256sum --check SHA256SUMS
+python3 scripts/verify_release.py --root .
 bash -n install.sh
 bash ./install.sh --version
-# Только проверка исходников. Не запускать этот исторический r7e на VPS.
+bash ./install.sh
 ```
 
-<a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.11 r10
+По умолчанию `bash ./install.sh` завершает установку с **автоматической перезагрузкой** примерно через 30 секунд. Любая незавершённая установка должна сначала пройти диагностику и `--finish-install`; не пытайтесь обойти fail-closed проверки.
 
-Альтернативный способ установки **на отдельную чистую VPS**. ZIP заранее перенесён на сервер и проверен по SHA-256 из независимого доверенного источника.
+<a id="archive-install"></a>
+### 📁 2. Из полного ZIP · 2.5.13 r12 (текущая staging-сборка)
+
+Полный архив сначала передаётся на отдельную **чистую** VPS, а SHA-256 ZIP сверяется с доверенным источником. `SHA256SUMS` внутри архива удостоверяет целостность содержимого, но сам по себе не доказывает происхождение.
 
 ```bash
-unzip -q Node_Install_2.5.11-docs-menu_20261018-r10-1g-selfsteal-staging.zip
+set -Eeuo pipefail
+[[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
+unzip -q Node_Install_2.5.13-docs-menu_20261018-r12-12themes-validated.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
 bash -n install.sh
-sudo bash ./install.sh --no-reboot
+bash ./install.sh --version
+bash ./install.sh
 ```
 
-Для обычной ноды после финальной фазы формируются два приватных файла: `/root/reality-keys.txt` и `/root/vkarmani-raw-profile.json` (полный RAW Config Profile; содержит PrivateKey, `0600`). Они предназначены для переноса в панель только по защищённому каналу.
+После **успешной Ordinary-установки** доступны приватные файлы `root:0600`:
 
-**VPS 1 vCPU / 1 GiB RAM (Ubuntu 22.04/24.04/26.04, Debian 12/13):** минимальный порог `900 MiB` фактически обнаруженной памяти и `6 GiB` свободного места на `/`. Для RAM менее `1536 MiB` обязателен **минимум 1 GiB активного swap** *до* первого `apt update/install`. Если подходящий swap уже активен — используем без замены. Иначе на выделенной чистой VPS с ext4/XFS создаётся защищённый `/swapfile-vkarmani` (0600) с проверкой сигнатуры, активацией и записью в `/etc/fstab`; чужие файлы и неподдерживаемые ФС не трогаются. **Перед установкой проверьте снимок VPS и console access**: на 1 GiB установка может замедлиться или не пройти из-за лимитов хостера, нагрузки, диска и kernel OOM. Реальная гарантия появится только после независимой установки/reboot и приёмки на такой VPS.
+| Путь | Назначение |
+|:---|:---|
+| `/root/reality-keys.txt` | PrivateKey/PublicKey/ShortID и параметры SNI |
+| `/root/vkarmani-raw-profile.json` | Основной RAW + REALITY + Vision Config Profile |
+| `/root/vkarmani-xhttp-profile.json` | Альтернативный XHTTP + REALITY без Vision (только при успешной проверке ядра) |
 
-**История r8/r9:** [аудит интеграции](docs/R8_INTEGRATION_REVIEW_20261018.md). **Новая r10:** [изменения, ограничения и тесты](docs/RELEASE_2.5.11_R10_REVIEW.md). Поставщик Nginx остаётся системным, принудительный weekly reboot не включён, чтобы не менять production-поведение без испытаний.
+RAW и XHTTP — **альтернативы для одного входящего TCP/443**, а не два одновременных сервиса. Возможности клиента зависят от фактической поддержки ядра; универсальную совместимость обещать нельзя. Каскад Entry/Exit использует прежний отдельный процесс установки с приватными role-bundle и не получает третий файл XHTTP. Роли Entry и Exit устанавливаются на разных чистых VPS.
 
-**Для каскада:** сначала [создайте два закрытых role-bundle](#cascade-setup), затем установите Exit и Entry **на разных чистых VPS**. Установку с GitHub и ZIP **не совмещают** на одной ноде.
+**VPS 1 vCPU / 1 GiB RAM:** минимум 900 MiB фактической RAM и 6 GiB свободного места; до APT требуется 1 GiB активного swap при RAM меньше 1536 MiB. Проверка реальной установки и нагрузки на отдельной 1-гигабайтной VPS остаётся обязательной.
+
+**Релизные документы:** [r12 · 12 тем и 404](docs/RELEASE_2.5.13_R12_SITES.md) · [r11 · RAW/XHTTP](docs/RELEASE_2.5.12_R11_REVIEW.md) · [r10 · память](docs/RELEASE_2.5.11_R10_REVIEW.md). Репозиторий/серверы автоматически не обновляются. Nginx остаётся системным, IPv6 отключён по политике установки.
 
 ---
 
@@ -75,7 +91,8 @@ sudo bash ./install.sh --no-reboot
 | Установить и выбрать роль | [GitHub / ZIP](#install) · [Требования](#requirements) |
 | Настроить объекты в панели | [🎛 Remnawave](#panel) · [Ролевой runbook](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md) |
 | Взять полный профиль Xray | [Ordinary RAW](#raw) · [Ordinary XHTTP](#xhttp) · [Entry / Exit](#cascade) |
-| Поменять оформление сайта или TCP | [6 сайтов / Nginx stream](#sites-tcp-probes) |
+| 🎨 Посмотреть 12 сайтов и генератор | [Темы и Selfsteal](#sites-tcp-probes) · [Тематический каталог r12](docs/RELEASE_2.5.13_R12_SITES.md) |
+| 🗝 Найти три готовых приватных файла | [RAW / XHTTP / REALITY keys](#archive-install) |
 | Проверить маршруты, DNS/UDP и откат | [Диагностика](#verification) · [Эксплуатация](#operations) |
 
 <a id="requirements"></a>
@@ -92,7 +109,11 @@ flowchart LR
     C["📱 Клиент"] -->|"VLESS · REALITY :443"| O["🟦 Ordinary Node<br/>Xray / RemnaNode"]
     O -->|"DIRECT · IPv4"| I["🌍 Интернет"]
     O -.->|Неавторизованный TLS| W["🪟 Nginx Selfsteal<br/>Unix socket · PROXY v1"]
-    P["🎛 Remnawave Panel"] -.->|Node API · IP allowlist| O
+    P["🎛 Remnawave Panel"] -.->|mTLS Node API 2222 · IPv4 allowlist| O
+    O -->|RKN / egress rules| F["🛡 UFW / IPv4 rules"]
+    F --> I
+    O -.->|RW profile export| R["📁 /root RAW + XHTTP + REALITY keys"]
+    W -.->|TLS · HTTP 1.1/2| S["🎨 Версионированный статический сайт"]
     classDef user fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
     classDef node fill:#cffafe,stroke:#0891b2,color:#164e63,stroke-width:2px;
     classDef web fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
@@ -794,9 +815,11 @@ sudo bash ./install.sh --cascade-role entry \
 Далее назначить объекты тестовой Panel согласно [пошаговому runbook](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md), проверить фактический JSON командой аудитора и только затем — реальных клиентов. Автоматического создания Panel Nodes/Hosts/Squads здесь **нет**.
 
 <a id="sites-tcp-probes"></a>
-## 🌐 Шесть сайтов · Nginx TCP · сетевые проверки
+## 🌐 12 тематических сайтов · Nginx TCP · сетевые проверки
 
-**В комплекте:** `01-atelier`, `02-archive`, `03-observatory`, `04-fieldnotes`, `05-readingroom`, `06-foundry`. На одну VPS/FQDN устанавливается **одна** выбранная тема; это не шесть доменов одновременно. Для управления есть backup/rollback и `nginx -t`.
+**В комплекте — 12 тем:** `01-atelier`, `02-archive`, `03-observatory`, `04-fieldnotes`, `05-readingroom`, `06-foundry`, `07-botanica`, `08-nocturne`, `09-kitchen`, `10-atlas`, `11-tides`, `12-cinema`. На одной VPS применяется **одна тема** с доменной вариативностью. Навигация — рабочие якорные разделы, несуществующие пути возвращают настоящий **HTTP 404** с собственной страницей темы. CSS, favicon, 404 и главная страница входят в один журнал восстановления.
+
+Генератор полностью offline и не меняет Nginx. Пример предварительного просмотра: `python3 scripts/cover_variants.py --name 08-nocturne --domain preview.example.test --output /tmp/preview-nocturne-new` (каталог должен отсутствовать). Для живого деплоя на **отдельной staging VPS** используйте `site-deploy`, затем `site-rollback` по runbook — скрипт сам проверит домен, версию, Nginx и локальный Selfsteal. Не запускать на работающей production-ноде без snapshot.
 
 ```bash
 python3 scripts/cover_variants.py --list
@@ -832,7 +855,7 @@ sudo bash ./install.sh --rkn-sync-panel
 | `--refresh-image` / `--rollback-image` | Узкое обновление/откат образа |
 | `--update-cover` / `--rollback-cover` | Старый cover-режим, **не смешивать** с r7 site-deploy |
 | `--maintenance-status` / `--maintenance-enable` / `--maintenance-disable` | Ночной таймер для ordinary; каскадный автоматический restart **заблокирован** |
-| `--prepare-xhttp` | Только генерация XHTTP профиля ordinary |
+| `--prepare-xhttp` | Генерация/проверка XHTTP-профиля ordinary; для установленной r12 также экспорт защищённой копии в `/root` |
 | `--xray-versions --offline` | Проверка версии, ничего не обновляет |
 | `--diagnose-resources --seconds 10 --strict` | Проверка ресурсов локального узла |
 | `--finish-install` | Завершение лишь уже начатой и подтверждённой финальной фазы |
@@ -840,7 +863,7 @@ sudo bash ./install.sh --rkn-sync-panel
 <a id="verification"></a>
 ## ✅ Проверки и границы готовности
 
-**Статус:** 2.5.11 r10 — локальный непубликованный staging; реальные две VPS, панель и клиентские испытания пока не подтверждены.
+**Статус:** 2.5.13 r12 — неопубликованная staging-сборка. Тесты исходников проводятся автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
 
 ```bash
 bash -n install.sh
@@ -856,7 +879,7 @@ sudo bash ./install.sh --check
 
 **Для двухсерверной приёмки** нужны: живой клиент, внешний IPv4 именно Exit, HTTPS через SOCKS, DNS A через UDP ASSOCIATE, отдельный UDP echo, фазы `baseline → outage → recovery`, проверка отсутствия DIRECT/DNS утечек на Entry и восстановления после reboot. Скрипт `scripts/cascade_live_probe.py` **не останавливает Exit** — это делает оператор **только на TEST VPS**, с независимой фиксацией факта. [Live-процедура, параметры и безопасность](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
 
-| Гейт | Статус r10 |
+| Гейт | Статус r12 |
 |---|---|
 | Генерация/синтаксис профилей и offline-регрессии | Подготовлены; перепроверяются в точной сборке |
 | Полная установка на новую VPS, Remnawave Panel, сертификаты | **NOT RUN** |
@@ -867,6 +890,6 @@ sudo bash ./install.sh --check
 
 <div align="center">
 
-**VKARMANI · 2.5.11** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
+**VKARMANI · 2.5.13** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
 
 </div>
