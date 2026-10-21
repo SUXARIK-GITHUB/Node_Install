@@ -85,8 +85,8 @@ class HybridTcpR18(unittest.TestCase):
             (self.root/p).mkdir(parents=True,exist_ok=True)
         s=self.root/'var/lib/vkarmani-node'
         (s/'owned-installation').touch()
-        (s/'install-version').write_text('2.5.17\n')
-        (s/'INSTALL_COMPLETE').write_text('version=2.5.17\n')
+        (s/'install-version').write_text('2.5.18\n')
+        (s/'INSTALL_COMPLETE').write_text('version=2.5.18\n')
         (self.root/'etc/vkarmani-node/config.json').write_text(json.dumps({
             'installation_mode':'secret-key-only', 'domain':'node.example.org',
             'public_ipv4':'8.8.8.8', 'reality_mode':'max.ru'}))

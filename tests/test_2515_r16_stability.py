@@ -114,7 +114,7 @@ class StabilityR16Tests(unittest.TestCase):
         self.assertIn('оператор', text)
         self.assertIn('nightly', text)
         self.assertIn('26.10.17', text)
-        self.assertIn('2.5.17 r18', (ROOT/'CHANGELOG.md').read_text().splitlines()[0])
+        self.assertIn('2.5.18 r19', (ROOT/'CHANGELOG.md').read_text().splitlines()[0])
 
 
 if __name__ == '__main__':

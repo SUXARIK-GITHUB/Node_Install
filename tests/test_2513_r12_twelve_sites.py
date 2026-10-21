@@ -116,9 +116,9 @@ class Themes(unittest.TestCase):
     def test_r12_postinstall_command_ownership_gates(self):
         # Explicit maintenance and recovery operations must not reject a successful
         # fresh 2.5.13 install as an unknown future version.
-        self.assertIn(r"'^version=2\.5\.([2-9]|10|11|12|13|14|15)$'",SCRIPT)
-        self.assertIn(r"'^version=2\.5\.(8|9|10|11|12|13|14|15)$'",SCRIPT)
-        self.assertIn("'version=2.5.12', 'version=2.5.13', 'version=2.5.14', 'version=2.5.15', 'version=2.5.16', 'version=2.5.17')",SCRIPT)
+        self.assertIn(r"'^version=2\.5\.([2-9]|10|11|12|13|14|15|16|17|18)$'",SCRIPT)
+        self.assertIn(r"'^version=2\.5\.(8|9|10|11|12|13|14|15|16|17|18)$'",SCRIPT)
+        self.assertIn("'version=2.5.12', 'version=2.5.13', 'version=2.5.14', 'version=2.5.15', 'version=2.5.16', 'version=2.5.17', 'version=2.5.18')",SCRIPT)
 
     def test_old_two_file_theme_receipt_still_rolls_back(self):
         app=dep.NodeWeb(Path('/tmp/unused-offline-root'))

@@ -125,6 +125,8 @@ UNTRACKED_ALLOWED = {
     'docs/RELEASE_2.5.17_R18_RELIABILITY_20261021.md',
     'tests/test_2517_r18_reliability.py',
     'integrations/connection_quality.py',
+    'docs/RELEASE_2.5.18_R19_HYBRID_HOTFIX_20261021.md',
+    'tests/test_2518_r19_hybrid_permissions.py',
 }
 
 
@@ -194,7 +196,7 @@ def build(out_dir, build_id):
         data = p.read_bytes()
         entries.append({'path':name, 'size':len(data), 'sha256':sha256(data), 'mode':f'{mode:04o}'})
     manifest = {
-        'version': '2.5.17',
+        'version': '2.5.18',
         'build_id': build_id,
         'source_commit': source_commit,
         'release_status': 'INCOMPLETE_STAGING_ONLY',
@@ -213,7 +215,7 @@ def build(out_dir, build_id):
     data[SUMS] = sums_bytes
     verify_bytes(data)
     out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / f'Node_Install_2.5.17-docs-menu_{build_id}.zip'
+    dest = out_dir / f'Node_Install_2.5.18-docs-menu_{build_id}.zip'
     if dest.exists():
         raise FileExistsError('already built; use a new unique build ID')
     fd, tmp = tempfile.mkstemp(prefix='.node-install-staging-', suffix='.zip', dir=out_dir)

@@ -1,3 +1,10 @@
+## 2.5.18 r19 — 2026-10-21 · Hybrid Selfsteal Unix permissions incident hotfix (staging)
+
+- Исправлена реальная ошибка при установке Ordinary с внешним SNI (MAX/Яндекс/RUTUBE/Mail): ранее Nginx Stream работал от www-data, но каталог `cover.sock` был `0750 root:root`, что давало TLS EOF и останавливало установку до создания контейнера RemnaNode.
+- Каталог `/run/vkarmani-selfsteal` теперь `0750 root:www-data` (без group-write/world permissions). Аналогичное ограничение в `/etc/tmpfiles.d/vkarmani-selfsteal.conf` переживает перезагрузку. Добавлен явный fail-closed контроль фактических прав.
+- RAW, XHTTP, внешний SNI, каскад, Docker и firewall не изменены. Частично прерванная r18 не мигрируется автоматически; нужен проверенный snapshot чистой VPS или отдельная диагностика.
+- Новый regression test фиксирует исходную ошибку и непривилегированный доступ Nginx worker к каталогу, release остаётся `INCOMPLETE_STAGING_ONLY`.
+
 ## 2.5.17 r18 — 2026-10-21 · исправления IPv4/Cascade, гибридный Stream, диагностика качества (staging)
 
 - Исправлена ошибочная предварительная блокировка публичного IPv4 `192.0.1.*` (зарезервированный `192.0.0.*` остаётся запрещённым). DNS и выбор дополнительного IPv4 не меняются.

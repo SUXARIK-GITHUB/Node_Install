@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.17 (README and guarded installation-choice candidate). Read README.md before running as root.
+# VKarmani Node 2.5.18 (README and guarded installation-choice candidate). Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1504,7 +1504,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11|2.5.12|2.5.13|2.5.14|2.5.15|2.5.16|2.5.17) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11|2.5.12|2.5.13|2.5.14|2.5.15|2.5.16|2.5.17|2.5.18) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1527,7 +1527,7 @@ else
 fi
 
 # A 1 GiB installation must not silently lose its verified swap on reboot.
-if [[ "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 || "$INSTALL_VERSION" == 2.5.16 || "$INSTALL_VERSION" == 2.5.17 ]]; then
+if [[ "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 || "$INSTALL_VERSION" == 2.5.16 || "$INSTALL_VERSION" == 2.5.17 || "$INSTALL_VERSION" == 2.5.18 ]]; then
     RAM_KIB=$(awk '$1=="MemTotal:" {print $2}' /proc/meminfo)
     if [[ "$RAM_KIB" =~ ^[0-9]+$ ]] && (( RAM_KIB < 1536 * 1024 )); then
         SWAP_KIB=$(awk '$1=="SwapTotal:" {print $2}' /proc/meminfo)
@@ -1557,7 +1557,7 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 || "$INSTALL_VERSION" == 2.5.16 || "$INSTALL_VERSION" == 2.5.17 ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 || "$INSTALL_VERSION" == 2.5.16 || "$INSTALL_VERSION" == 2.5.17 || "$INSTALL_VERSION" == 2.5.18 ]]; then
         if [[ -f "$ETC/cascade-role.json" ]]; then
             warn XHTTP_IMPORT_PROFILE_POLICY 'CASCADE_RAW_ONLY: XHTTP not available for this peer bridge'
         elif [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
@@ -2590,7 +2590,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11', 'version=2.5.12', 'version=2.5.13', 'version=2.5.14', 'version=2.5.15', 'version=2.5.16', 'version=2.5.17') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11', 'version=2.5.12', 'version=2.5.13', 'version=2.5.14', 'version=2.5.15', 'version=2.5.16', 'version=2.5.17', 'version=2.5.18') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3792,7 +3792,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13', '2.5.14', '2.5.15', '2.5.16', '2.5.17') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13', '2.5.14', '2.5.15', '2.5.16', '2.5.17', '2.5.18') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -5896,8 +5896,8 @@ vkarmani_rkn_command() {
         [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
-        grep -Eq '^version=2\.5\.([2-9]|10|11|12|13|14|15)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2–2.5.17 nodes.' >&2; return 1;
+        grep -Eq '^version=2\.5\.([2-9]|10|11|12|13|14|15|16|17|18)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+            echo 'RKN integration supports only completed 2.5.2–2.5.18 nodes.' >&2; return 1;
         }
         vk_rkn_activate
         return
@@ -6219,7 +6219,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 || "$version" == 2.5.12 || "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 || "$version" == 2.5.16 || "$version" == 2.5.17 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 || "$version" == 2.5.12 || "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 || "$version" == 2.5.16 || "$version" == 2.5.17 || "$version" == 2.5.18 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -6251,7 +6251,7 @@ vkarmani_prepare_xhttp_main() {
     vk_write_xhttp_profile_helper "$tmp/xhttp_profile.py"
     local rc=0
     vk_xhttp_prepare_template "$tmp/xhttp_profile.py" "$etc" "$core" "$state" || rc=$?
-    if [[ "$rc" -eq 0 && ( "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 || "$version" == 2.5.16 || "$version" == 2.5.17 ) ]]; then
+    if [[ "$rc" -eq 0 && ( "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 || "$version" == 2.5.16 || "$version" == 2.5.17 || "$version" == 2.5.18 ) ]]; then
         python3 -I -B /usr/local/lib/vkarmani-node/node_helper.py reality-export-xhttp >/dev/null || rc=$?
     fi
     rm -f -- "$tmp/xhttp_profile.py"
@@ -6418,7 +6418,7 @@ vk_write_finalizer_helper() {
     local destination=$1
     cat > "$destination" <<'VK_FINALIZER_PY'
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.17 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.18 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -6439,7 +6439,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.17'
+VERSION = '2.5.18'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -6594,7 +6594,7 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_17_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_18_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
@@ -6602,7 +6602,7 @@ class Finalizer:
         if cfg.get('installation_mode') != 'secret-key-only':
             raise Failure('WRONG_INSTALLATION_MODE')
         if not self.path('etc/vkarmani-node/cascade-role.json').exists():
-            # Three secret operator files are mandatory on a NEW ordinary 2.5.17.
+            # Three secret operator files are mandatory on a NEW ordinary 2.5.18.
             # Without this gate, a removed XHTTP template would quietly publish
             # INSTALL_COMPLETE with only RAW + keys.
             xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')
@@ -6857,7 +6857,7 @@ vkarmani_finish_install_main() (
     # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
     local state=/var/lib/vkarmani-node work
     [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
-        echo 'STOP: no supported 2.5.17 finalization checkpoint; no installation state changed.' >&2; exit 1;
+        echo 'STOP: no supported 2.5.18 finalization checkpoint; no installation state changed.' >&2; exit 1;
     }
     local lock=/run/lock/vkarmani-node-installer.lock
     if [[ ! -e "$lock" && ! -L "$lock" ]]; then
@@ -7219,8 +7219,8 @@ vkarmani_maintenance_command() {
             [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE && ! -L /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
                 echo 'MAINTENANCE: завершите установку перед включением' >&2; return 1;
             }
-            grep -Eq '^version=2\.5\.(8|9|10|11|12|13|14|15)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.17; старые ноды не мигрируются автоматически' >&2; return 1;
+            grep -Eq '^version=2\.5\.(8|9|10|11|12|13|14|15|16|17|18)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.18; старые ноды не мигрируются автоматически' >&2; return 1;
             }
             [[ -x /usr/local/sbin/vkarmani-docker-local ]] || {
                 echo 'MAINTENANCE: локальный Docker wrapper не установлен' >&2; return 1;
@@ -7237,7 +7237,7 @@ vkarmani_maintenance_command() {
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.17 — 2026-10-21
+# VKarmani Remnawave Node Installer 2.5.18 — 2026-10-21
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -7249,7 +7249,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.17
+INSTALLER_VERSION=2.5.18
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -7272,7 +7272,7 @@ VK_REALITY_MODE='local'  # saved with initial inputs; ordinary only
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.17
+VKarmani Remnawave Node Installer 2.5.18
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
@@ -7287,7 +7287,7 @@ VKarmani Remnawave Node Installer 2.5.17
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
-  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.17, без переустановки/reboot
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.18, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -7298,7 +7298,7 @@ VKarmani Remnawave Node Installer 2.5.17
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
   bash install.sh --diagnose-node --domain node.example.com # IPv4, DNS, routing, conntrack, TCP; только чтение
   bash install.sh --diagnose-quality --seconds 15    # агрегированное RTT/retrans TCP/443, без IP клиентов
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.17 ноде
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.18 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
@@ -7518,7 +7518,7 @@ vk_select_reality_mode() {
 }
 vk_initial_install_menu() {
     local tries=0
-    echo 'VKarmani Node Install 2.5.17 — выбор режима первой установки:'
+    echo 'VKarmani Node Install 2.5.18 — выбор режима первой установки:'
     echo '  1 — Обычная нода (доступна в этой версии)'
     echo '  2 — Каскад: отдельная входная/выходная нода (только чистая staging VPS)'
     while ((tries < 5)); do
@@ -7586,7 +7586,7 @@ fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     [[ -z "$NODE_PORT_ARG" ]] || { echo "STOP: --node-port cannot migrate an installed node; no changes." >&2; return 2; }
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
-        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.17 use --finish-install.' >&2; exit 1
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.18 use --finish-install.' >&2; exit 1
     fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
@@ -7966,7 +7966,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.17: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.18: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -8652,7 +8652,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.17\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.18\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -8911,7 +8911,7 @@ def write_panel_guide(c):
                    if chosen_mode == 'local' else
                    'Гибридный Selfsteal: свой HTTPS-сайт и внешний TLS/SNI passthrough через Nginx Stream; '
                    'PROXY v1 передаётся только локальному Nginx, не стороннему серверу.')
-    txt = f'''VKarmani RemnaNode 2.5.17 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.18 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -9481,12 +9481,18 @@ if dpkg --compare-versions "$NGINX_NUM" ge 1.25.1; then
     NGINX_HTTP2_LISTEN=''
     NGINX_HTTP2_DIRECTIVE='http2 on;'
 fi
-install -d -m 0750 -o root -g root /run/vkarmani-selfsteal
+# Hybrid Nginx stream workers connect to cover.sock, so they need x on
+# the containing directory.  root:root 0750 made that upstream unreachable
+# and produced SSLEOFError before the RemnaNode container was created.
+# Only group traversal, NEVER group directory write permission.
+getent group www-data >/dev/null || die 'HYBRID_WORKER_GROUP_MISSING'
+install -d -m 0750 -o root -g www-data /run/vkarmani-selfsteal
 cat > /etc/tmpfiles.d/vkarmani-selfsteal.conf <<'EOF'
 # Created during sysinit before Docker; no dependency on Nginx or external DNS.
-d /run/vkarmani-selfsteal 0750 root root -
+d /run/vkarmani-selfsteal 0750 root www-data -
 EOF
 systemd-tmpfiles --create /etc/tmpfiles.d/vkarmani-selfsteal.conf
+[[ $(stat -c '%U:%G:%a' /run/vkarmani-selfsteal) == 'root:www-data:750' ]] || die 'HYBRID_SOCKET_DIRECTORY_PERMISSIONS_INVALID'
 install -d -m 0755 /var/www/vkarmani-node/acme /var/www/vkarmani-node/site /var/www/vkarmani-node/site/assets
 vk_write_site_tool
 python3 "$LIB/site_tool.py" install
@@ -9799,7 +9805,7 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
 elif vk_xhttp_prepare_template "$LIB/xhttp_profile.py" "$ETC" "$CORE" "$STATE"; then
     echo 'XHTTP_IMPORT_TEMPLATE_READY=PASS (alternative profile; not active alongside RAW)'
 else
-    die 'XHTTP_IMPORT_TEMPLATE_NOT_VALIDATED_BY_BUNDLED_CORE; third profile required by 2.5.17. Investigate private log/snapshot; NO INSTALL_COMPLETE.'
+    die 'XHTTP_IMPORT_TEMPLATE_NOT_VALIDATED_BY_BUNDLED_CORE; third profile required by 2.5.18. Investigate private log/snapshot; NO INSTALL_COMPLETE.'
 fi
 
 stage 'RAW / XHTTP + REALITY профили и параметры для панели (без API-токена)'

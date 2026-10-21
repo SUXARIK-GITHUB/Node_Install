@@ -132,8 +132,8 @@ class MultiIpAndNodeDiagnostics(unittest.TestCase):
     def test_version_and_staging_safety(self):
         version=subprocess.run(['bash',str(ROOT/'install.sh'),'--version'],
                                capture_output=True,text=True,timeout=10)
-        self.assertEqual(version.stdout.strip(),'2.5.17')
-        self.assertIn('2.5.17', (ROOT/'README.md').read_text())
+        self.assertEqual(version.stdout.strip(),'2.5.18')
+        self.assertIn('2.5.18', (ROOT/'README.md').read_text())
         self.assertEqual(json.loads((ROOT/'BUILD_MANIFEST.json').read_text())['release_status'],
                          'INCOMPLETE_STAGING_ONLY')
 

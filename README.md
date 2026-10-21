@@ -14,9 +14,9 @@
 **Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
 
 <a id="github-install"></a>
-### 🐙 1. Установка с GitHub · 2.5.17 r18 (после публикации)
+### 🐙 1. Установка с GitHub · 2.5.18 r19 (после публикации)
 
-**Версия 2.5.17 r18 — staging; публикация в `main` и успешный GitHub Actions CI должны быть проверены отдельно.**
+**Версия 2.5.18 r19 — staging; публикация в `main` и успешный GitHub Actions CI должны быть проверены отдельно.**
 При подготовке источником была опубликованная r16 (до локальной r17), коммит GitHub `580fb94dd57b680e2aa8f38b295d9563d2bca686` (2.5.15 r16). Установка со старой версии остановится на контрольной сумме. Никакой автоматической миграции действующих нод.
 
 Только **новая чистая staging VPS**: snapshot диска с проверенным восстановлением, консоль провайдера, DNS A на назначенный публичный IPv4 ноды. Выполнять от `root`:
@@ -25,10 +25,10 @@
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
 cd /root
-[[ ! -e Node_Install-2.5.17 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
-git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.17
-cd /root/Node_Install-2.5.17
-printf '%s  %s\n' '043803da67f55fbb9f071c22f98f57e180518e748c3446f98fa58d5a03195b7a' 'install.sh' | sha256sum --check
+[[ ! -e Node_Install-2.5.18 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
+git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.18
+cd /root/Node_Install-2.5.18
+printf '%s  %s\n' '272c7561e2cab7e0a84c55e715ba04781954c2e49aeb6f0c33ab822dd51c5496' 'install.sh' | sha256sum --check
 sha256sum --check SHA256SUMS
 python3 scripts/verify_release.py --root .
 python3 - <<'PY_VERIFY_BUILD'
@@ -36,27 +36,27 @@ import json
 from pathlib import Path
 m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
 if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-        '2.5.17', '20261021-r18-reliability-diagnostics', 'INCOMPLETE_STAGING_ONLY'):
+        '2.5.18', '20261021-r19-hybrid-worker-permissions', 'INCOMPLETE_STAGING_ONLY'):
     raise SystemExit('STOP: GitHub version/build/status mismatch; installer NOT launched')
 PY_VERIFY_BUILD
 bash -n install.sh
-[[ "$(bash ./install.sh --version)" == '2.5.17' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
+[[ "$(bash ./install.sh --version)" == '2.5.18' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
 bash ./install.sh
 ```
 
 Последняя команда — обычный `bash ./install.sh` **без нестандартного порта**. Node API TCP/2222 и клиентский TCP/443 остаются настройками по умолчанию. Автоперезагрузка выполняется только по штатному сценарию успешно завершённой новой установки. При неполной установке нельзя обойти `--finish-install`/fail-closed проверки.
 
-**До публикации r18 в GitHub эта команда должна отказывать по SHA-256.** Для тестирования неопубликованной сборки используйте архив ниже.
+**До публикации r19 в GitHub эта команда должна отказывать по SHA-256.** Для тестирования неопубликованной сборки используйте архив ниже.
 
 <a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.17 r18 (текущая staging-сборка)
+### 📁 2. Из полного ZIP · 2.5.18 r19 (текущая staging-сборка)
 
 Полный ZIP сначала передаётся на отдельную **чистую VPS**. Проверяйте SHA-256 архива по независимому доверенному каналу. Внутренний `SHA256SUMS` удостоверяет целостность, но не происхождение архива. Перед первым запуском — snapshot целого диска и доступная аварийная консоль хостера.
 
 ```bash
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-unzip -q Node_Install_2.5.17-docs-menu_20261021-r18-reliability-diagnostics.zip
+unzip -q Node_Install_2.5.18-docs-menu_20261021-r19-hybrid-worker-permissions.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
@@ -78,6 +78,10 @@ bash ./install.sh --diagnose-quality --seconds 15
 **Новый третий отчёт `--diagnose-quality`:** два обезличенных снимка `ss` по установленным TCP/443: RTT p50/p90/p99, доля соединений с обнаруженной историей retransmits и ориентировочный delivery rate. Ни один IP клиента/UUID/ключ не печатается. Он не измеряет UDP и не доказывает причину блокировки; при отсутствии соединений сообщает, что данных для выводов нет.
 
 **Cascade Exit:** для **новых** профилей `freedom.sockopt.domainStrategy=ForceIPv4`, приватные сети и обе публичные IPv4 пары Entry/Exit заблокированы в пользовательском routing, на Exit — и в `finalRules`. Никакой автоматической миграции уже работающих каскадов. Hybrid Stream теперь содержит заранее разрешённый include для управляемых локальных TCP-фрагментов, без второго публичного 443.
+
+**Важное исправление r19:** в старой r18 при выборе MAX/ya.ru/rutube.ru/mail.ru установка могла остановиться на `SELFSTEAL_CHECK=FAIL SSLEOFError`. Причина — каталог Unix-сокетов `0750 root:root`: worker Nginx `www-data` не имел права входить в него и подключаться к `cover.sock`. В r19 каталог остаётся закрытым `0750`, но его группа `www-data`, в том числе после перезагрузки (`tmpfiles.d`).
+
+**Уже остановленная на этом этапе r18:** порт 2222 не слушает, потому что контейнер RemnaNode ещё не создан. Нельзя использовать `--finish-install` без checkpoint, запускать `--repair-node` или вручную удалять `INSTALL_FAILED`. Восстановите проверенный snapshot исходной чистой VPS, затем установите r19. Если snapshot отсутствует, нужен отдельный ручной разбор состояния, а не автоматическая переустановка поверх.
 
 **Выбор REALITY/Selfsteal при установке новой Ordinary-ноды:**
 

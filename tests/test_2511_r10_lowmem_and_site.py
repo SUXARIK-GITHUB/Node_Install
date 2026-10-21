@@ -105,8 +105,8 @@ vk_prepare_lowmem_swap 1024
         self.assertLess(a,b)
         self.assertLess(b,c)
         self.assertIn('LOWMEM_ACTIVE_SWAP_1G',SCRIPT)
-        self.assertIn(r"'^version=2\.5\.([2-9]|10|11|12|13|14|15)$'",SCRIPT)
-        self.assertIn('FINISH_ONLY_RECORDED_2_5_17_SUPPORTED',SCRIPT)
+        self.assertIn(r"'^version=2\.5\.([2-9]|10|11|12|13|14|15|16|17|18)$'",SCRIPT)
+        self.assertIn('FINISH_ONLY_RECORDED_2_5_18_SUPPORTED',SCRIPT)
 
 
 class SiteAndSelfstealSecurityContracts(unittest.TestCase):
@@ -130,7 +130,7 @@ class SiteAndSelfstealSecurityContracts(unittest.TestCase):
         self.assertIn('def css_name(',source)
         self.assertIn('def site_rollback(',source)
         self.assertIn('def tcp_rollback(',source)
-        self.assertIn("version in ('2.5.11','2.5.12','2.5.13','2.5.14','2.5.15','2.5.16','2.5.17')",source)
+        self.assertIn("version in ('2.5.11','2.5.12','2.5.13','2.5.14','2.5.15','2.5.16','2.5.17','2.5.18')",source)
         self.assertIn('THIRD_PARTY_CHANGE',source)
         self.assertIn('nginx',source)
 
