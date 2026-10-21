@@ -173,7 +173,7 @@ class NodeWeb:
         # are checked by read() and the root-only checks above, not contents.
         read(self.state/'owned-installation',self.root,256)
         version=read(self.state/'install-version',self.root,32).decode().strip()
-        must(version in ('2.5.11','2.5.12','2.5.13','2.5.14'), 'UNSUPPORTED_STAGING_INSTALL_VERSION')
+        must(version in ('2.5.11','2.5.12','2.5.13','2.5.14','2.5.15'), 'UNSUPPORTED_STAGING_INSTALL_VERSION')
         complete=read(self.state/'INSTALL_COMPLETE',self.root,2048).decode()
         # Refuse an incompatible marker rather than assuming all sites are 2.5.11.
         must(re.search(r'(?m)^version='+re.escape(version)+r'$',complete) is not None,

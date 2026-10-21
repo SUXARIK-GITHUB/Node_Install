@@ -12,7 +12,7 @@ class ReleaseContract255(unittest.TestCase):
         self.assertIn("'version=2.5.4', 'version=2.5.5'", SCRIPT)
         self.assertIn("'2.5.4', '2.5.5'", SCRIPT)
         self.assertIn('"$version" == 2.5.4 || "$version" == 2.5.5', SCRIPT)
-        self.assertIn("'^version=2\\.5\\.([2-9]|10|11|12|13|14)$'", SCRIPT)
+        self.assertIn("'^version=2\\.5\\.([2-9]|10|11|12|13|14|15)$'", SCRIPT)
         self.assertIn('"$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5',
                       payload('VK_PAYLOAD_VK_WRITE_ACCEPTANCE'))
 

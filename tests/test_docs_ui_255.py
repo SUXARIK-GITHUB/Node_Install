@@ -29,8 +29,8 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertIn('текущая staging-сборка', self.readme)
         self.assertIn('на разных чистых VPS', self.readme)
         self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
-        published = '### 🐙 1. Установка с GitHub · 2.5.14 r15 (после публикации)'
-        archive = '### 📁 2. Из полного ZIP · 2.5.14 r15 (текущая staging-сборка)'
+        published = '### 🐙 1. Установка с GitHub · 2.5.15 r16 (после публикации)'
+        archive = '### 📁 2. Из полного ZIP · 2.5.15 r16 (текущая staging-сборка)'
         self.assertLess(self.readme.index(published),self.readme.index(archive))
         github_cmd = self.readme.split(published,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         archive_cmd = self.readme.split(archive,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
@@ -43,7 +43,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertIn('sha256sum --check SHA256SUMS', github_cmd)
         self.assertIn("m.get('build_id')", github_cmd)
         self.assertIn("m.get('release_status')", github_cmd)
-        self.assertIn('Node_Install_2.5.14-docs-menu_' + build_id + '.zip', archive_cmd)
+        self.assertIn('Node_Install_2.5.15-docs-menu_' + build_id + '.zip', archive_cmd)
         self.assertIn('python3 scripts/verify_release.py --root .', archive_cmd)
         self.assertIn('sha256sum --check SHA256SUMS', archive_cmd)
         self.assertIn('bash ./install.sh\n', archive_cmd + '\n')
@@ -52,7 +52,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
                                             capture_output=True).returncode, 0)
             self.assertNotIn('curl | bash', command)
             self.assertNotIn('/main/install.sh', command)
-        self.assertIn('Node_Install-2.5.14', github_cmd)
+        self.assertIn('Node_Install-2.5.15', github_cmd)
         self.assertNotIn('--node-port', github_cmd)
         self.assertNotIn('--node-port', archive_cmd)
         self.assertNotIn('2.5.10 r7e', self.readme.split('---', 1)[0])
@@ -189,7 +189,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         for path in ('docs/history/README_2.5.5.md', 'docs/history/SECURITY_2.5.5.md'):
             self.assertTrue((ROOT/path).is_file())
         self.assertIn('## ⚡ Установка', self.readme)
-        self.assertIn('2.5.14', self.readme)
+        self.assertIn('2.5.15', self.readme)
         self.assertIn('docs/history/README_2.5.4.md', self.readme)
         self.assertNotIn('## ⚠️ Версии и ограничения', self.readme)
 

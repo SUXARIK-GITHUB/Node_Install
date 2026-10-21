@@ -19,7 +19,8 @@ class ResourceReview256(unittest.TestCase):
                      'daemon_fds': {'verified': True,'processes':[{'status':'OK'}]},
                      'pressure': {k:{'some':{'avg10':0}} for k in ('cpu','memory','io')},
                      'selfsteal_socket_queue': {'verified':True,'present':True},
-                     **{k:{'count':0} for k in ('tcp_delta','tcp_ext_delta','vm_delta')}}
+                     **{k:{'count':0} for k in ('tcp_delta','tcp_ext_delta','vm_delta','udp_delta','softnet_delta')},
+                     'netdev_delta': {'verified': True, 'interfaces':[{'interface':'eth0','rx_errors':0,'rx_dropped':0,'tx_errors':0,'tx_dropped':0}]}}
 
     def test_all_observations_known_is_ok(self):
         s=self.m.review_summary(self.good)

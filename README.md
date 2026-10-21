@@ -14,9 +14,9 @@
 **Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
 
 <a id="github-install"></a>
-### 🐙 1. Установка с GitHub · 2.5.14 r15 (после публикации)
+### 🐙 1. Установка с GitHub · 2.5.15 r16 (после публикации)
 
-**Состояние на 21.10.2026:** в публичном GitHub `main` пока находится **2.5.13 r12**, коммит `197cd273f7954a84e8445ea1d333224304777eac`. Новая версия **2.5.14 r15 пока есть только в полном ZIP ниже**. Следующая команда рассчитана на **последующую публикацию r15**. До публикации она **безопасно остановится на SHA-256** и не установит старый скрипт. Нельзя утверждать, что GitHub уже содержит r15.
+**Состояние на 21.10.2026:** при подготовке публичный GitHub `main` находился на **2.5.13 r12**, коммит `197cd273f7954a84e8445ea1d333224304777eac`. Новая версия **2.5.15 r16 пока есть только в полном ZIP ниже**. Следующая команда рассчитана на **последующую публикацию r16**. До публикации она **безопасно остановится на SHA-256** и не установит старый скрипт. Нельзя утверждать, что GitHub уже содержит r16.
 
 **Только новая чистая staging VPS.** До выполнения: проверенный snapshot всего диска, доступ к консоли провайдера, DNS A на публичный IPv4 ноды. Выполнять от `root`:
 
@@ -24,10 +24,10 @@
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
 cd /root
-[[ ! -e Node_Install-2.5.14 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
-git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.14
-cd /root/Node_Install-2.5.14
-printf '%s  %s\n' '6ad0f4a19a34b7814a5c6b789f542dc6129ffbc06c026d9de94051cdd4fd0419' 'install.sh' | sha256sum --check
+[[ ! -e Node_Install-2.5.15 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
+git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.15
+cd /root/Node_Install-2.5.15
+printf '%s  %s\n' '1a5227ebc48fc87cbc2a2c86bfa2359ec02d6c72536a5d073c1f45e22600c46a' 'install.sh' | sha256sum --check
 sha256sum --check SHA256SUMS
 python3 scripts/verify_release.py --root .
 python3 - <<'PY_VERIFY_BUILD'
@@ -35,27 +35,27 @@ import json
 from pathlib import Path
 m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
 if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-        '2.5.14', '20261021-r15-github-install', 'INCOMPLETE_STAGING_ONLY'):
+        '2.5.15', '20261021-r16-stability-diagnostics', 'INCOMPLETE_STAGING_ONLY'):
     raise SystemExit('STOP: GitHub version/build/status mismatch; installer NOT launched')
 PY_VERIFY_BUILD
 bash -n install.sh
-[[ "$(bash ./install.sh --version)" == '2.5.14' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
+[[ "$(bash ./install.sh --version)" == '2.5.15' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
 bash ./install.sh
 ```
 
 Установка запускается **стандартной командой `bash ./install.sh`**, без нестандартного Node Port. По умолчанию управляющий TCP/2222; клиентский REALITY TCP/443. После успешной установки выполняется предусмотренная установщиком автоматическая перезагрузка. Повторный запуск после частичной установки — только по инструкции `--finish-install` и после диагностики состояния; не обходить fail-closed проверки.
 
-**Без публикации новой версии в GitHub команда GitHub не предназначена для выполнения.** Для тестирования именно 2.5.14 r15 используйте проверенный ZIP ниже.
+**Без публикации новой версии в GitHub команда GitHub не предназначена для выполнения.** Для тестирования именно 2.5.15 r16 используйте проверенный ZIP ниже.
 
 <a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.14 r15 (текущая staging-сборка)
+### 📁 2. Из полного ZIP · 2.5.15 r16 (текущая staging-сборка)
 
 Полный ZIP сначала передаётся на отдельную **чистую VPS**. Проверяйте SHA-256 архива по независимому доверенному каналу. Внутренний `SHA256SUMS` удостоверяет целостность, но не происхождение архива. Перед первым запуском — snapshot целого диска и доступная аварийная консоль хостера.
 
 ```bash
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-unzip -q Node_Install_2.5.14-docs-menu_20261021-r15-github-install.zip
+unzip -q Node_Install_2.5.15-docs-menu_20261021-r16-stability-diagnostics.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
@@ -74,11 +74,13 @@ bash ./install.sh
 
 Во всех режимах REALITY `target=/dev/shm/nginx.sock`, `xver=1`; у внешних режимов `serverNames` = выбранному внешнему имени. **Это Unix socket в Xray-контейнере**, физически соответствующий `/run/vkarmani-selfsteal/nginx.sock` хоста. Внешний режим устанавливает Nginx stream-модуль и разделяет TLS по разрешённым SNI: **свой FQDN → локальный HTTPS-сайт на `cover.sock`; выбранное внешнее имя → TLS passthrough без подмены сертификата**. Любой другой SNI попадает на HTTPS-default: TLS reject на поддерживаемом Nginx, иначе HTTP/421. Заголовок PROXY протокола не передаётся внешним серверам. Никакого второго публичного `443` listener Nginx не открывается: TCP/443 слушает Xray. HTTP/80 своего FQDN использует 301 → HTTPS, исключая challenge Certbot.
 
+**Надёжность r16:** на новых Ordinary-нодах ночной перезапуск контейнера **выключен по умолчанию**, потому что сбрасывает активные сессии. Он доступен только после явного `bash ./install.sh --maintenance-enable`. Существующие установленные ноды не меняются; состояние их таймера нужно проверять отдельно. `bash ./install.sh --diagnose-resources --seconds 15` выдаёт локальную диагностику без изменений системы, включая изменения счётчиков TCP/UDP, очередей softnet, интерфейсов, процессов и контейнера. Не публикуйте полные логи с секретами.
+
 **Порты по умолчанию:** RemnaNode Node API слушает TCP/2222 (доступ только для разрешённых IPv4 панели); RAW/XHTTP REALITY использует TCP/443, а HTTP-01 ACME — TCP/80. Отдельный механизм выбора порта новой Ordinary-ноды технически сохранён в коде, но **в этой инструкции используется только стандартная установка, без его параметров**. Для действующих нод автоматическая смена портов не предусмотрена. Изменение клиентского 443 требует отдельной согласованной миграции и проверки у провайдеров.
 
 Внешний SNI **не обеспечивает «невидимость VPN»** и не гарантирует прохождение фильтрации по IP, ASN или TLS. Перед установкой тестируется доступность реального IPv4/TLS 1.3 внешнего ресурса. RAW и XHTTP — *альтернативные* конфиги одного TCP/443 listener, с одинаковыми Reality privateKey/shortIds, но разными транспортами/flow; применять вместе на одном `443` нельзя. Клиентский `Address` = свой реальный адрес ноды; внешний SNI = выбор режима. Каскад Entry/Exit и его собственный локальный Selfsteal не переделаны. Смена режима или портов действующей ноды установщиком не поддерживается.
 
-[Изменения r15 и порядок публикации через GitHub](docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md) · [Runbook r14: гибридный Selfsteal и испытания](docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md).
+[Нагрузочная диагностика и обслуживание r16](docs/RELEASE_2.5.15_R16_STABILITY_20261021.md) · [Изменения r15 и порядок публикации через GitHub](docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md) · [Runbook r14: гибридный Selfsteal и испытания](docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md).
 
 После **успешной Ordinary-установки** доступны приватные файлы `root:0600`:
 
@@ -92,7 +94,7 @@ RAW и XHTTP — **альтернативы для одного входящег
 
 **VPS 1 vCPU / 1 GiB RAM:** минимум 900 MiB фактической RAM и 6 GiB свободного места; до APT требуется 1 GiB активного swap при RAM меньше 1536 MiB. Проверка реальной установки и нагрузки на отдельной 1-гигабайтной VPS остаётся обязательной.
 
-**Релизные документы:** [r15 · версия и GitHub](docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md) · [r14 · hybrid](docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md) · [r12 · 12 тем и 404](docs/RELEASE_2.5.13_R12_SITES.md) · [r11 · RAW/XHTTP](docs/RELEASE_2.5.12_R11_REVIEW.md) · [r10 · память](docs/RELEASE_2.5.11_R10_REVIEW.md). Репозиторий/серверы автоматически не обновляются. Nginx остаётся системным, IPv6 отключён по политике установки.
+**Релизные документы:** [r16 · стабильность и диагностика](docs/RELEASE_2.5.15_R16_STABILITY_20261021.md) · [r15 · версия и GitHub](docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md) · [r14 · hybrid](docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md) · [r12 · 12 тем и 404](docs/RELEASE_2.5.13_R12_SITES.md) · [r11 · RAW/XHTTP](docs/RELEASE_2.5.12_R11_REVIEW.md) · [r10 · память](docs/RELEASE_2.5.11_R10_REVIEW.md). Репозиторий/серверы автоматически не обновляются. Nginx остаётся системным, IPv6 отключён по политике установки.
 
 ---
 
@@ -888,7 +890,7 @@ sudo bash ./install.sh --rkn-sync-panel
 <a id="verification"></a>
 ## ✅ Проверки и границы готовности
 
-**Статус:** 2.5.14 r15 — локальная непубликованная staging-сборка поверх опубликованной 2.5.13 r12. Тесты исходников проводятся автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
+**Статус:** 2.5.15 r16 — локальная непубликованная staging-сборка поверх опубликованной 2.5.13 r12. Тесты исходников проводятся автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
 
 ```bash
 bash -n install.sh
@@ -915,6 +917,6 @@ sudo bash ./install.sh --check
 
 <div align="center">
 
-**VKARMANI · 2.5.14** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
+**VKARMANI · 2.5.15** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
 
 </div>

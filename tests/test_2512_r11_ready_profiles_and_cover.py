@@ -157,7 +157,7 @@ class ReleaseGates(unittest.TestCase):
     def test_readme_version_one_command_autoreboot_default(self):
         text=(ROOT/'README.md').read_text()
         head=text.split('\n---\n',1)[0]
-        self.assertIn('2.5.14 r15',head)
+        self.assertIn('2.5.15 r16',head)
         self.assertIn('2.5.13 r12', (ROOT/'CHANGELOG.md').read_text())
         self.assertNotIn('2.5.10 r7e',head)
         self.assertNotIn('локальный непубликованный staging ZIP r10',head)

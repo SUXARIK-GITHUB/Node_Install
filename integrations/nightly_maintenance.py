@@ -184,6 +184,7 @@ def status():
         raise
     print('MAINTENANCE_LAST_STATUS=' + str(record.get('status', 'NEVER')))
     print('MAINTENANCE_LAST_MOSCOW_DATE=' + str(record.get('moscow_date', 'NEVER')))
+    print('MAINTENANCE_POLICY=OPT_IN_FOR_AUTOMATIC_RESTART; new installs default to timer disabled')
     print('MAINTENANCE_NEXT_PLANNED=systemctl list-timers --all vkarmani-node-nightly.timer')
     print('MAINTENANCE_NOW_MOSCOW=' + now.isoformat())
     print('MAINTENANCE_CHECK_SCOPE=LOCAL; authenticated VPN and remote exit NOT_VERIFIED')

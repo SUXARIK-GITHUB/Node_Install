@@ -17,14 +17,14 @@ import verify_release as vr
 class R2ReleasePackageTests(unittest.TestCase):
     def minimal_package(self):
         c = {name: (b'fixture-' + name.encode()) for name in vr.REQUIRED}
-        c['install.sh'] = (b'INSTALLER_VERSION=2.5.14\n'
+        c['install.sh'] = (b'INSTALLER_VERSION=2.5.15\n'
                            b'vk_rkn_safe_shutdown()\nvk_write_docker_local()\n'
                            b'vk_write_nightly_maintenance()\n')
-        c['README.md'] = ('2.5.14 — текущая staging-сборка\n'
-                          'Node_Install_2.5.14-docs-menu_r2-fixed-test-build.zip\n').encode()
+        c['README.md'] = ('2.5.15 — текущая staging-сборка\n'
+                          'Node_Install_2.5.15-docs-menu_r2-fixed-test-build.zip\n').encode()
         items = [{'path':n,'size':len(c[n]),'sha256':vr.sha256(c[n]),'mode':'0644'}
                  for n in sorted(c)]
-        meta = {'version':'2.5.14','build_id':'r2-fixed-test-build',
+        meta = {'version':'2.5.15','build_id':'r2-fixed-test-build',
                 'source_commit':'e0e076678d92daa074daa8289db2df3a3a395a42',
                 'release_status':'INCOMPLETE_STAGING_ONLY',
                 'excluded_from_manifest':sorted(vr.SKIPPED),'files':items}
