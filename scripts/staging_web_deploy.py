@@ -35,6 +35,10 @@ STYLE_LOCATION = (MARKER_BEGIN +
                   '    location = /style.css { try_files $uri =404; expires -1; }\n' +
                   MARKER_END)
 STREAM_BLOCK = '\n# VKARMANI_R7_STREAM_BEGIN\nstream {\n    include /etc/nginx/vkarmani-stream-r7/servers.conf;\n}\n# VKARMANI_R7_STREAM_END\n'
+HYBRID_MARKER = '# VKARMANI_HYBRID_STREAM_V1'
+HYBRID_TAIL_R18 = (HYBRID_MARKER + '\nstream {\n'
+    '    include /etc/nginx/vkarmani-hybrid-stream.conf;\n'
+    '    include /etc/nginx/vkarmani-stream-r7/*.conf;\n}\n')
 SENSITIVE = {'INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed',
              'network-rollback-running', 'cover-pending'}
 ROOT = Path('/')
@@ -173,7 +177,7 @@ class NodeWeb:
         # are checked by read() and the root-only checks above, not contents.
         read(self.state/'owned-installation',self.root,256)
         version=read(self.state/'install-version',self.root,32).decode().strip()
-        must(version in ('2.5.11','2.5.12','2.5.13','2.5.14','2.5.15'), 'UNSUPPORTED_STAGING_INSTALL_VERSION')
+        must(version in ('2.5.11','2.5.12','2.5.13','2.5.14','2.5.15','2.5.16','2.5.17'), 'UNSUPPORTED_STAGING_INSTALL_VERSION')
         complete=read(self.state/'INSTALL_COMPLETE',self.root,2048).decode()
         # Refuse an incompatible marker rather than assuming all sites are 2.5.11.
         must(re.search(r'(?m)^version='+re.escape(version)+r'$',complete) is not None,
@@ -396,8 +400,13 @@ class NodeWeb:
             must(r is not None and r['stage'] in ('pending','active'), 'NO_SITE_ROLLBACK')
             return self.recovery('site',r,self.site_files(receipt=r),self._activate)
 
-    def tcp_files(self):
-        return {'main':self.mainconf,'fragment':self.streamconf}
+    def tcp_files(self,hybrid=False,receipt=None):
+        if receipt is not None:
+            recorded = set(receipt.get('files', {}))
+            must(recorded in ({'main', 'fragment'}, {'fragment'}), 'TCP_RECEIPT_FILESET_INVALID')
+            hybrid = recorded == {'fragment'}
+        return {'fragment':self.streamconf} if hybrid else {
+            'main':self.mainconf, 'fragment':self.streamconf}
 
     @staticmethod
     def preflight_ports(listen,backend):
@@ -414,19 +423,36 @@ class NodeWeb:
         return l,b
 
     def tcp_install(self,listen,backend,portcheck=True):
-        self.ready()
+        config=self.ready()
         l,b=self.preflight_ports(listen,backend) if portcheck else (port(listen),port(backend))
         must(l!=b,'PROXY_SELF_LOOP')
         self._check()
         original=read(self.mainconf,self.root)
-        # Conservative, dedicated-node-only edit: refuse foreign stream setups.
         must(not self.streamconf.exists() and not self.streamconf.is_symlink() and
              b'VKARMANI_R7_STREAM' not in original and
              re.search(rb'(?m)^\s*events\s*{',original) and
-             re.search(rb'(?m)^\s*http\s*{',original) and
-             not re.search(rb'(?m)^\s*stream\s*{',original),
+             re.search(rb'(?m)^\s*http\s*{',original),
              'EXISTING_OR_NONSTANDARD_STREAM_CONFIGURATION')
-        new_main=original + STREAM_BLOCK.encode()
+        hybrid = HYBRID_MARKER.encode() in original
+        if not hybrid:
+            must(config.get('reality_mode', 'local') == 'local',
+                 'HYBRID_MARKER_MISSING_REFUSE_STREAM_EDIT')
+        if hybrid:
+            # Only R18+ installer-owned stream root, exactly as generated.
+            # Old hybrid installations require an explicit reviewed migration.
+            must(config.get('reality_mode') in ('max.ru','ya.ru','rutube.ru','mail.ru'),
+                 'HYBRID_CONFIGURATION_MODE_MISMATCH')
+            before, sep, tail = original.partition(HYBRID_MARKER.encode())
+            must(sep and tail == HYBRID_TAIL_R18.encode()[len(sep):] and
+                 original.count(sep) == 1 and
+                 not re.search(rb'(?m)^\s*stream\s*{',before),
+                 'HYBRID_STREAM_REQUIRES_R18_INCLUDE')
+            # The original top-level stream remains byte-for-byte untouched.
+            new_main=original
+        else:
+            must(not re.search(rb'(?m)^\s*stream\s*{',original),
+                 'EXISTING_OR_NONSTANDARD_STREAM_CONFIGURATION')
+            new_main=original + STREAM_BLOCK.encode()
         # Existing generator emits a *top level stream{}*; our include contains
         # ONLY the server{} content to avoid a nested stream{} syntax error.
         proposed=generate('tcp',l,b)
@@ -438,16 +464,21 @@ class NodeWeb:
             path_check(self.streamconf.parent,self.root,missing=True)
             self.streamconf.parent.mkdir(mode=0o755)
         with self.lock():
-            files=self.tcp_files()
-            r,old=self.backup('tcp',files,{'listen':l,'backend':b})
-            desired={'main':new_main,'fragment':content.encode()}
+            files=self.tcp_files(hybrid=hybrid)
+            r,old=self.backup('tcp',files,{'listen':l,'backend':b,
+                                           'hybrid_fragment_only':hybrid,
+                                           'main_sha':digest(original) if hybrid else None})
+            desired={'fragment':content.encode()}
+            if not hybrid: desired['main']=new_main
             for label in desired:r['files'][label]['after_sha']=digest(desired[label])
             self.write_receipt('tcp',r)
             try:
+                must(read(self.mainconf,self.root)==original, 'CONCURRENT_NGINX_EDIT')
                 atomic(self.streamconf,desired['fragment'],self.root)
-                must(read(self.mainconf,self.root)==old['main'],'CONCURRENT_NGINX_EDIT')
-                atomic(self.mainconf,new_main,self.root,
-                       self.original_mode(r['files']['main']))
+                must(read(self.mainconf,self.root)==original, 'CONCURRENT_NGINX_EDIT')
+                if not hybrid:
+                    atomic(self.mainconf,new_main,self.root,
+                           self.original_mode(r['files']['main']))
                 self._activate()
                 if portcheck:
                     with socket.create_connection(('127.0.0.1',l),timeout=3):pass
@@ -465,7 +496,12 @@ class NodeWeb:
         with self.lock():
             r=self.receipt('tcp')
             must(r is not None and r['stage'] in ('pending','active'),'NO_TCP_ROLLBACK')
-            return self.recovery('tcp',r,self.tcp_files(),self._activate)
+            if set(r.get('files', {})) == {'fragment'}:
+                must(r.get('metadata', {}).get('hybrid_fragment_only') is True and
+                     digest(read(self.mainconf,self.root)) ==
+                     r['metadata'].get('main_sha'),
+                     'THIRD_PARTY_HYBRID_MAIN_EDIT_REFUSE_ROLLBACK')
+            return self.recovery('tcp',r,self.tcp_files(receipt=r),self._activate)
 
     def status(self):
         self.ready()

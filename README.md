@@ -14,20 +14,21 @@
 **Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
 
 <a id="github-install"></a>
-### 🐙 1. Установка с GitHub · 2.5.15 r16 (после публикации)
+### 🐙 1. Установка с GitHub · 2.5.17 r18 (после публикации)
 
-**Состояние на 21.10.2026:** при подготовке публичный GitHub `main` находился на **2.5.13 r12**, коммит `197cd273f7954a84e8445ea1d333224304777eac`. Новая версия **2.5.15 r16 пока есть только в полном ZIP ниже**. Следующая команда рассчитана на **последующую публикацию r16**. До публикации она **безопасно остановится на SHA-256** и не установит старый скрипт. Нельзя утверждать, что GitHub уже содержит r16.
+**Версия 2.5.17 r18 — staging; публикация в `main` и успешный GitHub Actions CI должны быть проверены отдельно.**
+При подготовке источником была опубликованная r16 (до локальной r17), коммит GitHub `580fb94dd57b680e2aa8f38b295d9563d2bca686` (2.5.15 r16). Установка со старой версии остановится на контрольной сумме. Никакой автоматической миграции действующих нод.
 
-**Только новая чистая staging VPS.** До выполнения: проверенный snapshot всего диска, доступ к консоли провайдера, DNS A на публичный IPv4 ноды. Выполнять от `root`:
+Только **новая чистая staging VPS**: snapshot диска с проверенным восстановлением, консоль провайдера, DNS A на назначенный публичный IPv4 ноды. Выполнять от `root`:
 
 ```bash
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
 cd /root
-[[ ! -e Node_Install-2.5.15 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
-git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.15
-cd /root/Node_Install-2.5.15
-printf '%s  %s\n' '1a5227ebc48fc87cbc2a2c86bfa2359ec02d6c72536a5d073c1f45e22600c46a' 'install.sh' | sha256sum --check
+[[ ! -e Node_Install-2.5.17 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
+git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.17
+cd /root/Node_Install-2.5.17
+printf '%s  %s\n' '043803da67f55fbb9f071c22f98f57e180518e748c3446f98fa58d5a03195b7a' 'install.sh' | sha256sum --check
 sha256sum --check SHA256SUMS
 python3 scripts/verify_release.py --root .
 python3 - <<'PY_VERIFY_BUILD'
@@ -35,27 +36,27 @@ import json
 from pathlib import Path
 m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
 if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-        '2.5.15', '20261021-r16-stability-diagnostics', 'INCOMPLETE_STAGING_ONLY'):
+        '2.5.17', '20261021-r18-reliability-diagnostics', 'INCOMPLETE_STAGING_ONLY'):
     raise SystemExit('STOP: GitHub version/build/status mismatch; installer NOT launched')
 PY_VERIFY_BUILD
 bash -n install.sh
-[[ "$(bash ./install.sh --version)" == '2.5.15' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
+[[ "$(bash ./install.sh --version)" == '2.5.17' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
 bash ./install.sh
 ```
 
-Установка запускается **стандартной командой `bash ./install.sh`**, без нестандартного Node Port. По умолчанию управляющий TCP/2222; клиентский REALITY TCP/443. После успешной установки выполняется предусмотренная установщиком автоматическая перезагрузка. Повторный запуск после частичной установки — только по инструкции `--finish-install` и после диагностики состояния; не обходить fail-closed проверки.
+Последняя команда — обычный `bash ./install.sh` **без нестандартного порта**. Node API TCP/2222 и клиентский TCP/443 остаются настройками по умолчанию. Автоперезагрузка выполняется только по штатному сценарию успешно завершённой новой установки. При неполной установке нельзя обойти `--finish-install`/fail-closed проверки.
 
-**Без публикации новой версии в GitHub команда GitHub не предназначена для выполнения.** Для тестирования именно 2.5.15 r16 используйте проверенный ZIP ниже.
+**До публикации r18 в GitHub эта команда должна отказывать по SHA-256.** Для тестирования неопубликованной сборки используйте архив ниже.
 
 <a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.15 r16 (текущая staging-сборка)
+### 📁 2. Из полного ZIP · 2.5.17 r18 (текущая staging-сборка)
 
 Полный ZIP сначала передаётся на отдельную **чистую VPS**. Проверяйте SHA-256 архива по независимому доверенному каналу. Внутренний `SHA256SUMS` удостоверяет целостность, но не происхождение архива. Перед первым запуском — snapshot целого диска и доступная аварийная консоль хостера.
 
 ```bash
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-unzip -q Node_Install_2.5.15-docs-menu_20261021-r16-stability-diagnostics.zip
+unzip -q Node_Install_2.5.17-docs-menu_20261021-r18-reliability-diagnostics.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
@@ -63,6 +64,20 @@ bash -n install.sh
 bash ./install.sh --version
 bash ./install.sh
 ```
+
+**Диагностика сети и нескольких IPv4 без изменения настроек:**
+
+```bash
+bash ./install.sh --diagnose-node --domain node.example.com
+bash ./install.sh --diagnose-resources --seconds 15
+bash ./install.sh --diagnose-quality --seconds 15
+```
+
+Первый отчёт показывает все назначенные публичные IPv4, DNS A, адрес, выбранный по домену, исходящий маршрут/адрес-источник, доступность 80/443, conntrack, активные qdisc, статус RemnaNode Docker, действующие значения TCP/BBR и наличие конфигов Netplan/ifupdown. Второй собирает интервальные счётчики нагрузки, TCP/UDP и потери интерфейсов. Диагностика **не меняет** `/etc/network/interfaces`, Netplan, другие IPv4, маршруты, firewall, Nginx или Docker. Наличие файла настроек не доказывает, что именно этот менеджер обслуживает интерфейс. Для автоматического выбора Node IPv4 установщик уже сверяет DNS A с локальными адресами; исходящий адрес по умолчанию может отличаться и не должен переназначаться автоматически. Подробнее: `docs/RELEASE_2.5.16_R17_CI_NETWORK_20261021.md`.
+
+**Новый третий отчёт `--diagnose-quality`:** два обезличенных снимка `ss` по установленным TCP/443: RTT p50/p90/p99, доля соединений с обнаруженной историей retransmits и ориентировочный delivery rate. Ни один IP клиента/UUID/ключ не печатается. Он не измеряет UDP и не доказывает причину блокировки; при отсутствии соединений сообщает, что данных для выводов нет.
+
+**Cascade Exit:** для **новых** профилей `freedom.sockopt.domainStrategy=ForceIPv4`, приватные сети и обе публичные IPv4 пары Entry/Exit заблокированы в пользовательском routing, на Exit — и в `finalRules`. Никакой автоматической миграции уже работающих каскадов. Hybrid Stream теперь содержит заранее разрешённый include для управляемых локальных TCP-фрагментов, без второго публичного 443.
 
 **Выбор REALITY/Selfsteal при установке новой Ordinary-ноды:**
 
@@ -74,11 +89,11 @@ bash ./install.sh
 
 Во всех режимах REALITY `target=/dev/shm/nginx.sock`, `xver=1`; у внешних режимов `serverNames` = выбранному внешнему имени. **Это Unix socket в Xray-контейнере**, физически соответствующий `/run/vkarmani-selfsteal/nginx.sock` хоста. Внешний режим устанавливает Nginx stream-модуль и разделяет TLS по разрешённым SNI: **свой FQDN → локальный HTTPS-сайт на `cover.sock`; выбранное внешнее имя → TLS passthrough без подмены сертификата**. Любой другой SNI попадает на HTTPS-default: TLS reject на поддерживаемом Nginx, иначе HTTP/421. Заголовок PROXY протокола не передаётся внешним серверам. Никакого второго публичного `443` listener Nginx не открывается: TCP/443 слушает Xray. HTTP/80 своего FQDN использует 301 → HTTPS, исключая challenge Certbot.
 
-**Надёжность r16:** на новых Ordinary-нодах ночной перезапуск контейнера **выключен по умолчанию**, потому что сбрасывает активные сессии. Он доступен только после явного `bash ./install.sh --maintenance-enable`. Существующие установленные ноды не меняются; состояние их таймера нужно проверять отдельно. `bash ./install.sh --diagnose-resources --seconds 15` выдаёт локальную диагностику без изменений системы, включая изменения счётчиков TCP/UDP, очередей softnet, интерфейсов, процессов и контейнера. Не публикуйте полные логи с секретами.
+**Надёжность r18 (сохранена диагностика r17 и политика рестартов r16):** на новых Ordinary-нодах ночной перезапуск контейнера **выключен по умолчанию**, потому что сбрасывает активные сессии. Он доступен только после явного `bash ./install.sh --maintenance-enable`. Существующие установленные ноды не меняются; состояние их таймера нужно проверять отдельно. `bash ./install.sh --diagnose-resources --seconds 15` выдаёт локальную диагностику без изменений системы, включая изменения счётчиков TCP/UDP, очередей softnet, интерфейсов, процессов и контейнера. Не публикуйте полные логи с секретами.
 
 **Порты по умолчанию:** RemnaNode Node API слушает TCP/2222 (доступ только для разрешённых IPv4 панели); RAW/XHTTP REALITY использует TCP/443, а HTTP-01 ACME — TCP/80. Отдельный механизм выбора порта новой Ordinary-ноды технически сохранён в коде, но **в этой инструкции используется только стандартная установка, без его параметров**. Для действующих нод автоматическая смена портов не предусмотрена. Изменение клиентского 443 требует отдельной согласованной миграции и проверки у провайдеров.
 
-Внешний SNI **не обеспечивает «невидимость VPN»** и не гарантирует прохождение фильтрации по IP, ASN или TLS. Перед установкой тестируется доступность реального IPv4/TLS 1.3 внешнего ресурса. RAW и XHTTP — *альтернативные* конфиги одного TCP/443 listener, с одинаковыми Reality privateKey/shortIds, но разными транспортами/flow; применять вместе на одном `443` нельзя. Клиентский `Address` = свой реальный адрес ноды; внешний SNI = выбор режима. Каскад Entry/Exit и его собственный локальный Selfsteal не переделаны. Смена режима или портов действующей ноды установщиком не поддерживается.
+Внешний SNI **не обеспечивает «невидимость VPN»** и не гарантирует прохождение фильтрации по IP, ASN или TLS. Перед установкой тестируется доступность реального IPv4/TLS 1.3 внешнего ресурса. RAW и XHTTP — *альтернативные* конфиги одного TCP/443 listener, с одинаковыми Reality privateKey/shortIds, но разными транспортами/flow; применять вместе на одном `443` нельзя. Клиентский `Address` = свой реальный адрес ноды; внешний SNI = выбор режима. Каскад Entry/Exit сохраняет прежнюю архитектуру и локальный Selfsteal; новые защитные правила /32 описаны выше. Смена режима или портов действующей ноды установщиком не поддерживается.
 
 [Нагрузочная диагностика и обслуживание r16](docs/RELEASE_2.5.15_R16_STABILITY_20261021.md) · [Изменения r15 и порядок публикации через GitHub](docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md) · [Runbook r14: гибридный Selfsteal и испытания](docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md).
 
@@ -515,7 +530,6 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
 <summary><b>Показать полный JSON Entry · inbound + TO_EXIT_VLESS + routing</b></summary>
 
 <!-- BEGIN CASCADE ENTRY FULL EXAMPLE -->
-
 ```json
 {
   "log": {
@@ -631,7 +645,9 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
           "203.0.113.0/24",
           "224.0.0.0/4",
           "240.0.0.0/4",
-          "::/0"
+          "::/0",
+          "203.0.113.10/32",
+          "198.51.100.20/32"
         ],
         "outboundTag": "BLOCK"
       },
@@ -646,7 +662,6 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
   }
 }
 ```
-
 <!-- END CASCADE ENTRY FULL EXAMPLE -->
 
 </details>
@@ -664,7 +679,6 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
 <summary><b>Показать полный JSON Exit · inbound + DIRECT + routing</b></summary>
 
 <!-- BEGIN CASCADE EXIT FULL EXAMPLE -->
-
 ```json
 {
   "log": {
@@ -741,11 +755,18 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
               "203.0.113.0/24",
               "224.0.0.0/4",
               "240.0.0.0/4",
-              "::/0"
+              "::/0",
+              "203.0.113.10/32",
+              "198.51.100.20/32"
             ],
             "action": "block"
           }
         ]
+      },
+      "streamSettings": {
+        "sockopt": {
+          "domainStrategy": "ForceIPv4"
+        }
       }
     },
     {
@@ -787,7 +808,9 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
           "203.0.113.0/24",
           "224.0.0.0/4",
           "240.0.0.0/4",
-          "::/0"
+          "::/0",
+          "203.0.113.10/32",
+          "198.51.100.20/32"
         ],
         "outboundTag": "BLOCK"
       },
@@ -802,7 +825,6 @@ RAW — основной профиль, `flow: xtls-rprx-vision`; один list
   }
 }
 ```
-
 <!-- END CASCADE EXIT FULL EXAMPLE -->
 
 </details>

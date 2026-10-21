@@ -86,7 +86,7 @@ vk_initial_install_menu
             p = subprocess.run(['bash', str(ROOT/'install.sh'), arg], capture_output=True, text=True, timeout=7)
             self.assertEqual(p.returncode, 2 if arg=='--not-a-real-flag' else 0)
             if arg != '--not-a-real-flag':
-                self.assertIn('2.5.15', p.stdout)
+                self.assertIn('2.5.17', p.stdout)
             self.assertNotIn('Выберите 1 или 2:', p.stdout)
 
 

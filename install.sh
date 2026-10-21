@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.15 (README and guarded installation-choice candidate). Read README.md before running as root.
+# VKarmani Node 2.5.17 (README and guarded installation-choice candidate). Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1504,7 +1504,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11|2.5.12|2.5.13|2.5.14|2.5.15) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11|2.5.12|2.5.13|2.5.14|2.5.15|2.5.16|2.5.17) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1527,7 +1527,7 @@ else
 fi
 
 # A 1 GiB installation must not silently lose its verified swap on reboot.
-if [[ "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 ]]; then
+if [[ "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 || "$INSTALL_VERSION" == 2.5.16 || "$INSTALL_VERSION" == 2.5.17 ]]; then
     RAM_KIB=$(awk '$1=="MemTotal:" {print $2}' /proc/meminfo)
     if [[ "$RAM_KIB" =~ ^[0-9]+$ ]] && (( RAM_KIB < 1536 * 1024 )); then
         SWAP_KIB=$(awk '$1=="SwapTotal:" {print $2}' /proc/meminfo)
@@ -1557,7 +1557,7 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 || "$INSTALL_VERSION" == 2.5.15 || "$INSTALL_VERSION" == 2.5.16 || "$INSTALL_VERSION" == 2.5.17 ]]; then
         if [[ -f "$ETC/cascade-role.json" ]]; then
             warn XHTTP_IMPORT_PROFILE_POLICY 'CASCADE_RAW_ONLY: XHTTP not available for this peer bridge'
         elif [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
@@ -2590,7 +2590,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11', 'version=2.5.12', 'version=2.5.13', 'version=2.5.14', 'version=2.5.15') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11', 'version=2.5.12', 'version=2.5.13', 'version=2.5.14', 'version=2.5.15', 'version=2.5.16', 'version=2.5.17') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3792,7 +3792,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13', '2.5.14', '2.5.15') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13', '2.5.14', '2.5.15', '2.5.16', '2.5.17') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -5897,7 +5897,7 @@ vkarmani_rkn_command() {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
         grep -Eq '^version=2\.5\.([2-9]|10|11|12|13|14|15)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2–2.5.15 nodes.' >&2; return 1;
+            echo 'RKN integration supports only completed 2.5.2–2.5.17 nodes.' >&2; return 1;
         }
         vk_rkn_activate
         return
@@ -6219,7 +6219,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 || "$version" == 2.5.12 || "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 || "$version" == 2.5.12 || "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 || "$version" == 2.5.16 || "$version" == 2.5.17 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -6251,7 +6251,7 @@ vkarmani_prepare_xhttp_main() {
     vk_write_xhttp_profile_helper "$tmp/xhttp_profile.py"
     local rc=0
     vk_xhttp_prepare_template "$tmp/xhttp_profile.py" "$etc" "$core" "$state" || rc=$?
-    if [[ "$rc" -eq 0 && ( "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 ) ]]; then
+    if [[ "$rc" -eq 0 && ( "$version" == 2.5.13 || "$version" == 2.5.14 || "$version" == 2.5.15 || "$version" == 2.5.16 || "$version" == 2.5.17 ) ]]; then
         python3 -I -B /usr/local/lib/vkarmani-node/node_helper.py reality-export-xhttp >/dev/null || rc=$?
     fi
     rm -f -- "$tmp/xhttp_profile.py"
@@ -6418,7 +6418,7 @@ vk_write_finalizer_helper() {
     local destination=$1
     cat > "$destination" <<'VK_FINALIZER_PY'
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.15 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.17 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -6439,7 +6439,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.15'
+VERSION = '2.5.17'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -6594,7 +6594,7 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_15_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_17_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
@@ -6602,7 +6602,7 @@ class Finalizer:
         if cfg.get('installation_mode') != 'secret-key-only':
             raise Failure('WRONG_INSTALLATION_MODE')
         if not self.path('etc/vkarmani-node/cascade-role.json').exists():
-            # Three secret operator files are mandatory on a NEW ordinary 2.5.15.
+            # Three secret operator files are mandatory on a NEW ordinary 2.5.17.
             # Without this gate, a removed XHTTP template would quietly publish
             # INSTALL_COMPLETE with only RAW + keys.
             xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')
@@ -6857,7 +6857,7 @@ vkarmani_finish_install_main() (
     # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
     local state=/var/lib/vkarmani-node work
     [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
-        echo 'STOP: no supported 2.5.15 finalization checkpoint; no installation state changed.' >&2; exit 1;
+        echo 'STOP: no supported 2.5.17 finalization checkpoint; no installation state changed.' >&2; exit 1;
     }
     local lock=/run/lock/vkarmani-node-installer.lock
     if [[ ! -e "$lock" && ! -L "$lock" ]]; then
@@ -7220,7 +7220,7 @@ vkarmani_maintenance_command() {
                 echo 'MAINTENANCE: завершите установку перед включением' >&2; return 1;
             }
             grep -Eq '^version=2\.5\.(8|9|10|11|12|13|14|15)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.15; старые ноды не мигрируются автоматически' >&2; return 1;
+                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.17; старые ноды не мигрируются автоматически' >&2; return 1;
             }
             [[ -x /usr/local/sbin/vkarmani-docker-local ]] || {
                 echo 'MAINTENANCE: локальный Docker wrapper не установлен' >&2; return 1;
@@ -7237,7 +7237,7 @@ vkarmani_maintenance_command() {
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.15 — 2026-10-21
+# VKarmani Remnawave Node Installer 2.5.17 — 2026-10-21
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -7249,7 +7249,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.15
+INSTALLER_VERSION=2.5.17
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -7272,11 +7272,10 @@ VK_REALITY_MODE='local'  # saved with initial inputs; ordinary only
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.15
+VKarmani Remnawave Node Installer 2.5.17
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
-  sudo bash install.sh --node-port 32443 --no-reboot # новый Ordinary: управляющий API вместо 2222, согласовать с Panel
   sudo bash install.sh --cascade-role entry --cascade-bundle /root/entry/role-bundle.json --no-reboot
   sudo bash install.sh --cascade-role exit --cascade-bundle /root/exit/role-bundle.json --no-reboot
       # Только ДВЕ НОВЫЕ выделенные staging VPS; нужные исходники integrations/ из этого ZIP
@@ -7288,7 +7287,7 @@ VKarmani Remnawave Node Installer 2.5.15
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
-  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.15, без переустановки/reboot
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.17, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -7297,7 +7296,9 @@ VKarmani Remnawave Node Installer 2.5.15
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.15 ноде
+  bash install.sh --diagnose-node --domain node.example.com # IPv4, DNS, routing, conntrack, TCP; только чтение
+  bash install.sh --diagnose-quality --seconds 15    # агрегированное RTT/retrans TCP/443, без IP клиентов
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.17 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
@@ -7386,7 +7387,7 @@ vk_validate_ipv4() {
     # Early reject of local/reserved addresses. Python revalidates is_global after APT.
     ((parts[0] > 0 && parts[0] < 224)) || return 1
     case "$value" in
-        10.*|127.*|169.254.*|192.168.*|192.0.1.*|192.0.2.*|198.51.100.*|203.0.113.*) return 1 ;;
+        10.*|127.*|169.254.*|192.168.*|192.0.0.*|192.0.2.*|198.51.100.*|203.0.113.*) return 1 ;;
     esac
     if ((parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31)); then return 1; fi
     if ((parts[0] == 100 && parts[1] >= 64 && parts[1] <= 127)); then return 1; fi
@@ -7517,7 +7518,7 @@ vk_select_reality_mode() {
 }
 vk_initial_install_menu() {
     local tries=0
-    echo 'VKarmani Node Install 2.5.15 — выбор режима первой установки:'
+    echo 'VKarmani Node Install 2.5.17 — выбор режима первой установки:'
     echo '  1 — Обычная нода (доступна в этой версии)'
     echo '  2 — Каскад: отдельная входная/выходная нода (только чистая staging VPS)'
     while ((tries < 5)); do
@@ -7585,7 +7586,7 @@ fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     [[ -z "$NODE_PORT_ARG" ]] || { echo "STOP: --node-port cannot migrate an installed node; no changes." >&2; return 2; }
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
-        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.15 use --finish-install.' >&2; exit 1
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.17 use --finish-install.' >&2; exit 1
     fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
@@ -7965,7 +7966,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.15: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.17: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -8651,7 +8652,7 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.15\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.17\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
@@ -8910,7 +8911,7 @@ def write_panel_guide(c):
                    if chosen_mode == 'local' else
                    'Гибридный Selfsteal: свой HTTPS-сайт и внешний TLS/SNI passthrough через Nginx Stream; '
                    'PROXY v1 передаётся только локальному Nginx, не стороннему серверу.')
-    txt = f'''VKarmani RemnaNode 2.5.15 — действия в панели
+    txt = f'''VKarmani RemnaNode 2.5.17 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -9666,8 +9667,9 @@ server {
 }
 '''.replace('DOMAIN', domain).replace('MODE', mode), encoding='ascii')
 fragment.chmod(0o644)
-main.write_text(conf + '\n' + marker + '\nstream {\n    include /etc/nginx/vkarmani-hybrid-stream.conf;\n}\n', encoding='utf-8')
+main.write_text(conf + '\n' + marker + '\nstream {\n    include /etc/nginx/vkarmani-hybrid-stream.conf;\n    include /etc/nginx/vkarmani-stream-r7/*.conf;\n}\n', encoding='utf-8')
 PY_NGINX_HYBRID_STREAM
+    install -d -m 0755 /etc/nginx/vkarmani-stream-r7
 fi
 nginx -t
 systemctl reload nginx
@@ -9797,7 +9799,7 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
 elif vk_xhttp_prepare_template "$LIB/xhttp_profile.py" "$ETC" "$CORE" "$STATE"; then
     echo 'XHTTP_IMPORT_TEMPLATE_READY=PASS (alternative profile; not active alongside RAW)'
 else
-    die 'XHTTP_IMPORT_TEMPLATE_NOT_VALIDATED_BY_BUNDLED_CORE; third profile required by 2.5.15. Investigate private log/snapshot; NO INSTALL_COMPLETE.'
+    die 'XHTTP_IMPORT_TEMPLATE_NOT_VALIDATED_BY_BUNDLED_CORE; third profile required by 2.5.17. Investigate private log/snapshot; NO INSTALL_COMPLETE.'
 fi
 
 stage 'RAW / XHTTP + REALITY профили и параметры для панели (без API-токена)'
@@ -10369,6 +10371,478 @@ PY_REPAIR_COMPILE
     echo 'AUTO_REBOOT=NOT_PERFORMED_BY_REPAIR; выполните один обычный reboot после проверки доступа к консоли/SSH.'
 }
 
+# Local diagnostic only; this function does not read secrets or modify the host.
+vkarmani_node_diagnostics_main() {
+    python3 -I -B - "$@" <<'VK_NODE_DIAGNOSTICS_PY'
+#!/usr/bin/env python3
+"""VKarmani read-only IPv4, routing, service and bottleneck triage.
+
+No configuration, network interface, daemon, firewall or route is modified.
+An optional DNS lookup checks names through the host resolver, not public DNS
+consensus. Output excludes configuration secrets and peer/client addresses.
+"""
+import argparse
+import datetime
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import socket
+import stat
+import subprocess
+import sys
+
+
+MAX_OUTPUT = 512 * 1024
+
+
+def run(args, timeout=5):
+    if not shutil.which(args[0]):
+        return None, 'COMMAND_MISSING'
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout,
+                           check=False)
+        if p.returncode:
+            return None, 'COMMAND_FAILED'
+        if len(p.stdout) > MAX_OUTPUT:
+            return None, 'OUTPUT_TOO_LARGE'
+        return p.stdout, None
+    except subprocess.TimeoutExpired:
+        return None, 'TIMEOUT'
+    except (OSError, UnicodeError):
+        return None, 'COMMAND_UNAVAILABLE'
+
+
+def valid_public(address):
+    try:
+        value = ipaddress.IPv4Address(address)
+        return value.is_global and not value.is_reserved and not value.is_multicast
+    except (ipaddress.AddressValueError, ValueError, TypeError):
+        return False
+
+
+def parse_addresses(raw):
+    if raw is None or len(raw) > MAX_OUTPUT:
+        raise ValueError('IP_ADDRESSES_UNAVAILABLE')
+    rows = json.loads(raw)
+    if not isinstance(rows, list):
+        raise ValueError('IP_ADDRESSES_SCHEMA')
+    out = []
+    used = set()
+    for item in rows:
+        if not isinstance(item, dict):
+            raise ValueError('IP_ADDRESS_ROW_SCHEMA')
+        interface = item.get('ifname')
+        if not isinstance(interface, str) or not re.fullmatch(r'[a-zA-Z0-9_.:@-]{1,64}', interface):
+            raise ValueError('IP_INTERFACE_NAME')
+        link_up = item.get('operstate') == 'UP'
+        mtu = item.get('mtu')
+        if not isinstance(mtu, int) or mtu <= 0:
+            mtu = None
+        for addr in item.get('addr_info', []):
+            if not isinstance(addr, dict):
+                raise ValueError('IP_ADDRESS_DETAILS')
+            ip = addr.get('local')
+            if addr.get('family') == 'inet' and valid_public(ip):
+                if ip in used:
+                    raise ValueError('DUPLICATE_PUBLIC_ADDRESS')
+                used.add(ip)
+                out.append({'ip': ip, 'interface': interface, 'mtu': mtu,
+                            'interface_up': link_up, 'prefixlen': addr.get('prefixlen'),
+                            'secondary': addr.get('secondary', False) is True})
+    return sorted(out, key=lambda x: (int(ipaddress.IPv4Address(x['ip'])), x['interface']))
+
+
+def parse_route(raw):
+    if raw is None or len(raw) > MAX_OUTPUT:
+        raise ValueError('ROUTE_UNAVAILABLE')
+    rows = json.loads(raw)
+    if not isinstance(rows, list) or not rows:
+        raise ValueError('ROUTE_MISSING')
+    route = rows[0]
+    if not isinstance(route, dict):
+        raise ValueError('ROUTE_SCHEMA')
+    src = route.get('prefsrc') or route.get('src')
+    if not src or not valid_public(src):
+        src = None
+    return {'interface': route.get('dev') if isinstance(route.get('dev'), str) else None,
+            'source_ipv4': src,
+            'gateway': route.get('gateway') if isinstance(route.get('gateway'), str) else None}
+
+
+def check_dns(domain, assigned, resolver=run):
+    if not domain:
+        return {'status': 'SKIPPED', 'reason': 'DOMAIN_NOT_SUPPLIED'}
+    if len(domain) > 253 or not re.fullmatch(r'(?=.{1,253}$)[a-zA-Z0-9.-]+', domain) or '..' in domain or '.' not in domain:
+        return {'status': 'UNVERIFIED', 'reason': 'INVALID_DOMAIN'}
+    raw, err = resolver(['getent', 'ahostsv4', domain], 5)
+    if err:
+        return {'status': 'UNVERIFIED', 'reason': 'DNS_' + err}
+    addresses = set()
+    for line in raw.splitlines():
+        fields = line.split()
+        if fields and valid_public(fields[0]):
+            addresses.add(fields[0])
+    ips = sorted(addresses, key=lambda a: int(ipaddress.IPv4Address(a)))
+    local = {i['ip'] for i in assigned}
+    if len(ips) != 1:
+        return {'status': 'REVIEW', 'reason': 'DNS_A_RECORDS_NOT_UNIQUE',
+                'domain': domain, 'dns_ipv4': ips}
+    if ips[0] not in local:
+        return {'status': 'REVIEW', 'reason': 'DNS_IP_NOT_ASSIGNED_TO_HOST',
+                'domain': domain, 'dns_ipv4': ips}
+    return {'status': 'PASS', 'reason': 'DNS_IP_ASSIGNED_TO_HOST',
+            'domain': domain, 'selected_ipv4': ips[0], 'dns_ipv4': ips,
+            'note': 'SYSTEM_RESOLVER_ONLY; PUBLIC_DNS_NOT_VERIFIED'}
+
+
+def network_backends(root=Path('/')):
+    """Report config presence, NOT an inferred active network manager."""
+    netplan = root / 'etc/netplan'
+    ifaces = root / 'etc/network/interfaces'
+    ifacedir = root / 'etc/network/interfaces.d'
+    try:
+        netplan_present = netplan.is_dir() and any(
+            p.is_file() and not p.is_symlink() and p.suffix in ('.yaml', '.yml')
+            for p in netplan.iterdir())
+        ifupdown_present = ifaces.is_file() or (ifacedir.is_dir() and any(p.is_file() for p in ifacedir.iterdir()))
+        networkd_present = (root / 'etc/systemd/network').is_dir()
+        nm_present = (root / 'etc/NetworkManager/system-connections').is_dir()
+        cloudinit_present = (root / 'etc/cloud/cloud.cfg').is_file()
+    except OSError:
+        return {'status': 'UNVERIFIED', 'reason': 'NETWORK_CONFIG_UNREADABLE'}
+    names = []
+    if netplan_present: names.append('netplan')
+    if ifupdown_present: names.append('ifupdown-config-present')
+    if networkd_present: names.append('systemd-networkd-config-dir-present')
+    if nm_present: names.append('NetworkManager-config-dir-present')
+    if cloudinit_present: names.append('cloud-init-installed')
+    return {'status': 'INFO', 'config_sources': names,
+            'note': 'PRESENCE_DOES_NOT_PROVE_ACTIVE_BACKEND; NO_FILES_MODIFIED'}
+
+
+def read_counter(path):
+    try:
+        raw = Path(path).read_text().strip()
+        if not re.fullmatch(r'[0-9]{1,20}', raw):
+            return None
+        return int(raw)
+    except (OSError, ValueError):
+        return None
+
+
+def conntrack(root=Path('/proc/sys/net/netfilter')):
+    used = read_counter(root / 'nf_conntrack_count')
+    maximum = read_counter(root / 'nf_conntrack_max')
+    if used is None or maximum is None or maximum <= 0:
+        return {'status': 'UNVERIFIED', 'reason': 'CONNTRACK_COUNTERS_UNAVAILABLE'}
+    pct = round(used * 100 / maximum, 1)
+    return {'status': 'REVIEW' if pct >= 85 else 'PASS', 'used': used,
+            'capacity': maximum, 'utilization_percent': pct,
+            'reason': 'CONNTRACK_NEAR_CAPACITY' if pct >= 85 else 'CONNTRACK_BELOW_THRESHOLD'}
+
+
+def tcp_tuning(root=Path('/proc/sys')):
+    settings = {
+        'congestion_control': 'net/ipv4/tcp_congestion_control',
+        'default_qdisc': 'net/core/default_qdisc',
+        'tcp_mtu_probing': 'net/ipv4/tcp_mtu_probing',
+        'somaxconn': 'net/core/somaxconn',
+    }
+    result = {}
+    for key, relative in settings.items():
+        try:
+            value = (root / relative).read_text().strip()
+            result[key] = value[:64] if value and len(value) <= 64 else None
+        except OSError:
+            result[key] = None
+    return {'status': 'INFO', 'effective_kernel_values': result,
+            'note': 'REPORT_ONLY; NO_SYSCTL_TUNING_RECOMMENDED_WITHOUT_MEASUREMENTS'}
+
+
+def tcp_listeners(raw):
+    """Summarize ports only; do not expose remote/client IP addresses."""
+    if raw is None or len(raw) > MAX_OUTPUT:
+        return {'status': 'UNVERIFIED', 'reason': 'LISTENERS_UNAVAILABLE'}
+    ports = set()
+    for line in raw.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        endpoint = parts[3]
+        try:
+            port = int(endpoint.rsplit(':', 1)[-1])
+        except ValueError:
+            continue
+        if 1 <= port <= 65535:
+            ports.add(port)
+    return {'status': 'INFO', 'expected_tcp_port_80_listening': 80 in ports,
+            'expected_tcp_port_443_listening': 443 in ports,
+            'note': 'PORT_ONLY; BIND_ADDRESS_PROCESS_AND_EXTERNAL_CONNECTIVITY_NOT_VERIFIED'}
+
+
+def parse_qdisc(raw):
+    if raw is None or len(raw) > MAX_OUTPUT:
+        return {'status': 'UNVERIFIED', 'reason': 'QDISC_UNAVAILABLE'}
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            raise ValueError('QDISC_SCHEMA')
+        rows = []
+        for item in data:
+            if not isinstance(item, dict):
+                raise ValueError('QDISC_ROW')
+            dev, kind = item.get('dev'), item.get('kind')
+            if isinstance(dev, str) and re.fullmatch(r'[a-zA-Z0-9_.:@-]{1,64}', dev) and isinstance(kind, str):
+                rows.append({'interface': dev, 'kind': kind[:32],
+                             'root': item.get('root') is True})
+        return {'status': 'INFO', 'qdiscs': rows[:128],
+                'note': 'ACTIVE_QDISC_READ_ONLY; NOT_PROOF_OF_REAL_NETWORK_SPEED'}
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return {'status': 'UNVERIFIED', 'reason': 'QDISC_PARSE_ERROR'}
+
+
+def docker_node_status(runner=run):
+    """Never inspect env, mounts, labels, client IPs or other container names."""
+    raw, error = runner(['docker', 'ps', '--format', '{{.Names}}\t{{.Status}}'], 6)
+    if error:
+        return {'status': 'UNVERIFIED', 'reason': 'DOCKER_' + error}
+    for line in raw.splitlines():
+        name, sep, state = line.partition('\t')
+        if sep and name == 'remnanode':
+            return {'status': 'INFO', 'remnanode_running': state.startswith('Up '),
+                    'note': 'RUNNING_CONTAINER_DOES_NOT_PROVE_XRAY_CLIENT_CONNECTIONS'}
+    return {'status': 'INFO', 'remnanode_running': False,
+            'note': 'NOT_LISTED; CONTAINER_MAY_NOT_BE_INSTALLED_YET'}
+
+
+def run_diagnostics(domain=None, runner=run, root=Path('/')):
+    raw, addr_error = runner(['ip', '-j', '-4', 'address', 'show', 'scope', 'global'], 6)
+    try:
+        assigned = parse_addresses(raw)
+        address_info = {'status': 'PASS' if assigned else 'REVIEW', 'public_ipv4': assigned,
+                        'reason': 'ASSIGNED_PUBLIC_IPV4' if assigned else 'NO_PUBLIC_IPV4_ASSIGNED'}
+    except (ValueError, TypeError, json.JSONDecodeError):
+        assigned = []
+        address_info = {'status': 'UNVERIFIED', 'reason': addr_error or 'ADDRESS_PARSE_ERROR'}
+    raw, route_error = runner(['ip', '-j', '-4', 'route', 'get', '1.1.1.1'], 6)
+    try:
+        route = {'status': 'PASS', **parse_route(raw)}
+    except (ValueError, TypeError, json.JSONDecodeError):
+        route = {'status': 'UNVERIFIED', 'reason': route_error or 'ROUTE_PARSE_ERROR'}
+    dns = check_dns(domain, assigned, runner) if address_info['status'] != 'UNVERIFIED' else {
+        'status': 'UNVERIFIED', 'reason': 'LOCAL_ADDRESS_DATA_UNAVAILABLE'}
+    chosen = dns.get('selected_ipv4')
+    if chosen and route.get('source_ipv4') and chosen != route['source_ipv4']:
+        route['source_differs_from_inbound_ipv4'] = True
+        route['note'] = 'NORMAL_FOR_MULTI_IPV4; CHECK_EGRESS_SOURCE_IF_REQUIRED'
+    raw, qdisc_error = runner(['tc', '-j', 'qdisc', 'show'], 6)
+    qdiscs = parse_qdisc(raw) if not qdisc_error else {
+        'status': 'UNVERIFIED', 'reason': 'TC_' + qdisc_error}
+    raw, error = runner(['ss', '-H', '-ltn'], 6)
+    listeners = tcp_listeners(raw)
+    if error:
+        listeners = {'status': 'UNVERIFIED', 'reason': error}
+    result = {
+        'scope': 'READ_ONLY_LOCAL_NODE; NOT_A_LIVE_VPN_THROUGHPUT_OR_FIREWALL_TEST',
+        'time_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        'addresses': address_info,
+        'domain_alignment': dns,
+        'outbound_route': route,
+        'network_configuration': network_backends(root),
+        'conntrack': conntrack(root / 'proc/sys/net/netfilter'),
+        'tcp_kernel': tcp_tuning(root / 'proc/sys'),
+        'tcp_listeners': listeners,
+        'interface_qdiscs': qdiscs,
+        'docker_node': docker_node_status(runner),
+        'next_diagnostics': 'bash ./install.sh --diagnose-resources --seconds 15',
+        'actions_performed': 'NONE',
+    }
+    result['review_required'] = any(isinstance(result[k], dict) and
+                                    result[k].get('status') in ('REVIEW', 'UNVERIFIED')
+                                    for k in ('addresses', 'domain_alignment', 'outbound_route',
+                                              'conntrack', 'tcp_listeners'))
+    return result
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Read-only IPv4, DNS, routing and socket audit')
+    parser.add_argument('--domain', metavar='NODE_DOMAIN', help='check node DNS A against all local public IPv4s')
+    args = parser.parse_args(argv)
+    try:
+        print(json.dumps(run_diagnostics(args.domain), ensure_ascii=False, sort_keys=True, indent=2))
+        return 0
+    except Exception as exc:
+        print(json.dumps({'status': 'UNVERIFIED', 'reason': 'DIAGNOSTIC_ERROR',
+                          'error_type': type(exc).__name__}), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+VK_NODE_DIAGNOSTICS_PY
+}
+
+# Snapshot-only diagnostics: no host mutation and no secret payload in output.
+vkarmani_quality_main() {
+    python3 -I -B - "$@" <<'VK_CONNECTION_QUALITY_PY'
+#!/usr/bin/env python3
+"""VKARMANI read-only aggregate TCP session-quality diagnostics.
+
+Reports only aggregate metadata from established TCP/443 Xray sockets, never
+peer IPs, ports, UUIDs, keys or raw ss output. This does not measure throughput
+inside VLESS, UDP quality, TSPU filtering or per-user experience.
+"""
+import argparse
+import json
+import math
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+MAX_SS_BYTES = 2 * 1024 * 1024
+ESTABLISHED = re.compile(r'^(?:ESTAB|ESTABLISHED)\s')
+RTT = re.compile(r'(?<!\S)rtt:(\d+(?:\.\d+)?)/\d+(?:\.\d+)?')
+RETRANS = re.compile(r'(?<!\S)retrans:(\d+)/(\d+)')
+BYTES_RETRANS = re.compile(r'(?<!\S)bytes_retrans:(\d+)')
+DELIVERY = re.compile(r'(?<!\S)delivery_rate\s+(\d+(?:\.\d+)?)([KMG]?)bps(?:\s|$)')
+
+
+def parse_ss(raw):
+    if not isinstance(raw, str) or len(raw) > MAX_SS_BYTES:
+        raise ValueError('SS_OUTPUT_INVALID_OR_TOO_LARGE')
+    entries = []
+    current = None
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        if not line[0].isspace():
+            if ESTABLISHED.match(line):
+                current = {'rtt_ms': None, 'retrans': None, 'delivery_bps': None}
+                entries.append(current)
+            else:
+                # Not an ESTABLISHED connection: refuse to misassociate info.
+                current = None
+            continue
+        if current is None:
+            continue
+        m = RTT.search(line)
+        if m:
+            val = float(m[1])
+            if math.isfinite(val) and val <= 1e6:
+                current['rtt_ms'] = val
+        m = RETRANS.search(line)
+        if m:
+            current['retrans'] = int(m[1]) > 0 or int(m[2]) > 0
+        m = BYTES_RETRANS.search(line)
+        if m:
+            current['retrans'] = bool(current['retrans']) or int(m[1]) > 0
+        m = DELIVERY.search(line)
+        if m:
+            multiplier = {'': 1, 'K': 1000, 'M': 1000000, 'G': 1000000000}[m[2]]
+            value = float(m[1]) * multiplier
+            if math.isfinite(value) and value <= 1e15:
+                current['delivery_bps'] = round(value)
+    return entries
+
+
+def percentile(vals, percent):
+    if not vals:
+        return None
+    data = sorted(vals)
+    return round(data[max(0, math.ceil(len(data) * percent / 100) - 1)], 2)
+
+
+def aggregate(entries):
+    rtts = [v['rtt_ms'] for v in entries if v['rtt_ms'] is not None]
+    rates = [v['delivery_bps'] for v in entries if v['delivery_bps'] is not None]
+    flags = [v['retrans'] for v in entries if v['retrans'] is not None]
+    return {'established_tcp_connections': len(entries),
+            'rtt_sampled': len(rtts), 'rtt_ms_p50': percentile(rtts, 50),
+            'rtt_ms_p90': percentile(rtts, 90), 'rtt_ms_p99': percentile(rtts, 99),
+            'retransmission_samples': len(flags),
+            'connections_reporting_retransmissions': sum(flags),
+            'retransmission_observed_percent': (round(100 * sum(flags) / len(flags), 1)
+                                               if flags else None),
+            'delivery_rate_sampled': len(rates),
+            'delivery_rate_bps_median': percentile(rates, 50)}
+
+
+def obtain_ss():
+    if not shutil.which('ss'):
+        return None, 'SS_COMMAND_NOT_FOUND'
+    try:
+        p = subprocess.run(['ss', '-H', '-t', '-i', '-n', 'state', 'established',
+                            '( sport = :443 )'], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=8, check=False)
+        if p.returncode:
+            return None, 'SS_COMMAND_FAILED'
+        if len(p.stdout) > MAX_SS_BYTES:
+            return None, 'SS_OUTPUT_TOO_LARGE'
+        return p.stdout, None
+    except subprocess.TimeoutExpired:
+        return None, 'SS_TIMEOUT'
+    except (OSError, UnicodeError):
+        return None, 'SS_UNAVAILABLE'
+
+
+def snapshot(reader=obtain_ss):
+    raw, err = reader()
+    if err:
+        return None, err
+    try:
+        return aggregate(parse_ss(raw)), None
+    except (TypeError, ValueError, OverflowError):
+        return None, 'SS_METRICS_UNPARSEABLE'
+
+
+def diagnose(seconds, reader=obtain_ss, sleeper=time.sleep):
+    before, error = snapshot(reader)
+    if error:
+        return {'status': 'NOT_VERIFIED', 'reason': error, 'actions_performed': 'NONE'}
+    sleeper(seconds)
+    after, error = snapshot(reader)
+    if error:
+        return {'status': 'NOT_VERIFIED', 'reason': error, 'actions_performed': 'NONE'}
+    status, reason = 'INFO', 'OBSERVATION_ONLY'
+    if not after['established_tcp_connections']:
+        reason = 'NO_ESTABLISHED_TCP_443_CONNECTIONS'
+    elif not after['rtt_sampled']:
+        status, reason = 'NOT_VERIFIED', 'TCP_RTT_METRICS_UNAVAILABLE'
+    elif after['rtt_ms_p90'] > 250 or (after['retransmission_observed_percent'] is not None
+                                      and after['retransmission_observed_percent'] > 20):
+        status, reason = 'REVIEW', 'HIGH_RTT_OR_RETRANSMISSION_RATE'
+    return {'status': status, 'reason': reason, 'sampling_seconds': seconds,
+            'before': before, 'after': after,
+            'notes': ['TCP/443 only; other listeners, UDP and tunnels are not measured',
+                      'RTT is to connected client networks; high RTT does not prove host fault',
+                      'Retransmission metrics reflect existing counter history, not an exact interval rate',
+                      'Samples are aggregated; connections cannot be correlated across snapshots'],
+            'actions_performed': 'NONE'}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Read-only aggregate quality on TCP/443')
+    parser.add_argument('--seconds', type=int, default=5)
+    parser.add_argument('--strict', action='store_true',
+                        help='exit nonzero when any measurement is REVIEW/NOT_VERIFIED')
+    args = parser.parse_args(argv)
+    if not 1 <= args.seconds <= 120:
+        parser.error('--seconds must be between 1 and 120')
+    result = diagnose(args.seconds)
+    print(json.dumps(result, sort_keys=True, indent=2, ensure_ascii=False))
+    return 2 if args.strict and result['status'] in ('REVIEW', 'NOT_VERIFIED') else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+VK_CONNECTION_QUALITY_PY
+}
+
 # VKARMANI_COMPLETE_PAYLOAD_2_1_1
 # Sourcing definitions is intentionally inert: used by offline regression tests.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -10376,6 +10850,8 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         --update-cover) shift; vkarmani_site_main update "$@" ;;
         --rollback-cover) shift; vkarmani_site_main rollback "$@" ;;
         --diagnose-resources) shift; vkarmani_resources_main "$@" ;;
+        --diagnose-node) shift; vkarmani_node_diagnostics_main "$@" ;;
+        --diagnose-quality) shift; vkarmani_quality_main "$@" ;;
         --repair-network) shift; vkarmani_repair_network_main "$@" ;;
         --repair-node) shift; vkarmani_repair_main "$@" ;;
         --repair-acceptance) shift; vkarmani_repair_acceptance_main "$@" ;;

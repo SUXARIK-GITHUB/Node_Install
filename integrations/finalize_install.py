@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.15 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.17 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.15'
+VERSION = '2.5.17'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -175,7 +175,7 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_15_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_17_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
@@ -183,7 +183,7 @@ class Finalizer:
         if cfg.get('installation_mode') != 'secret-key-only':
             raise Failure('WRONG_INSTALLATION_MODE')
         if not self.path('etc/vkarmani-node/cascade-role.json').exists():
-            # Three secret operator files are mandatory on a NEW ordinary 2.5.15.
+            # Three secret operator files are mandatory on a NEW ordinary 2.5.17.
             # Without this gate, a removed XHTTP template would quietly publish
             # INSTALL_COMPLETE with only RAW + keys.
             xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')

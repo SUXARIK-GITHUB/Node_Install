@@ -90,14 +90,64 @@ class HybridConfiguration(unittest.TestCase):
                 source = source.replace("'/run/vkarmani-selfsteal/nginx.sock'", repr(str(main_sock)))
                 source = source.replace("'/run/vkarmani-selfsteal/cover.sock'", repr(str(cover_sock)))
                 source = source.replace("'/run/lock/vkarmani-selfsteal-socket.lock'", repr(str(lock)))
-                result = subprocess.run([sys.executable, '-B', '-c', source],
-                                        capture_output=True, text=True, timeout=5)
+                # The production entry point deliberately requires root. Exercise
+                # its real socket/lock/config path under an isolated fixture,
+                # mocking only geteuid in a disposable child process. Never
+                # weaken the installed helper's privilege gate for CI.
+                runner = ("import os, sys\n"
+                          "from unittest.mock import patch\n"
+                          "ns = {'__name__': 'vk_socket_unit_test'}\n"
+                          f"exec(compile({source!r}, '<socket-preparer>', 'exec'), ns)\n"
+                          "with patch.object(os, 'geteuid', return_value=0):\n"
+                          "    sys.exit(ns['main']())\n")
+                result = subprocess.run([sys.executable, '-B', '-c', runner],
+                                        capture_output=True, text=True, timeout=8)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('SELFSTEAL_SOCKET_PREPARE=ABSENT', result.stdout)
                 if mode == 'max.ru':
                     self.assertIn('SELFSTEAL_COVER_SOCKET_PREPARE=ABSENT', result.stdout)
                 else:
                     self.assertNotIn('SELFSTEAL_COVER_SOCKET_PREPARE', result.stdout)
+
+    def test_socket_preparer_real_stale_live_and_foreign_inode(self):
+        import socket
+        preparer = module('VK_SOCKET_PREPARE')
+        candidate = self.root / 'unit.sock'
+        # A dead socket inode owned by this test user can be unlinked.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.bind(str(candidate))
+        self.assertEqual(preparer.prepare(candidate), 'STALE_REMOVED')
+        self.assertFalse(candidate.exists())
+        # A live server must never be disconnected or unlinked.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.bind(str(candidate))
+            sock.listen(1)
+            with self.assertRaisesRegex(preparer.UnsafeSocket, 'LIVE_SOCKET_UNCHANGED'):
+                preparer.prepare(candidate)
+            self.assertTrue(candidate.exists())
+        candidate.unlink()
+        # A normal file and a symlink are not stale Unix sockets.
+        candidate.write_text('operator-data')
+        with self.assertRaisesRegex(preparer.UnsafeSocket, 'NOT_OWNED_SOCKET'):
+            preparer.prepare(candidate)
+        candidate.unlink()
+        candidate.symlink_to(self.conf)
+        with self.assertRaisesRegex(preparer.UnsafeSocket, 'NOT_OWNED_SOCKET'):
+            preparer.prepare(candidate)
+        self.assertEqual(self.conf.read_text(), self.original)
+
+    def test_socket_preparer_root_guard_still_blocks_nonroot(self):
+        source = payload('VK_SOCKET_PREPARE')
+        runner = ("import os, sys\n"
+                  "from unittest.mock import patch\n"
+                  "ns = {'__name__': 'vk_socket_unit_test'}\n"
+                  f"exec(compile({source!r}, '<socket-preparer>', 'exec'), ns)\n"
+                  "with patch.object(os, 'geteuid', return_value=1001):\n"
+                  "    sys.exit(ns['main']())\n")
+        result = subprocess.run([sys.executable, '-B', '-c', runner],
+                                capture_output=True, text=True, timeout=8)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('ROOT_NO_ARGUMENTS_REQUIRED', result.stderr)
 
     def test_ssl_socket_split_and_signed_package_gate(self):
         https = template('/etc/nginx/conf.d/20-vkarmani-selfsteal.conf')

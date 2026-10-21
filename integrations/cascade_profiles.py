@@ -145,6 +145,36 @@ def inbound(n):
                 'shortIds': [n['short_id']]}}}
 
 
+def blocked_pair_destinations(cfg):
+    """Block private targets plus BOTH server IPs; no fallback into the cascade.
+
+    The caller validates actual public addresses in checked_config/validate_bundle.
+    Placeholder TEST-NET addresses used in documentation are rendered only offline.
+    """
+    return PRIVATE_RANGES.copy() + [cfg['entry']['ipv4'] + '/32', cfg['exit']['ipv4'] + '/32']
+
+
+def _audited_destination_ranges(value):
+    # The profile-only audit cannot recover pair identities; computed profile
+    # checks compare against the immutable role bundle separately.
+    require(isinstance(value, list) and len(value) == len(PRIVATE_RANGES) + 2 and
+            value[:len(PRIVATE_RANGES)] == PRIVATE_RANGES,
+            'PAIR_EGRESS_BLOCK_LIST_MISSING')
+    tail = value[len(PRIVATE_RANGES):]
+    require(len(set(tail)) == 2 and all(isinstance(x, str) and x.endswith('/32')
+            and x != '0.0.0.0/32' and _valid_ipv4_cidr(x) for x in tail),
+            'PAIR_EGRESS_BLOCK_INVALID')
+    return value
+
+
+def _valid_ipv4_cidr(value):
+    try:
+        ipaddress.IPv4Network(value, strict=True)
+        return True
+    except (ValueError, TypeError, ipaddress.AddressValueError):
+        return False
+
+
 def entry_profile(cfg):
     e, x = cfg['entry'], cfg['exit']
     return {'log': {'loglevel': 'warning'},
@@ -163,7 +193,7 @@ def entry_profile(cfg):
         'routing': {'domainStrategy': 'AsIs', 'rules': [
             {'type': 'field', 'protocol': ['bittorrent'], 'outboundTag': 'BLOCK'},
             {'type': 'field', 'domain': ['geosite:private'], 'outboundTag': 'BLOCK'},
-            {'type': 'field', 'ip': PRIVATE_RANGES.copy(), 'outboundTag': 'BLOCK'},
+            {'type': 'field', 'ip': blocked_pair_destinations(cfg), 'outboundTag': 'BLOCK'},
             {'type': 'field', 'inboundTag': [e['inbound_tag']],
              'outboundTag': 'TO_EXIT_VLESS'}]}}
 
@@ -176,12 +206,13 @@ def exit_profile(cfg):
         'outbounds': [
             {'tag': 'DIRECT', 'protocol': 'freedom', 'settings': {
                 'domainStrategy': 'UseIPv4',
-                'finalRules': [{'ip': PRIVATE_RANGES.copy(), 'action': 'block'}]}},
+                'finalRules': [{'ip': blocked_pair_destinations(cfg), 'action': 'block'}]},
+             'streamSettings': {'sockopt': {'domainStrategy': 'ForceIPv4'}}},
             {'tag': 'BLOCK', 'protocol': 'blackhole'}],
         'routing': {'domainStrategy': 'IPOnDemand', 'rules': [
             {'type': 'field', 'protocol': ['bittorrent'], 'outboundTag': 'BLOCK'},
             {'type': 'field', 'domain': ['geosite:private'], 'outboundTag': 'BLOCK'},
-            {'type': 'field', 'ip': PRIVATE_RANGES.copy(), 'outboundTag': 'BLOCK'},
+            {'type': 'field', 'ip': blocked_pair_destinations(cfg), 'outboundTag': 'BLOCK'},
             {'type': 'field', 'inboundTag': [n['inbound_tag']],
              'outboundTag': 'DIRECT'}]}}
 
@@ -220,8 +251,10 @@ def audit(profile, role):
             'UNEXPECTED_ROUTING_RULES')
     require(rules[0] == {'type':'field','protocol':['bittorrent'],'outboundTag':'BLOCK'}
             and rules[1] == {'type':'field','domain':['geosite:private'],'outboundTag':'BLOCK'}
-            and rules[2] == {'type':'field','ip':PRIVATE_RANGES,'outboundTag':'BLOCK'},
+            and isinstance(rules[2], dict) and set(rules[2]) == {'type', 'ip', 'outboundTag'}
+            and rules[2].get('type') == 'field' and rules[2].get('outboundTag') == 'BLOCK',
             'BLOCK_RULES_MISSING_OR_REORDERED')
+    block_ranges = _audited_destination_ranges(rules[2]['ip'])
     if role == 'entry':
         require(outs[0] == {'tag':'BLOCK','protocol':'blackhole'},
                 'ENTRY_BLOCK_OUTBOUND_MUTATED')
@@ -264,8 +297,10 @@ def audit(profile, role):
         require(rules[3] == {'type':'field', 'inboundTag':[i['tag']],
                              'outboundTag':'DIRECT'}, 'EXIT_ROUTE_MISMATCH')
         require(outs[0].get('protocol') == 'freedom' and
+                outs[0].get('streamSettings') == {'sockopt': {'domainStrategy': 'ForceIPv4'}} and
+                outs[0].get('settings',{}).get('domainStrategy') == 'UseIPv4' and
                 outs[0].get('settings',{}).get('finalRules') ==
-                [{'ip': PRIVATE_RANGES,'action':'block'}], 'EXIT_PRIVATE_EGRESS_NOT_BLOCKED')
+                [{'ip': block_ranges,'action':'block'}], 'EXIT_PRIVATE_EGRESS_NOT_BLOCKED')
     return True
 
 

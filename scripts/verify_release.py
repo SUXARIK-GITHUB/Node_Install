@@ -87,7 +87,7 @@ def verify_name(value):
 
 
 def verify_manifest(m):
-    if m.get('version') != '2.5.15' or m.get('release_status') != 'INCOMPLETE_STAGING_ONLY':
+    if m.get('version') != '2.5.17' or m.get('release_status') != 'INCOMPLETE_STAGING_ONLY':
         raise ValueError('wrong release version or safety status')
     commit = m.get('source_commit')
     if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
@@ -147,10 +147,10 @@ def verify_bytes(files):
         if sha256(files[name]) != digest:
             raise ValueError('SHA256SUMS failed: ' + name)
     installer = files['install.sh'].decode('utf-8')
-    if not re.search(r'(?m)^INSTALLER_VERSION=2\.5\.15$', installer):
+    if not re.search(r'(?m)^INSTALLER_VERSION=2\.5\.17$', installer):
         raise ValueError('version of installer differs from manifest')
     readme = files['README.md'].decode('utf-8')
-    if '2.5.15' not in readme or 'текущая staging-сборка' not in readme:
+    if '2.5.17' not in readme or 'текущая staging-сборка' not in readme:
         raise ValueError('README release state/version inconsistent')
     if m['build_id'].startswith('20261021-r14-'):
         expected = {'docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md',
@@ -167,7 +167,19 @@ def verify_bytes(files):
                     'tests/test_2515_r16_stability.py'}
         if not expected.issubset(files):
             raise ValueError('missing r16 release notes or diagnostics regression')
-    expected_archive = 'Node_Install_2.5.15-docs-menu_' + m['build_id'] + '.zip'
+    if m['build_id'].startswith('20261021-r17-'):
+        expected = {'docs/RELEASE_2.5.16_R17_CI_NETWORK_20261021.md',
+                    'tests/test_2516_r17_github_and_network_audit.py',
+                    'integrations/node_diagnostics.py'}
+        if not expected.issubset(files):
+            raise ValueError('missing r17 files or diagnostics')
+    if m['build_id'].startswith('20261021-r18-'):
+        expected = {'docs/RELEASE_2.5.17_R18_RELIABILITY_20261021.md',
+                    'tests/test_2517_r18_reliability.py',
+                    'integrations/connection_quality.py'}
+        if not expected.issubset(files):
+            raise ValueError('missing r18 reliability files')
+    expected_archive = 'Node_Install_2.5.17-docs-menu_' + m['build_id'] + '.zip'
     if expected_archive not in readme.split('---', 1)[0]:
         raise ValueError('README release command/build ID inconsistent')
     for word in ('vk_rkn_safe_shutdown()', 'vk_write_docker_local()', 'vk_write_nightly_maintenance()'):
