@@ -54,6 +54,19 @@ R6_APPROVED_FILE_SHA256 = {
     'integrations/rkn_guard.py': '57a4e9a2840ee6b1c17ebed1192cc48154a21def201087974cb3dce7a473147d',
 }
 
+# Reviewed r13 exception: five REALITY modes require mode-aware XHTTP transport
+# validation; historical source hash remains pinned above. No other integration
+# may be changed without a separately reviewed hash exception.
+R13_APPROVED_FILE_SHA256 = {
+    'integrations/xhttp_profile.py': 'ac3b1136fe7319b8306d6650d54574732c6780f9b3e43826dc494479769222c7',
+}
+
+# Reviewed r14 exception: local target with SNI-based Nginx stream hybrid for XHTTP.
+R14_APPROVED_FILE_SHA256 = {
+    'integrations/xhttp_profile.py': '9e5412cbcc8465a2b34d704fa1fafb50108bc7240dba0349c1c65b7b4d11dda5',
+}
+
+
 class PreservedPolicy256(unittest.TestCase):
     def test_reviewed_network_and_cover_payloads_unchanged(self):
         for tag, expected in PAYLOADS.items():
@@ -64,7 +77,7 @@ class PreservedPolicy256(unittest.TestCase):
     def test_existing_integrations_and_full_profile_examples_unchanged(self):
         for name, expected in FILES.items():
             with self.subTest(name=name):
-                expected_for_this_candidate = R6_APPROVED_FILE_SHA256.get(name, R4_APPROVED_FILE_SHA256.get(name, expected))
+                expected_for_this_candidate = R14_APPROVED_FILE_SHA256.get(name, R13_APPROVED_FILE_SHA256.get(name, R6_APPROVED_FILE_SHA256.get(name, R4_APPROVED_FILE_SHA256.get(name, expected))))
                 self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(), expected_for_this_candidate)
 
     def test_reviewed_r4_hash_overrides_are_explicit_and_keep_prior_baselines(self):
@@ -83,6 +96,20 @@ class PreservedPolicy256(unittest.TestCase):
                          R6_APPROVED_PAYLOAD_SHA256['VK_RKN_GUARD_PY'])
         self.assertNotEqual(R6_APPROVED_PAYLOAD_SHA256['VK_RKN_GUARD_PY'],
                             R4_APPROVED_PAYLOAD_SHA256['VK_RKN_GUARD_PY'])
+
+    def test_r13_xhttp_exception_is_explicit_and_embedded_matches(self):
+        self.assertEqual(set(R13_APPROVED_FILE_SHA256), {'integrations/xhttp_profile.py'})
+        self.assertNotEqual(R13_APPROVED_FILE_SHA256['integrations/xhttp_profile.py'],
+                            FILES['integrations/xhttp_profile.py'])
+        self.assertEqual(payload('VK_XHTTP_PROFILE_PY').encode(),
+                         (ROOT/'integrations/xhttp_profile.py').read_bytes())
+
+    def test_r14_hybrid_xhttp_exception_is_explicit_and_embedded_matches(self):
+        self.assertEqual(set(R14_APPROVED_FILE_SHA256), {'integrations/xhttp_profile.py'})
+        self.assertNotEqual(R14_APPROVED_FILE_SHA256['integrations/xhttp_profile.py'],
+                            R13_APPROVED_FILE_SHA256['integrations/xhttp_profile.py'])
+        self.assertEqual(payload('VK_XHTTP_PROFILE_PY').encode(),
+                         (ROOT/'integrations/xhttp_profile.py').read_bytes())
 
     def test_finish_rkn_cannot_install_packages(self):
         self.assertIn('VK_RKN_NO_PACKAGE_INSTALL=1; source "$1";', payload('VK_FINALIZER_PY'))

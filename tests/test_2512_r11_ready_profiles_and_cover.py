@@ -141,8 +141,9 @@ class ReleaseGates(unittest.TestCase):
     def test_selfsteal_security_headers_and_no_new_external_proxy(self):
         self.assertIn('add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;',SCRIPT)
         self.assertIn('add_header Cross-Origin-Resource-Policy "same-origin" always;',SCRIPT)
-        self.assertIn('listen unix:/run/vkarmani-selfsteal/nginx.sock', SCRIPT)
-        self.assertIn('target: /dev/shm/nginx.sock', SCRIPT)
+        self.assertIn('NGINX_SELFSTEAL_HTTPS_SOCKET=/run/vkarmani-selfsteal/nginx.sock', SCRIPT)
+        self.assertIn("target = '/dev/shm/nginx.sock'", SCRIPT)
+        self.assertIn('xver = 1', SCRIPT)
         self.assertNotIn('proxy_pass http://', SCRIPT.split('cat > /etc/nginx/conf.d/20-vkarmani-selfsteal.conf',1)[1].split('\nEOF',1)[0])
 
     def test_embedded_finalizer_equal_standalone_and_requires_validated_xhttp(self):
@@ -156,7 +157,8 @@ class ReleaseGates(unittest.TestCase):
     def test_readme_version_one_command_autoreboot_default(self):
         text=(ROOT/'README.md').read_text()
         head=text.split('\n---\n',1)[0]
-        self.assertIn('2.5.13 r12',head)
+        self.assertIn('2.5.14 r15',head)
+        self.assertIn('2.5.13 r12', (ROOT/'CHANGELOG.md').read_text())
         self.assertNotIn('2.5.10 r7e',head)
         self.assertNotIn('локальный непубликованный staging ZIP r10',head)
         self.assertIn('vkarmani-xhttp-profile.json',head)

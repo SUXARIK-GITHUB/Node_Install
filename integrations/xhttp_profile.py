@@ -132,9 +132,15 @@ def build_xhttp(root):
             or 'xhttpSettings' in stream or stream.get('sockopt', {}).get('acceptProxyProtocol', False) is not False):
         raise Invalid('RAW_TEMPLATE_TRANSPORT_MISMATCH')
     reality = stream.get('realitySettings')
-    if (not isinstance(reality, dict) or reality.get('target') != '/dev/shm/nginx.sock'
-            or type(reality.get('xver')) is not int or reality['xver'] != 1
-            or reality.get('serverNames') != [domain]
+    mode = cfg.get('reality_mode', 'local')
+    if mode not in ('local', 'max.ru', 'ya.ru', 'rutube.ru', 'mail.ru'):
+        raise Invalid('REALITY_MODE_INVALID')
+    target = '/dev/shm/nginx.sock'
+    sni = domain if mode == 'local' else mode
+    xver = 1
+    if (not isinstance(reality, dict) or reality.get('target') != target
+            or type(reality.get('xver')) is not int or reality['xver'] != xver
+            or reality.get('serverNames') != [sni]
             or reality.get('privateKey') != keys['private_key']
             or reality.get('shortIds') != [shortid]
             or reality.get('minClientVer') != '0.0.0'):
@@ -152,7 +158,7 @@ def build_xhttp(root):
     node['settings']['flow'] = ''  # Vision is incompatible with XHTTP.
     s = node['streamSettings']
     s['network'] = 'xhttp'
-    s['xhttpSettings'] = {'host': domain,
+    s['xhttpSettings'] = {'host': sni,
                           'path': xhttp_path(keys['private_key'], domain),
                           'mode': 'auto'}
     return xhttp

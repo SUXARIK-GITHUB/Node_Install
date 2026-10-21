@@ -24,7 +24,10 @@ class OperatorExportTests(unittest.TestCase):
         self.m.ETC.mkdir(parents=True)
         self.m.REALITY_EXPORT = self.base / 'root/reality-keys.txt'
         self.m.PROFILE_EXPORT = self.base / 'root/vkarmani-raw-profile.json'
-        self.profile = {'inbounds': [{'tag': 'VK_RAW_TEST', 'protocol': 'vless'}],
+        self.profile = {'inbounds': [{'tag': 'VK_RAW_TEST', 'protocol': 'vless',
+                    'streamSettings': {'realitySettings': {
+                        'target': '/dev/shm/nginx.sock', 'xver': 1,
+                        'serverNames': ['node.example.com']}}}],
                         'routing': {'rules': []}}
         self.profile_source = self.m.ETC / 'profile.json'
         self.profile_source.write_text(json.dumps(self.profile, indent=2) + '\n')

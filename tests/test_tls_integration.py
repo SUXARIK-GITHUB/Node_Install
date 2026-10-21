@@ -165,6 +165,8 @@ class NginxSelfstealIntegrationTests(unittest.TestCase):
         fragment = (cls.fragment.replace('$NGINX_HTTP2_LISTEN', '' if modern else 'http2')
                     .replace('$NGINX_HTTP2_DIRECTIVE', 'http2 on;' if modern else '')
                     .replace('$NGINX_REJECT_HANDSHAKE_DIRECTIVE', 'ssl_reject_handshake on;' if cls.reject_sni else '')
+                    .replace('$NGINX_SELFSTEAL_HTTPS_SOCKET', cls.socket_path)
+                    .replace('$NGINX_SELFSTEAL_HTTPS_PROXY', 'proxy_protocol')
                     .replace('$DOMAIN', 'node.example.test').replace('\\$', '$')
                     .replace('/run/vkarmani-selfsteal/nginx.sock', cls.socket_path)
                     .replace('/etc/letsencrypt/live/node.example.test/fullchain.pem', str(cls.root / 'cert.pem'))

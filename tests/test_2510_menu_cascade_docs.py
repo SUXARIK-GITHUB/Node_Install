@@ -31,7 +31,7 @@ vk_initial_install_menu
                               text=True, capture_output=True, timeout=8)
 
     def test_ordinary_choice_is_success_and_keeps_input_prompts(self):
-        result = self.choose(['1'])
+        result = self.choose(['1', '1'])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Режим: обычная нода', result.stdout)
         for field in ('SECRET_KEY', 'Домен', 'IPv4 технички'):
@@ -55,7 +55,7 @@ vk_initial_install_menu
             self.assertNotIn('Режим: обычная нода', result.stdout)
 
     def test_invalid_selection_then_ordinary(self):
-        result = self.choose(['3', 'случайно', '1'])
+        result = self.choose(['3', 'случайно', '1', '1'])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertGreaterEqual(result.stderr.count('Некорректный выбор'), 2)
 
@@ -77,8 +77,8 @@ vk_initial_install_menu
         self.assertIn('[[ ! -e "$STATE/owned-installation"', SCRIPT[sel-230:sel])
 
     def test_new_version_remains_eligible_for_explicit_maintenance_and_rkn(self):
-        self.assertIn(r"'^version=2\.5\.(8|9|10|11|12|13)$'", SCRIPT)
-        self.assertIn(r"'^version=2\.5\.([2-9]|10|11|12|13)$'", SCRIPT)
+        self.assertIn(r"'^version=2\.5\.(8|9|10|11|12|13|14)$'", SCRIPT)
+        self.assertIn(r"'^version=2\.5\.([2-9]|10|11|12|13|14)$'", SCRIPT)
         self.assertIn("2.5.10", SCRIPT)
 
     def test_version_and_help_remain_inert(self):
@@ -86,7 +86,7 @@ vk_initial_install_menu
             p = subprocess.run(['bash', str(ROOT/'install.sh'), arg], capture_output=True, text=True, timeout=7)
             self.assertEqual(p.returncode, 2 if arg=='--not-a-real-flag' else 0)
             if arg != '--not-a-real-flag':
-                self.assertIn('2.5.13', p.stdout)
+                self.assertIn('2.5.14', p.stdout)
             self.assertNotIn('Выберите 1 или 2:', p.stdout)
 
 

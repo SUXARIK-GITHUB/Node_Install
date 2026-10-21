@@ -63,7 +63,10 @@ class Profile213Tests(unittest.TestCase):
     def test_generator_other_policy_bytes_semantics_preserved(self):
         self.assertEqual(self.i['settings'].get('flow'), 'xtls-rprx-vision')  # New 2.3.0 template only
         self.assertEqual(self.i['settings'], {'clients': [], 'decryption': 'none', 'flow': 'xtls-rprx-vision'})
-        self.assertEqual(self.p['dns'], {'servers': ['1.1.1.1', '8.8.8.8'], 'queryStrategy': 'UseIPv4'})
+        self.assertEqual(self.p['dns'], {'servers': ['1.1.1.1', '1.0.0.1', '8.8.8.8'],
+                                        'queryStrategy': 'UseIPv4', 'disableCache': False,
+                                        'serveStale': True, 'serveExpiredTTL': 3600,
+                                        'enableParallelQuery': True})
         private = ['0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
                    '169.254.0.0/16', '172.16.0.0/12', '192.0.0.0/24', '192.0.2.0/24',
                    '192.168.0.0/16', '198.18.0.0/15', '198.51.100.0/24',
@@ -71,7 +74,8 @@ class Profile213Tests(unittest.TestCase):
         self.assertEqual(self.p['outbounds'], [
             {'tag': 'DIRECT', 'protocol': 'freedom', 'settings': {
                 'domainStrategy': 'UseIPv4',
-                'finalRules': [{'ip': private + ['::/0'], 'action': 'block'}]}},
+                'finalRules': [{'ip': private + ['::/0'], 'action': 'block'}]},
+             'streamSettings': {'sockopt': {'domainStrategy': 'ForceIPv4'}}},
             {'tag': 'BLOCK', 'protocol': 'blackhole'}])
         self.assertEqual(self.p['routing'], {'domainStrategy': 'IPOnDemand', 'rules': [
             {'type': 'field', 'protocol': ['bittorrent'], 'outboundTag': 'BLOCK'},
@@ -85,7 +89,7 @@ class Profile213Tests(unittest.TestCase):
         self.h.export_reality_keys_file(self.c)
         guide = (self.h.ETC / 'PANEL-SETUP.txt').read_text()
         self.assertIn('minClientVer=0.0.0', guide)
-        self.assertIn('RemnaNode 2.5.13', guide)
+        self.assertIn('RemnaNode 2.5.14', guide)
         self.assertIn('minClientVer: 0.0.0', self.h.REALITY_EXPORT.read_text())
         self.assertEqual((self.h.ETC / 'reality.json').read_bytes(), keys)
 
@@ -354,7 +358,7 @@ warn() { printf 'NOTE %s %s\\n' "$1" "$2"; }
 
     def test_all_reviewed_versions_execute_expected_profile_contract(self):
         validated = ('2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0',
-                     '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.13')
+                     '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13', '2.5.14')
         for version in validated:
             with self.subTest(version=version):
                 result = self.gate(version)
@@ -374,7 +378,7 @@ warn() { printf 'NOTE %s %s\\n' "$1" "$2"; }
 
     def test_future_malformed_versions_do_not_silently_pass(self):
         for version in ('2.1.4', '2.1.20', '2.1.3-extra', '2.2.1', '2.3.1',
-                        '2.4.4', '2.5.14', '2.6.0', '3.0.0', 'broken', ''):
+                        '2.4.4', '2.5.15', '2.6.0', '3.0.0', 'broken', ''):
             with self.subTest(version=version):
                 result = self.gate(version)
                 self.assertEqual(result.returncode, 1, result.stderr)

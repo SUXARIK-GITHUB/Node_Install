@@ -113,6 +113,10 @@ UNTRACKED_ALLOWED = {
     'docs/RELEASE_2.5.11_R10_REVIEW.md', 'tests/test_2511_r10_lowmem_and_site.py',
     'docs/RELEASE_2.5.12_R11_REVIEW.md', 'tests/test_2512_r11_ready_profiles_and_cover.py',
     'docs/RELEASE_2.5.13_R12_SITES.md', 'tests/test_2513_r12_twelve_sites.py',
+    'docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md',
+    'tests/test_2513_r14_hybrid_selfsteal.py',
+    'docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md',
+    'tests/test_2514_r15_release_and_readme.py',
 }
 
 
@@ -182,7 +186,7 @@ def build(out_dir, build_id):
         data = p.read_bytes()
         entries.append({'path':name, 'size':len(data), 'sha256':sha256(data), 'mode':f'{mode:04o}'})
     manifest = {
-        'version': '2.5.13',
+        'version': '2.5.14',
         'build_id': build_id,
         'source_commit': source_commit,
         'release_status': 'INCOMPLETE_STAGING_ONLY',
@@ -201,7 +205,7 @@ def build(out_dir, build_id):
     data[SUMS] = sums_bytes
     verify_bytes(data)
     out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / f'Node_Install_2.5.13-docs-menu_{build_id}.zip'
+    dest = out_dir / f'Node_Install_2.5.14-docs-menu_{build_id}.zip'
     if dest.exists():
         raise FileExistsError('already built; use a new unique build ID')
     fd, tmp = tempfile.mkstemp(prefix='.node-install-staging-', suffix='.zip', dir=out_dir)

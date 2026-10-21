@@ -21,7 +21,7 @@ class NodePluginsPrereqTests(unittest.TestCase):
         self.assertLess(SCRIPT.index('KERNEL_RELEASE=$(uname -r'), SCRIPT.index("stage 'Компоненты ноды"))
 
     def test_nftables_package_and_cli_without_service_enablement(self):
-        package = re.search(r'NODE_PACKAGES=\((.*?)\)\nDOCKER_PACKAGES', SCRIPT, re.S).group(1)
+        package = SCRIPT.split('NODE_PACKAGES=(', 1)[1].split(')\n', 1)[0]
         self.assertIn('nftables', package.split())
         self.assertIn('nft --version', SCRIPT)
         self.assertNotRegex(SCRIPT, r'systemctl\s+(?:enable|start|restart|enable\s+--now)\s+nftables')

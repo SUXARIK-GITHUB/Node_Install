@@ -10,7 +10,7 @@ import subprocess
 import time
 import unittest
 from unittest.mock import patch
-from common import module, payload, template
+from common import SCRIPT, module, payload, template
 import test_tls_integration as fixture
 import test_protocol_faults as peers
 
@@ -208,7 +208,8 @@ class Probe220UnitTests(unittest.TestCase):
     def test_generated_http_policy_keeps_acme_and_fixed_redirect(self):
         c = template('/etc/nginx/conf.d/10-vkarmani-http.conf')
         self.assertIn('/.well-known/acme-challenge/', c)
-        self.assertIn('https://$DOMAIN', c)
+        self.assertIn('location / { $NGINX_HTTP_ROOT_ACTION }', c)
+        self.assertIn("NGINX_HTTP_ROOT_ACTION='return 301 https://'", SCRIPT)
         self.assertNotIn('https://\\$host', c)
         self.assertIn('default_server', c)
 

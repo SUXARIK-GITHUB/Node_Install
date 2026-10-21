@@ -37,14 +37,14 @@ class Finalization256(unittest.TestCase):
         self.write('etc/vkarmani-node/config.json', json.dumps({'installation_mode':'secret-key-only',
                    'domain':'node.example.test','public_ipv4':'192.0.2.10','panel_ipv4':['192.0.2.20'],'node_port':2222}))
         self.write('etc/vkarmani-node/profile-xhttp.json', '{"test-core-validated":true}\n')
-        self.write(self.m.STATE+'/install-version','2.5.13\n')
+        self.write(self.m.STATE+'/install-version','2.5.14\n')
         self.write(self.m.STATE+'/image-digest', self.digest+'\n')
         self.write('etc/ufw/before.rules','*filter\n:ufw-before-input - [0:0]\nCOMMIT\n')
         self.write('proc/cmdline','quiet ipv6.disable=1\n')
         self.write(self.m.STATE+'/backups/original/config','old fixture\n')
         self.write(self.m.STATE+'/backups/original/MANIFEST.sha256',self.m.sha(b'old fixture\n')+'  ./config\n')
         self.write(self.m.STATE+'/latest-backup-path','/'+self.m.STATE+'/backups/original\n')
-        self.source=self.write(self.m.STATE+'/installer-2.5.13.sh', SCRIPT)
+        self.source=self.write(self.m.STATE+'/installer-2.5.14.sh', SCRIPT)
 
     def write(self, path, value, mode=0o600):
         p=self.root/path
@@ -154,7 +154,7 @@ class Finalization256(unittest.TestCase):
 
     def test_unreviewed_legacy_install_not_automatically_finalized(self):
         self.write(self.m.STATE+'/install-version','2.5.5\n')
-        with self.assertRaisesRegex(self.m.Failure,'2_5_13'):self.f.prepare(self.source)
+        with self.assertRaisesRegex(self.m.Failure,'2_5_14'):self.f.prepare(self.source)
         self.assertFalse(self.f.tx.exists())
 
     def test_missing_checkpoint_does_not_create_success(self):
@@ -368,7 +368,7 @@ class FinalizerDockerArgvRegression(unittest.TestCase):
             return ''
         f = m.Finalizer(root=Path('/nonexistent'), runner=runner)
         f.read = lambda path, private=False: {
-            'install-version': b'2.5.13\n', 'owned-installation': b'',
+            'install-version': b'2.5.14\n', 'owned-installation': b'',
             'config.json': b'{"installation_mode":"secret-key-only","public_ipv4":"192.0.2.10"}',
             'image-digest': b'remnawave/node@sha256:' + b'a' * 64 + b'\n'}.get(path.name, b'')
         f.safe = lambda *a, **k: None

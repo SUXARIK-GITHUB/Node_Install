@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VKarmani Node 2.5.13 (README and guarded installation-choice candidate). Read README.md before running as root.
+# VKarmani Node 2.5.14 (README and guarded installation-choice candidate). Read README.md before running as root.
 # Source-safe for tests: setup only starts at the final dispatcher.
 vk_write_tls_check() {
     install -d -m 0755 "$(dirname '/usr/local/sbin/vkarmani-node-tls-check')"
@@ -1003,6 +1003,9 @@ def main():
         with open('/run/lock/vkarmani-selfsteal-socket.lock', 'a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             print('SELFSTEAL_SOCKET_PREPARE=' + prepare(path))
+            if c.get('reality_mode', 'local') != 'local':
+                print('SELFSTEAL_COVER_SOCKET_PREPARE=' +
+                      prepare('/run/vkarmani-selfsteal/cover.sock'))
         return 0
     except UnsafeSocket as exc:
         print('SELFSTEAL_SOCKET_PREPARE=FAIL ' + str(exc), file=sys.stderr)
@@ -1487,6 +1490,8 @@ printf '\n=== VKarmani node acceptance %s mode=%s ===\n' "$(date -Is)" "$MODE"
 DOMAIN=$(helper get domain) || exit 1
 NODE_PORT=$(helper get node_port) || exit 1
 PUBLIC_IP=$(helper get public_ipv4) || exit 1
+REALITY_MODE=$(helper get reality_mode) || exit 1
+case "$REALITY_MODE" in local|max.ru|ya.ru|rutube.ru|mail.ru) ;; *) echo 'UNREVIEWED_REALITY_MODE'; exit 1 ;; esac
 SELFSTEAL_SOCKET=$(python3 -c 'import json; print(json.load(open("/etc/vkarmani-node/config.json")).get("selfsteal_host_socket", "/dev/shm/nginx.sock"))') || exit 1
 if [[ "$MODE" == --postboot ]]; then
     for _ in $(seq 1 30); do
@@ -1499,7 +1504,7 @@ helper secret >/dev/null 2>&1 && pass SECRET_KEY_VALID || fail SECRET_KEY_VALID
 # until this table and its regression matrix are explicitly reviewed.
 installed_contract_class() {
     case "$1" in
-        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11|2.5.12|2.5.13) printf 'modern\n' ;;
+        2.3.0|2.4.0|2.4.1|2.4.2|2.4.3|2.5.0|2.5.1|2.5.2|2.5.3|2.5.4|2.5.5|2.5.6|2.5.7|2.5.8|2.5.9|2.5.10|2.5.11|2.5.12|2.5.13|2.5.14) printf 'modern\n' ;;
         1.3.*|2.0.3|2.1.0|2.1.1|2.1.2|2.1.3|2.2.0) printf 'legacy\n' ;;
         *) printf 'unreviewed\n' ;;
     esac
@@ -1522,7 +1527,7 @@ else
 fi
 
 # A 1 GiB installation must not silently lose its verified swap on reboot.
-if [[ "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 ]]; then
+if [[ "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 ]]; then
     RAM_KIB=$(awk '$1=="MemTotal:" {print $2}' /proc/meminfo)
     if [[ "$RAM_KIB" =~ ^[0-9]+$ ]] && (( RAM_KIB < 1536 * 1024 )); then
         SWAP_KIB=$(awk '$1=="SwapTotal:" {print $2}' /proc/meminfo)
@@ -1552,7 +1557,7 @@ vk_check_import_profile() {
             esac ;;
         *) fail IMPORT_PROFILE_POLICY 'unreviewed installer contract' ;;
     esac
-    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 ]]; then
+    if [[ "$INSTALL_VERSION" == 2.5.4 || "$INSTALL_VERSION" == 2.5.5 || "$INSTALL_VERSION" == 2.5.6 || "$INSTALL_VERSION" == 2.5.7 || "$INSTALL_VERSION" == 2.5.8 || "$INSTALL_VERSION" == 2.5.9 || "$INSTALL_VERSION" == 2.5.10 || "$INSTALL_VERSION" == 2.5.11 || "$INSTALL_VERSION" == 2.5.12 || "$INSTALL_VERSION" == 2.5.13 || "$INSTALL_VERSION" == 2.5.14 ]]; then
         if [[ -f "$ETC/cascade-role.json" ]]; then
             warn XHTTP_IMPORT_PROFILE_POLICY 'CASCADE_RAW_ONLY: XHTTP not available for this peer bridge'
         elif [[ -e "$ETC/profile-xhttp.json" || -L "$ETC/profile-xhttp.json" ]]; then
@@ -2022,15 +2027,15 @@ HTTP80_CODE=''
 if HTTP80_CODE=$(curl --noproxy '*' -4 --silent --show-error --max-redirs 0 --head \
     --connect-timeout 5 --max-time 10 --resolve "$DOMAIN:80:$PUBLIC_IP" \
     -D "$REDIRECT_HEAD" -o /dev/null -w '%{http_code}' "http://$DOMAIN/" 2>/dev/null); then :; else HTTP80_CODE=''; fi
+# The local HTTPS site is reachable through REALITY fallback in *every* mode.
+# Foreign SNI is checked separately; lack of 404/redirect is no longer expected.
 if [[ "$HTTP80_CODE" == 301 ]] &&
    [[ $(tr -d '\r' < "$REDIRECT_HEAD" | grep -Fxc "Location: https://$DOMAIN/") -eq 1 ]]; then
     pass HTTP80_301_FIXED_DOMAIN
+elif [[ "$MODE" == --postboot || "$MODE" == --require-xray ]]; then
+    fail HTTP80_301_FIXED_DOMAIN 'redirect or Location not verified'
 else
-    if [[ "$MODE" == --postboot || "$MODE" == --require-xray ]]; then
-        fail HTTP80_301_FIXED_DOMAIN 'redirect or Location not verified'
-    else
-        warn HTTP80_301_FIXED_DOMAIN 'NOT_VERIFIED: ACME may be provisioning, verify after Nginx starts'
-    fi
+    warn HTTP80_301_FIXED_DOMAIN 'NOT_VERIFIED: ACME may be provisioning'
 fi
 rm -f "$REDIRECT_HEAD"
 openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -checkend 604800 >/dev/null 2>&1 && pass TLS_VALID_7DAYS || fail TLS_VALID_7DAYS
@@ -2045,8 +2050,8 @@ vk_check_selfsteal_target_contract
 timeout 25 /usr/local/sbin/vkarmani-selfsteal-check && pass SELFSTEAL_WEB_CONTENT || fail SELFSTEAL_WEB_CONTENT
 if docker exec remnanode test -S /dev/shm/nginx.sock >/dev/null 2>&1; then pass NODE_SELFSTEAL_SOCKET; else fail NODE_SELFSTEAL_SOCKET; fi
 if [[ "$XRAY_PRESENT" -eq 1 ]]; then
-    # Verify the ACTUAL public 443/REALITY fallback, not only the local Unix socket.
-    # Exact TLS-version bounds and trusted CA; no --insecure, no hidden redirect.
+    # In both local and external REALITY modes the own hostname is served via
+    # Xray fallback and the local Nginx HTTPS site. Verify TLS1.2+TLS1.3 first.
     PUBLIC_TLS_OK=1
     for TLS in 1.2 1.3; do
         BODY=$(mktemp "$STATE/.cover-check.XXXXXX") || exit 1
@@ -2069,7 +2074,26 @@ if [[ "$XRAY_PRESENT" -eq 1 ]]; then
         fi
         rm -f "$BODY" "$HEADERS"
     done
-    [[ "$PUBLIC_TLS_OK" -eq 1 ]] && XRAY_COVER_OK=1
+    REMOTE_TLS_OK=1
+    if [[ "$REALITY_MODE" != local ]]; then
+        # Foreign SNI must reach its original server with a valid public CA
+        # certificate. A TLS 1.3 handshake alone is not proof of client auth.
+        REMOTE_TLS_OK=0
+        REMOTE_CODE=''
+        if REMOTE_CODE=$(curl --noproxy '*' -4 --silent --show-error --http1.1 \
+            --tlsv1.3 --tls-max 1.3 --connect-timeout 5 --max-time 20 \
+            --resolve "$REALITY_MODE:443:$PUBLIC_IP" -o /dev/null -w '%{http_code}' \
+            "https://$REALITY_MODE/" 2>/dev/null) &&
+            [[ "$REMOTE_CODE" =~ ^[234][0-9][0-9]$ ]]; then
+            pass REALITY_REMOTE_TLS13_CA_VERIFIED
+            REMOTE_TLS_OK=1
+        elif [[ "$MODE" == --require-xray || "$MODE" == --postboot ]]; then
+            fail REALITY_REMOTE_TLS13_CA_VERIFIED 'public 443 target SNI/CA/TLS not verified'
+        else
+            warn REALITY_REMOTE_TLS13_CA_VERIFIED 'NOT_VERIFIED: target unavailable or inbound not active'
+        fi
+    fi
+    [[ "$PUBLIC_TLS_OK" -eq 1 && "$REMOTE_TLS_OK" -eq 1 ]] && XRAY_COVER_OK=1
 fi
 fail2ban-client ping 2>/dev/null | _contains pong && pass FAIL2BAN_PING || fail FAIL2BAN_PING
 fail2ban-client status sshd >/dev/null 2>&1 && pass FAIL2BAN_SSHD_JAIL || fail FAIL2BAN_SSHD_JAIL
@@ -2110,7 +2134,7 @@ if [[ "$MODE" == --postboot ]]; then
 fi
 if [[ "$F" -ne 0 ]]; then exit 1; fi
 if [[ "$MODE" == --require-xray && "$XRAY_COVER_OK" -ne 1 ]]; then
-    echo 'STRICT_CHECK=INCOMPLETE: ожидается Xray TCP/443 и REALITY Selfsteal через /dev/shm/nginx.sock (RAW или XHTTP).'
+    echo 'STRICT_CHECK=INCOMPLETE: ожидается Xray TCP/443 и TLS fallback выбранного REALITY режима (RAW или XHTTP).'
     exit 2
 fi
 exit 0
@@ -2566,7 +2590,7 @@ def main():
     for path in (ETC, STATE, OPT, COMPOSE, ETC / 'remnanode.env', ETC / 'config.json'):
         require_private(path)
     if (not (STATE / 'owned-installation').is_file()
-            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11', 'version=2.5.12', 'version=2.5.13') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
+            or not any(line in ('version=2.1.0', 'version=2.1.1', 'version=2.1.2', 'version=2.1.3', 'version=2.2.0', 'version=2.3.0', 'version=2.4.0', 'version=2.4.1', 'version=2.4.2', 'version=2.4.3', 'version=2.5.0', 'version=2.5.1', 'version=2.5.2', 'version=2.5.3', 'version=2.5.4', 'version=2.5.5', 'version=2.5.6', 'version=2.5.7', 'version=2.5.8', 'version=2.5.9', 'version=2.5.10', 'version=2.5.11', 'version=2.5.12', 'version=2.5.13', 'version=2.5.14') for line in (STATE / 'INSTALL_COMPLETE').read_text().splitlines())):
         raise Failure('ONLY_REVIEWED_COMPLETED_INSTALLATIONS_SUPPORTED; legacy installation is not migrated')
     with open('/run/lock/vkarmani-node-installer.lock', 'a') as lock:
         try:
@@ -3768,7 +3792,7 @@ def ready(root):
     safe_read(state / 'owned-installation', private=True)
     complete = safe_read(state / 'INSTALL_COMPLETE', private=True).decode()
     version = safe_read(state / 'install-version', private=True).decode().strip()
-    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
+    if version not in ('2.0.3', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.2.0', '2.3.0', '2.4.0', '2.4.1', '2.4.2', '2.4.3', '2.5.0', '2.5.1', '2.5.2', '2.5.3', '2.5.4', '2.5.5', '2.5.6', '2.5.7', '2.5.8', '2.5.9', '2.5.10', '2.5.11', '2.5.12', '2.5.13', '2.5.14') or not re.search(r'^version=' + re.escape(version) + '$', complete, re.M):
         raise Failure('site-only update requires a reviewed completed 2.0.3 / 2.1.x / 2.2.0 / 2.3.0 / 2.4.x / 2.5.x installation')
     for name in ('INSTALL_FAILED', 'image-update-pending', 'network-rollback-armed', 'network-rollback-running'):
         p = state / name
@@ -5759,8 +5783,8 @@ vkarmani_rkn_command() {
         [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
             echo 'First finish the node installation before explicit RKN migration.' >&2; return 1;
         }
-        grep -Eq '^version=2\.5\.([2-9]|10|11|12|13)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-            echo 'RKN integration supports only completed 2.5.2–2.5.13 nodes.' >&2; return 1;
+        grep -Eq '^version=2\.5\.([2-9]|10|11|12|13|14)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+            echo 'RKN integration supports only completed 2.5.2–2.5.14 nodes.' >&2; return 1;
         }
         vk_rkn_activate
         return
@@ -5914,9 +5938,15 @@ def build_xhttp(root):
             or 'xhttpSettings' in stream or stream.get('sockopt', {}).get('acceptProxyProtocol', False) is not False):
         raise Invalid('RAW_TEMPLATE_TRANSPORT_MISMATCH')
     reality = stream.get('realitySettings')
-    if (not isinstance(reality, dict) or reality.get('target') != '/dev/shm/nginx.sock'
-            or type(reality.get('xver')) is not int or reality['xver'] != 1
-            or reality.get('serverNames') != [domain]
+    mode = cfg.get('reality_mode', 'local')
+    if mode not in ('local', 'max.ru', 'ya.ru', 'rutube.ru', 'mail.ru'):
+        raise Invalid('REALITY_MODE_INVALID')
+    target = '/dev/shm/nginx.sock'
+    sni = domain if mode == 'local' else mode
+    xver = 1
+    if (not isinstance(reality, dict) or reality.get('target') != target
+            or type(reality.get('xver')) is not int or reality['xver'] != xver
+            or reality.get('serverNames') != [sni]
             or reality.get('privateKey') != keys['private_key']
             or reality.get('shortIds') != [shortid]
             or reality.get('minClientVer') != '0.0.0'):
@@ -5934,7 +5964,7 @@ def build_xhttp(root):
     node['settings']['flow'] = ''  # Vision is incompatible with XHTTP.
     s = node['streamSettings']
     s['network'] = 'xhttp'
-    s['xhttpSettings'] = {'host': domain,
+    s['xhttpSettings'] = {'host': sni,
                           'path': xhttp_path(keys['private_key'], domain),
                           'mode': 'auto'}
     return xhttp
@@ -6076,7 +6106,7 @@ vkarmani_prepare_xhttp_main() {
     }
     local version
     version=$(cat "$state/install-version") || return 1
-    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 || "$version" == 2.5.12 || "$version" == 2.5.13 ]] || {
+    [[ "$version" == 2.5.2 || "$version" == 2.5.3 || "$version" == 2.5.4 || "$version" == 2.5.5 || "$version" == 2.5.6 || "$version" == 2.5.7 || "$version" == 2.5.8 || "$version" == 2.5.9 || "$version" == 2.5.10 || "$version" == 2.5.11 || "$version" == 2.5.12 || "$version" == 2.5.13 || "$version" == 2.5.14 ]] || {
         echo 'STOP: UNSUPPORTED_INSTALLER_CONTRACT' >&2; return 1;
     }
     grep -Fxq "version=$version" "$state/INSTALL_COMPLETE" || {
@@ -6108,7 +6138,7 @@ vkarmani_prepare_xhttp_main() {
     vk_write_xhttp_profile_helper "$tmp/xhttp_profile.py"
     local rc=0
     vk_xhttp_prepare_template "$tmp/xhttp_profile.py" "$etc" "$core" "$state" || rc=$?
-    if [[ "$rc" -eq 0 && "$version" == 2.5.13 ]]; then
+    if [[ "$rc" -eq 0 && ( "$version" == 2.5.13 || "$version" == 2.5.14 ) ]]; then
         python3 -I -B /usr/local/lib/vkarmani-node/node_helper.py reality-export-xhttp >/dev/null || rc=$?
     fi
     rm -f -- "$tmp/xhttp_profile.py"
@@ -6275,7 +6305,7 @@ vk_write_finalizer_helper() {
     local destination=$1
     cat > "$destination" <<'VK_FINALIZER_PY'
 #!/usr/bin/env python3
-"""Finish ONLY a recorded 2.5.13 final-acceptance checkpoint, never reinstall the OS.
+"""Finish ONLY a recorded 2.5.14 final-acceptance checkpoint, never reinstall the OS.
 
 Caller owns the installer flock. No panel API, package installation, key rotation,
 container recreation, SSH editing or reboot. RKN's existing owned rollback is used.
@@ -6296,7 +6326,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = '2.5.13'
+VERSION = '2.5.14'
 STATE = 'var/lib/vkarmani-node'
 CHECKER = '/usr/local/sbin/vkarmani-node-check'
 KEY_HELPER = '/usr/local/lib/vkarmani-node/node_helper.py'
@@ -6451,7 +6481,7 @@ class Finalizer:
     def base_checks(self):
         self.safe(self.state, directory=True, private=True)
         if self.read(self.state / 'install-version', private=True).strip() != VERSION.encode():
-            raise Failure('FINISH_ONLY_RECORDED_2_5_13_SUPPORTED')
+            raise Failure('FINISH_ONLY_RECORDED_2_5_14_SUPPORTED')
         self.read(self.state / 'owned-installation', private=True)
         for name in PENDING:
             self.absent(self.state / name)
@@ -6459,7 +6489,7 @@ class Finalizer:
         if cfg.get('installation_mode') != 'secret-key-only':
             raise Failure('WRONG_INSTALLATION_MODE')
         if not self.path('etc/vkarmani-node/cascade-role.json').exists():
-            # Three secret operator files are mandatory on a NEW ordinary 2.5.13.
+            # Three secret operator files are mandatory on a NEW ordinary 2.5.14.
             # Without this gate, a removed XHTTP template would quietly publish
             # INSTALL_COMPLETE with only RAW + keys.
             xhttp_source = self.path('etc/vkarmani-node/profile-xhttp.json')
@@ -6714,7 +6744,7 @@ vkarmani_finish_install_main() (
     # No APT, SSH, Nginx, Docker lifecycle, key generation or reboot in this path.
     local state=/var/lib/vkarmani-node work
     [[ -f "$state/finalization/checkpoint.json" && ! -L "$state/finalization" ]] || {
-        echo 'STOP: no supported 2.5.13 finalization checkpoint; no installation state changed.' >&2; exit 1;
+        echo 'STOP: no supported 2.5.14 finalization checkpoint; no installation state changed.' >&2; exit 1;
     }
     local lock=/run/lock/vkarmani-node-installer.lock
     if [[ ! -e "$lock" && ! -L "$lock" ]]; then
@@ -7066,8 +7096,8 @@ vkarmani_maintenance_command() {
             [[ -f /var/lib/vkarmani-node/INSTALL_COMPLETE && ! -L /var/lib/vkarmani-node/INSTALL_COMPLETE ]] || {
                 echo 'MAINTENANCE: завершите установку перед включением' >&2; return 1;
             }
-            grep -Eq '^version=2\.5\.(8|9|10|11|12|13)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
-                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.13; старые ноды не мигрируются автоматически' >&2; return 1;
+            grep -Eq '^version=2\.5\.(8|9|10|11|12|13|14)$' /var/lib/vkarmani-node/INSTALL_COMPLETE || {
+                echo 'MAINTENANCE: команда относится только к завершённой ordinary 2.5.8–2.5.14; старые ноды не мигрируются автоматически' >&2; return 1;
             }
             [[ -x /usr/local/sbin/vkarmani-docker-local ]] || {
                 echo 'MAINTENANCE: локальный Docker wrapper не установлен' >&2; return 1;
@@ -7084,7 +7114,7 @@ vkarmani_maintenance_command() {
 
 vkarmani_main() {
 _contains() { grep "$@" >/dev/null; } # Consume stdin fully: safe under pipefail.
-# VKarmani Remnawave Node Installer 2.5.13 — 2026-10-18
+# VKarmani Remnawave Node Installer 2.5.14 — 2026-10-21
 # Dedicated fresh Ubuntu 22.04/24.04/26.04 or Debian 12/13, systemd + GRUB, amd64/arm64.
 # One self-contained file; no remote shell scripts are downloaded/executed.
 # WARNING: installs packages, modifies SSH/firewall/boot settings; one successful-install reboot is default.
@@ -7096,7 +7126,7 @@ umask 077
 export LC_ALL=C LANG=C PYTHONUTF8=1 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset CDPATH ENV BASH_ENV
-INSTALLER_VERSION=2.5.13
+INSTALLER_VERSION=2.5.14
 ETC=/etc/vkarmani-node
 STATE=/var/lib/vkarmani-node
 LIB=/usr/local/lib/vkarmani-node
@@ -7105,6 +7135,7 @@ LOG=/var/log/vkarmani-node-install.log
 REALITY_KEYS_FILE=/root/reality-keys.txt
 # The panel IPv4 is entered on first run. The node IPv4 is never asked: it is selected from DNS + local interfaces.
 NODE_PORT_DEFAULT=2222
+NODE_PORT_ARG=''  # new ordinary enrollment only; no implicit migration
 NO_REBOOT=0
 WEEKLY_REBOOT=0
 ALLOW_NET_ADMIN=1
@@ -7114,13 +7145,15 @@ VK_CASCADE_BUNDLE_ARG=''
 VK_CASCADE_ACTIVE=0
 VK_CASCADE_BUNDLE_SHA=''
 VK_CASCADE_HELPER=''
+VK_REALITY_MODE='local'  # saved with initial inputs; ordinary only
 
 usage() {
     cat <<'HELP'
-VKarmani Remnawave Node Installer 2.5.13
+VKarmani Remnawave Node Installer 2.5.14
 
   sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
+  sudo bash install.sh --node-port 32443 --no-reboot # новый Ordinary: управляющий API вместо 2222, согласовать с Panel
   sudo bash install.sh --cascade-role entry --cascade-bundle /root/entry/role-bundle.json --no-reboot
   sudo bash install.sh --cascade-role exit --cascade-bundle /root/exit/role-bundle.json --no-reboot
       # Только ДВЕ НОВЫЕ выделенные staging VPS; нужные исходники integrations/ из этого ZIP
@@ -7132,7 +7165,7 @@ VKarmani Remnawave Node Installer 2.5.13
   sudo bash install.sh --backup                # закрытая копия конфигурации с SHA256
   sudo bash install.sh --image remnawave/node@sha256:DIGEST
   sudo bash install.sh --check                 # существующая локальная диагностика
-  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.13, без переустановки/reboot
+  sudo bash install.sh --finish-install        # только сохранённая финальная фаза 2.5.14, без переустановки/reboot
   sudo bash install.sh --refresh-image         # только обновление образа, без настройки ОС
   sudo bash install.sh --rollback-image        # предыдущий образ, без APT/firewall/SSH
   sudo bash install.sh --repair-network        # узкое исправление нашей завершённой 1.3.x
@@ -7141,7 +7174,7 @@ VKarmani Remnawave Node Installer 2.5.13
   sudo bash install.sh --update-cover          # только сайт поддерживаемой версии, без restart VPN
   sudo bash install.sh --rollback-cover        # проверенный откат только сайта
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
-  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.13 ноде
+  sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.14 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
   sudo bash install.sh --rkn-status            # состояние списка, таймера и IP-исключений
@@ -7165,7 +7198,7 @@ SSH: только логин/пароль; ключевой вход отклю�
 До запуска нужны снимок VPS, консоль хостера и действующий пароль администратора.
 IPv6: runtime sysctl + GRUB; для полного отключения socket API необходим reboot.
 Полного обновления ОС, autoremove, prune и смены MTU/маршрутов нет. После успешной установки один reboot выполняется автоматически.
-Nginx на хосте. Клиентский 443 принадлежит Xray; API 2222 разрешён только с IP технички.
+Nginx на хосте. Клиентский 443 принадлежит Xray; API NODE_PORT (2222 по умолчанию) разрешён только с IP технички.
 SECRET_KEY не даёт административного API панели: Node/Profile/Host/Squad назначаются в панели.
 Let's Encrypt: HTTP-01, порт 80, аккаунт без email; запуск означает согласие с условиями CA.
 --no-reboot отключает одноразовый reboot; --reboot и --allow-net-admin сохранены для совместимости. NET_ADMIN включён по умолчанию. --image не является четвёртым вопросом.
@@ -7187,6 +7220,9 @@ while (($#)); do
                 echo '--cascade-bundle must be one absolute root-private file path' >&2; exit 2;
             }
             VK_CASCADE_BUNDLE_ARG=$2; shift 2 ;;
+        --node-port)
+            [[ $# -ge 2 && -z "$NODE_PORT_ARG" ]] || { echo '--node-port must be specified once' >&2; exit 2; }
+            NODE_PORT_ARG=$2; shift 2 ;;
         --allow-net-admin) ALLOW_NET_ADMIN=1; shift ;;
         --image)
             [[ $# -ge 2 ]] || { echo '--image requires an official image reference' >&2; exit 2; }
@@ -7195,6 +7231,17 @@ while (($#)); do
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
+# Only a fresh Ordinary enrollment can choose the management port; 61001 is
+# reserved by Remnawave. The client port remains TCP/443 in this release.
+if [[ -n "$NODE_PORT_ARG" ]]; then
+    if [[ ! "$NODE_PORT_ARG" =~ ^[1-9][0-9]{3,4}$ ]] ||
+       (( 10#$NODE_PORT_ARG < 1024 || 10#$NODE_PORT_ARG > 65535 )) ||
+       [[ "$NODE_PORT_ARG" == 61001 ]]; then
+        echo 'STOP: --node-port: specify a non-default TCP port 1024–65535, except 61001.' >&2
+        exit 2
+    fi
+    NODE_PORT_DEFAULT=$((10#$NODE_PORT_ARG))
+fi
 # Three inputs before any APT/network/boot changes. No Python/curl dependency here.
 # This file is embedded in install.sh, not downloaded at run time.
 vk_input_error() { printf 'ОШИБКА: %s\n' "$*" >&2; return 1; }
@@ -7244,6 +7291,7 @@ vk_collect_inputs() {
     set +a
     unset VK_INPUT_SECRET VK_INPUT_PANEL_IP VK_INPUT_DOMAIN
     VK_INPUT_SECRET='' VK_INPUT_PANEL_IP='' VK_INPUT_DOMAIN=''
+    # VK_REALITY_MODE is already selected from first-run menu, or restored from pending.
     if [[ -s "$ETC/config.json" ]]; then
         printf 'Повторный запуск: используются сохранённые параметры; вопросов нет.\n'
         return 0
@@ -7254,8 +7302,10 @@ vk_collect_inputs() {
         }
         local -a saved=()
         mapfile -t saved < "$ETC/inputs.pending"
-        [[ ${#saved[@]} -eq 3 ]] || { vk_input_error 'Повреждён inputs.pending.'; return 1; }
+        [[ ${#saved[@]} -eq 3 || ${#saved[@]} -eq 4 ]] || { vk_input_error 'Повреждён inputs.pending.'; return 1; }
         VK_INPUT_SECRET=${saved[0]}; VK_INPUT_PANEL_IP=${saved[1]}; VK_INPUT_DOMAIN=${saved[2]}
+        VK_REALITY_MODE=${saved[3]:-local}
+        case "$VK_REALITY_MODE" in local|max.ru|ya.ru|rutube.ru|mail.ru) ;; *) vk_input_error 'Повреждён REALITY mode в inputs.pending.'; return 1 ;; esac
         [[ "$VK_INPUT_SECRET" =~ ^[A-Za-z0-9_+/=-]{64,65536}$ ]] || return 1
         vk_validate_ipv4 "$VK_INPUT_PANEL_IP" && vk_validate_domain "$VK_INPUT_DOMAIN" || return 1
         unset saved
@@ -7313,11 +7363,38 @@ vk_menu_read() {
     IFS= read -r VK_MENU_CHOICE </dev/tty
 }
 vk_menu_display_prompt() {
-    printf 'Выберите 1 или 2: ' >/dev/tty
+    printf 'Выберите %s: ' "${1:-1 или 2}" >/dev/tty
+}
+vk_select_reality_mode() {
+    local tries=0
+    echo 'Выберите REALITY/Selfsteal для ОБЫЧНОЙ ноды:'
+    echo '  1 — Обычный: свой HTTPS-сайт на Nginx через Unix socket'
+    echo '  2 — Внешний REALITY target/SNI: max.ru'
+    echo '  3 — Внешний REALITY target/SNI: ya.ru'
+    echo '  4 — Внешний REALITY target/SNI: rutube.ru'
+    echo '  5 — Внешний REALITY target/SNI: mail.ru'
+    echo 'Все пять режимов сохраняют собственный HTTPS Selfsteal на 443. Внешний SNI через локальный Nginx Stream.'
+    while (( tries < 5 )); do
+        ((tries+=1))
+        vk_menu_display_prompt '1–5' 2>/dev/null || return 2
+        vk_menu_read || return 2
+        case "$VK_MENU_CHOICE" in
+            1) VK_REALITY_MODE=local ;;
+            2) VK_REALITY_MODE=max.ru ;;
+            3) VK_REALITY_MODE=ya.ru ;;
+            4) VK_REALITY_MODE=rutube.ru ;;
+            5) VK_REALITY_MODE=mail.ru ;;
+            *) echo 'Некорректный выбор. Допустимы 1–5.' >&2; continue ;;
+        esac
+        echo "Режим REALITY: $VK_REALITY_MODE (будет записан в закрытую конфигурацию)."
+        return 0
+    done
+    echo 'STOP: выбор REALITY не выполнен; системные настройки не изменены.' >&2
+    return 2
 }
 vk_initial_install_menu() {
     local tries=0
-    echo 'VKarmani Node Install 2.5.13 — выбор режима первой установки:'
+    echo 'VKarmani Node Install 2.5.14 — выбор режима первой установки:'
     echo '  1 — Обычная нода (доступна в этой версии)'
     echo '  2 — Каскад: отдельная входная/выходная нода (только чистая staging VPS)'
     while ((tries < 5)); do
@@ -7330,7 +7407,7 @@ vk_initial_install_menu() {
             return 2
         fi
         case "$VK_MENU_CHOICE" in
-            1) echo 'Режим: обычная нода. Далее — три обязательных параметра.'; return 0 ;;
+            1) echo 'Режим: обычная нода. Далее — выбор REALITY и три обязательных параметра.'; vk_select_reality_mode; return $? ;;
             2)
                 echo 'Выберите роль: entry (вход) или exit (выход). Bundle готовится заранее.'
                 vk_menu_display_prompt 2>/dev/null || return 2
@@ -7375,12 +7452,17 @@ if [[ ! -e "$STATE/owned-installation" && ! -e "$STATE/INSTALL_COMPLETE" && ! -e
     vk_initial_install_menu || return $?
 fi
 if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then VK_CASCADE_ACTIVE=1; fi
+if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$NODE_PORT_ARG" ]]; then
+    echo 'STOP: --node-port is reserved for a new Ordinary node; cascade ports must match the reviewed role bundle.' >&2
+    return 2
+fi
 if [[ $VK_CASCADE_ACTIVE -eq 1 && $WEEKLY_REBOOT -eq 1 ]]; then
     echo 'STOP: cascade weekly reboot requires peer coordination and is prohibited.' >&2; return 2
 fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
+    [[ -z "$NODE_PORT_ARG" ]] || { echo "STOP: --node-port cannot migrate an installed node; no changes." >&2; return 2; }
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
-        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.13 use --finish-install.' >&2; exit 1
+        echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.14 use --finish-install.' >&2; exit 1
     fi
     echo 'Установка уже завершена. Повторный обычный запуск выполняет только диагностику.'
     echo 'Настройки, образ, ключи, firewall и расписание НЕ меняются. Образ: --refresh-image; 1.3.x: --repair-node.'
@@ -7601,6 +7683,53 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$VK_CASCADE_ROLE_ARG" ]]; then
         --role "$VK_CASCADE_ROLE_ARG" --structure-only --domain "$VK_INPUT_DOMAIN" \
         || { echo 'STOP: cascade bundle and entered DNS domain disagree; no OS mutation.' >&2; return 2; }
 fi
+# REALITY external targets require a real TLS 1.3 endpoint with a valid hostname
+# certificate. Never silently substitute another SNI/target and never log keys.
+vk_preflight_reality_external() {
+    local host=$1
+    [[ "$host" == local ]] && return 0
+    case "$host" in max.ru|ya.ru|rutube.ru|mail.ru) ;; *) return 2 ;; esac
+    python3 -I -B - "$host" <<'PY_REALITY_TARGET_PREFLIGHT'
+import ipaddress
+import socket
+import ssl
+import sys
+
+host = sys.argv[1]
+try:
+    records = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)
+    addresses = sorted({entry[4][0] for entry in records})
+    if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
+        raise ValueError('NONPUBLIC_OR_MISSING_IPV4')
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    # DNS/target accessibility depends on the node's own network; bound attempts.
+    verified = False
+    for addr in addresses[:3]:
+        try:
+            with socket.create_connection((addr, 443), timeout=5) as connection:
+                with context.wrap_socket(connection, server_hostname=host) as tls:
+                    verified = tls.version() == 'TLSv1.3'
+                    if verified:
+                        break
+        except (OSError, ssl.SSLError):
+            continue
+    if not verified:
+        raise ValueError('TLS13_CERTIFICATE_OR_CONNECTIVITY_UNVERIFIED')
+except (OSError, ValueError, ssl.SSLError) as exc:
+    # No traceback/domain/IP data from possibly untrusted servers.
+    print('REALITY_TARGET_PREFLIGHT=FAIL ' + type(exc).__name__, file=sys.stderr)
+    sys.exit(1)
+print('REALITY_TARGET_PREFLIGHT=PASS TLS13_CA_HOSTNAME_IPV4; RUNNING_CLIENT_NOT_TESTED')
+PY_REALITY_TARGET_PREFLIGHT
+}
+if [[ $VK_CASCADE_ACTIVE -eq 0 && ! -s "$ETC/config.json" ]]; then
+    vk_preflight_reality_external "$VK_REALITY_MODE" || {
+        echo 'STOP: выбранный REALITY target недоступен/несовместим по IPv4+TLS1.3. Система не изменена.' >&2
+        return 2
+    }
+fi
 # Package maintainer scripts must not read answers from the operator's terminal.
 # All installer questions have been answered; unexpected package prompts fail safely.
 exec </dev/null
@@ -7629,7 +7758,7 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
     fi
 fi
 if [[ ! -s "$ETC/config.json" ]]; then
-    printf '%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" > "$ETC/inputs.pending.tmp"
+    printf '%s\n%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" "$VK_REALITY_MODE" > "$ETC/inputs.pending.tmp"
     chmod 0600 "$ETC/inputs.pending.tmp"
     mv -f "$ETC/inputs.pending.tmp" "$ETC/inputs.pending"
 fi
@@ -7713,7 +7842,7 @@ vk_apt_run apt-get -o APT::Update::Error-Mode=any update
 vk_apt_run "${APT[@]}" install ca-certificates curl gnupg python3 python3-cryptography dnsutils jq iproute2 openssl
 cat > "$LIB/node_helper.py" <<'PY_HELPER'
 #!/usr/bin/env python3
-"""VKarmani 2.5.13: node-only installer. No panel API, credentials or POST requests.
+"""VKarmani 2.5.14: node-only installer. No panel API, credentials or POST requests.
 Three inputs are collected by Bash before APT and passed via stdin. Python 3.10+.
 """
 import argparse
@@ -8034,22 +8163,30 @@ def make_keys_profile(c):
                 'public_key': enc(key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)),
                 'short_id': secrets.token_hex(8)}
         atomic_json(path, keys)
+    mode = c.get('reality_mode', 'local')
+    # A single Xray socket feeds the Nginx SNI stream multiplexer on external modes.
+    # For the local mode the exact old Nginx HTTPS socket contract remains intact.
+    target = '/dev/shm/nginx.sock'
+    sni = c['domain'] if mode == 'local' else mode
+    xver = 1
     suffix = hashlib.sha256(c['domain'].encode()).hexdigest()[:12]
     tag = 'VK_RAW_REALITY_' + suffix.upper()
     # Remnawave fills clients dynamically. New templates use the agreed common
     # Vision flow; this generator never writes a live panel/node configuration.
     profile = {
         'log': {'loglevel': 'warning'},
-        'dns': {'servers': ['1.1.1.1', '8.8.8.8'], 'queryStrategy': 'UseIPv4'},
+        'dns': {'servers': ['1.1.1.1', '1.0.0.1', '8.8.8.8'],
+                'queryStrategy': 'UseIPv4', 'disableCache': False,
+                'serveStale': True, 'serveExpiredTTL': 3600, 'enableParallelQuery': True},
         'inbounds': [{'tag': tag, 'listen': '0.0.0.0', 'port': 443, 'protocol': 'vless',
                       'settings': {'clients': [], 'decryption': 'none', 'flow': PROFILE_FLOW},
                       'sniffing': {'enabled': True, 'routeOnly': True,
                                    'destOverride': ['http', 'tls', 'quic']},
                       'streamSettings': {
                           'network': 'raw', 'security': 'reality',
-                          'realitySettings': {'show': False, 'target': '/dev/shm/nginx.sock',
-                                              'xver': 1, 'minClientVer': PROFILE_MIN_CLIENT_VERSION, 'spiderX': '/',
-                                              'serverNames': [c['domain']],
+                          'realitySettings': {'show': False, 'target': target,
+                                              'xver': xver, 'minClientVer': PROFILE_MIN_CLIENT_VERSION, 'spiderX': '/',
+                                              'serverNames': [sni],
                                               'privateKey': keys['private_key'],
                                               'shortIds': [keys['short_id']]}}}],
         # finalRules re-check the RESOLVED destination inside freedom, so a
@@ -8057,7 +8194,8 @@ def make_keys_profile(c):
         'outbounds': [{'tag': 'DIRECT', 'protocol': 'freedom',
                        'settings': {'domainStrategy': 'UseIPv4',
                                     'finalRules': [{'ip': PROFILE_PRIVATE_RANGES + ['::/0'],
-                                                    'action': 'block'}]}},
+                                                    'action': 'block'}]},
+                       'streamSettings': {'sockopt': {'domainStrategy': 'ForceIPv4'}}},
                       {'tag': 'BLOCK', 'protocol': 'blackhole'}],
         'routing': {'domainStrategy': 'IPOnDemand', 'rules': [
             {'type': 'field', 'protocol': ['bittorrent'], 'outboundTag': 'BLOCK'},
@@ -8216,7 +8354,7 @@ def validate_profile(profile, c):
             raise Failure('PROFILE_XHTTP_HAS_OTHER_TRANSPORT_SETTINGS')
         x = stream.get('xhttpSettings')
         if (not isinstance(x, dict) or set(x) - {'host', 'path', 'mode'}
-                or x.get('mode', 'auto') != 'auto' or x.get('host', c['domain']) != c['domain']
+                or x.get('mode', 'auto') != 'auto' or x.get('host', c['domain'] if c.get('reality_mode', 'local') == 'local' else c['reality_mode']) != (c['domain'] if c.get('reality_mode', 'local') == 'local' else c['reality_mode'])
                 or not isinstance(x.get('path'), str)
                 or not re.fullmatch(r'/[A-Za-z0-9_/-]{0,127}', x['path'])
                 or '//' in x['path'] or '/..' in x['path']):
@@ -8229,12 +8367,17 @@ def validate_profile(profile, c):
     r = stream.get('realitySettings')
     if not isinstance(r, dict):
         raise Failure('PROFILE_REALITY_SETTINGS_MISSING')
-    if r.get('serverNames') != [c['domain']]:
-        raise Failure('PROFILE_SNI_MUST_EQUAL_THIS_NODE_DOMAIN')
+    mode = c.get('reality_mode', 'local')
+    sni = c['domain'] if mode == 'local' else mode
+    target = '/dev/shm/nginx.sock'
+    xver = 1
+    if r.get('serverNames') != [sni]:
+        raise Failure('PROFILE_SNI_MUST_EQUAL_THIS_NODE_DOMAIN' if mode == 'local' else
+                      'PROFILE_SNI_MUST_MATCH_SELECTED_REALITY_MODE')
     targets = [r[k] for k in ('target', 'dest') if k in r]
-    if not targets or any(value != '/dev/shm/nginx.sock' for value in targets):
+    if not targets or any(value != target for value in targets):
         raise Failure('PROFILE_TARGET_MUST_BE_LOCAL_SELFSTEAL_SOCKET')
-    if type(r.get('xver')) is not int or r['xver'] != 1:
+    if type(r.get('xver')) is not int or r['xver'] != xver:
         raise Failure('PROFILE_SELFSTEAL_REQUIRES_PROXY_V1')
     if r.get('minClientVer') != PROFILE_MIN_CLIENT_VERSION:
         raise Failure('PROFILE_MIN_CLIENT_VER_MUST_BE_0_0_0')
@@ -8385,17 +8528,18 @@ def export_reality_keys_file(c):
             raise Failure('/root/reality-keys.txt существует с небезопасным типом/владельцем/правами; не перезаписываю.')
     text = (
         '============================================================\n'
-        'REALITY KEYS — VKarmani RemnaNode 2.5.13\n'
+        'REALITY KEYS — VKarmani RemnaNode 2.5.14\n'
         '============================================================\n'
         f'Domain: {c["domain"]}\n'
         f'PrivateKey: {keys["private_key"]}\n'
         f'PublicKey: {keys["public_key"]}\n'
         f'ShortID: {keys["short_id"]}\n'
-        'Reality target: /dev/shm/nginx.sock\n'
-        'xver: 1\n'
+        f'Reality mode: {c.get("reality_mode", "local")}\n'
+        f'Reality target: {profile["inbounds"][0]["streamSettings"]["realitySettings"]["target"]}\n'
+        f'xver: {profile["inbounds"][0]["streamSettings"]["realitySettings"]["xver"]}\n'
         f'flow: {PROFILE_FLOW}\n'
         f'minClientVer: {PROFILE_MIN_CLIENT_VERSION}\n'
-        f'serverName/SNI: {c["domain"]}\n'
+        f'serverName/SNI: {profile["inbounds"][0]["streamSettings"]["realitySettings"]["serverNames"][0]}\n'
     )
     atomic_text(path, text)
     st = path.stat()
@@ -8467,7 +8611,7 @@ def normalize_config(raw):
         raise Failure('Нужна конфигурация secret-key-only. API-установка не мигрируется.')
     allowed = {'installation_mode', 'domain', 'public_ipv4', 'node_port', 'panel_ipv4',
                'image', 'auto_reboot', 'certbot_dry_run', 'create_swap', 'weekly_reboot',
-               'selfsteal_host_socket', 'allow_net_admin'}
+               'selfsteal_host_socket', 'allow_net_admin', 'reality_mode'}
     if set(raw) - allowed:
         raise Failure('Неизвестные поля конфигурации. API-параметры здесь не используются.')
     c = dict(raw)
@@ -8478,7 +8622,7 @@ def normalize_config(raw):
         raise Failure('panel_ipv4: от 1 до 16 публичных IPv4 панели, без CIDR.')
     c['panel_ipv4'] = sorted({public_ipv4(x) for x in ips})
     port = c.get('node_port', 2222)
-    if type(port) is not int or not 1024 <= port <= 65535:
+    if type(port) is not int or not 1024 <= port <= 65535 or port == 61001:
         raise Failure('node_port: целое 1024–65535, не конфликтующее с SSH/80/443.')
     c['node_port'] = port
     image = c.get('image', 'remnawave/node:latest')
@@ -8495,6 +8639,10 @@ def normalize_config(raw):
     if sock not in ('/dev/shm/nginx.sock', '/run/vkarmani-selfsteal/nginx.sock'):
         raise Failure('Неизвестная схема Selfsteal socket.')
     c['selfsteal_host_socket'] = sock
+    mode = c.get('reality_mode', 'local')
+    if type(mode) is not str or mode not in ('local', 'max.ru', 'ya.ru', 'rutube.ru', 'mail.ru'):
+        raise Failure('reality_mode: допустимы local/max.ru/ya.ru/rutube.ru/mail.ru.')
+    c['reality_mode'] = mode
     return c
 
 
@@ -8577,7 +8725,7 @@ def check_secret(c, check_dates=True):
 
 
 def init_config(node_port='2222', inputs=None):
-    """No prompts here. Bash collects SECRET_KEY, panel IPv4 and domain before dependencies.
+    """No prompts here. Bash collects REALITY mode plus SECRET_KEY, panel IPv4 and domain before dependencies.
 
     Node IPv4 is selected automatically by matching the domain's public A record
     against every public IPv4 actually assigned to the VPS. The panel source IPv4
@@ -8598,8 +8746,11 @@ def init_config(node_port='2222', inputs=None):
         if len(text) > 70000:
             raise Failure('Слишком большой блок входных данных.')
         inputs = text.splitlines()
-    if not isinstance(inputs, (tuple, list)) or len(inputs) != 3:
-        raise Failure('Нужны три заранее введённых значения: SECRET_KEY, IPv4 панели и домен.')
+    if not isinstance(inputs, (tuple, list)) or len(inputs) not in (3, 4):
+        raise Failure('Нужны SECRET_KEY, IPv4 панели, домен и выбранный REALITY mode.')
+    reality_mode = inputs[3] if len(inputs) == 4 else 'local'
+    if reality_mode not in ('local', 'max.ru', 'ya.ru', 'rutube.ru', 'mail.ru'):
+        raise Failure('Недопустимый REALITY mode: отредактированный inputs.pending.')
     secret = normalize_secret(inputs[0])
     panel_ip = public_ipv4(inputs[1])
     name = domain(inputs[2])
@@ -8609,7 +8760,7 @@ def init_config(node_port='2222', inputs=None):
     c = normalize_config({'installation_mode': MODE, 'domain': name, 'public_ipv4': selected,
                           'panel_ipv4': [panel_ip], 'node_port': int(node_port),
                           'selfsteal_host_socket': '/run/vkarmani-selfsteal/nginx.sock',
-                          'allow_net_admin': True})
+                          'allow_net_admin': True, 'reality_mode': reality_mode})
     # DNS already selected this exact local address; recheck once against config shape.
     dns_check(c)
     atomic_text(ETC / 'remnanode.env', f'NODE_PORT={c["node_port"]}\nSECRET_KEY={secret}\nTZ=Europe/Moscow\n')
@@ -8625,9 +8776,18 @@ def write_panel_guide(c):
         atomic_text(ETC / 'PANEL-SETUP.txt',
                     cascade.panel_guidance(bundle, c['panel_ipv4'], c['node_port']))
         return
-    name, tag, _ = make_keys_profile(c)
+    name, tag, profile = make_keys_profile(c)
     keys = read_json(ETC / 'reality.json')
-    txt = f'''VKarmani RemnaNode 2.5.13 — действия в панели
+    reality = profile['inbounds'][0]['streamSettings']['realitySettings']
+    chosen_sni = reality['serverNames'][0]
+    chosen_target = reality['target']
+    chosen_xver = reality['xver']
+    chosen_mode = c.get('reality_mode', 'local')
+    target_note = ('Локальный Selfsteal: собственный HTTPS на TCP/443 через Xray и Nginx.'
+                   if chosen_mode == 'local' else
+                   'Гибридный Selfsteal: свой HTTPS-сайт и внешний TLS/SNI passthrough через Nginx Stream; '
+                   'PROXY v1 передаётся только локальному Nginx, не стороннему серверу.')
+    txt = f'''VKarmani RemnaNode 2.5.14 — действия в панели
 
 Сервер: {c['domain']} / {c['public_ipv4']}
 Разрешённый исходящий IPv4 панели: {', '.join(c['panel_ipv4'])}
@@ -8651,7 +8811,8 @@ def write_panel_guide(c):
    Выберите профиль {name} и inbound {tag}.
 3. Hosts: выберите этот профиль/inbound; Address={c['domain']}, Port=443.
    Advanced Options лучше оставить DEFAULT. SNI унаследуется из inbound.
-   Если SNI переопределяется вручную — укажите {c['domain']}.
+   Если SNI переопределяется вручную — укажите {chosen_sni}.
+   REALITY serverName/SNI = {chosen_sni}, а адрес подключения остаётся {c['domain']}.
 4. Internal Squads: разрешите inbound {tag} нужной группе пользователей.
    Обновите подписку в клиенте и проверьте соединение извне.
 5. Node Plugins настраиваются вручную в Panel; installer не использует Panel API.
@@ -8665,16 +8826,17 @@ def write_panel_guide(c):
 Шаблоны (ТОЛЬКО один активный inbound):
   RAW: /etc/vkarmani-node/profile.json — network=raw, flow=xtls-rprx-vision.
   XHTTP: /etc/vkarmani-node/profile-xhttp.json — network=xhttp, flow='',
-         xhttpSettings.mode=auto, host={c['domain']}, path из приватного шаблона.
+         xhttpSettings.mode=auto, host={chosen_sni}, path из приватного шаблона.
 Для смены: сохраните прошлый inbound JSON в панели -> замените только inbound
 полями другого шаблона -> примените -> перезапустите RemnaNode (НЕ всю VPS).
 После смены обновите клиентские подписки; старые URI/flow не переключаются сами.
 Новый профиль будет активным только после получения его нодой от панели.
 При ошибке верните предыдущий inbound из backup панели и перезапустите ноду.
 Проверка RAW и XHTTP шаблонов НЕ означает проверку live client-трафика.
-REALITY target: /dev/shm/nginx.sock; xver=1 (PROXY protocol v1); minClientVer={PROFILE_MIN_CLIENT_VERSION}.
-Selfsteal: Nginx + OpenSSL на Unix socket, порт 443 полностью остаётся за Xray.
-serverName/SNI: {c['domain']}
+REALITY mode: {chosen_mode}; target: {chosen_target}; xver={chosen_xver}; minClientVer={PROFILE_MIN_CLIENT_VERSION}.
+{target_note}
+Порт 443 полностью остаётся за Xray; для собственного SNI — локальный HTTPS-сайт, для выбранного внешнего SNI — TLS passthrough.
+serverName/SNI: {chosen_sni}
 REALITY publicKey: {keys['public_key']}
 ShortID: {keys['short_id']}
 
@@ -8683,7 +8845,7 @@ ShortID: {keys['short_id']}
 Если у вас уже назначен свой RAW+REALITY профиль, он не перезаписывается; XHTTP включается вручную в панели.
 Отсутствие Xray TCP/443 может означать неполученный или ошибочный профиль.
 Локальная готовность VPS не доказывает подключение панели.
-TCP/2222 сам по себе не доказывает связь с панелью и работу VPN.
+Открытый NODE_PORT сам по себе не доказывает связь с панелью и работу VPN.
 
 Проверка: sudo vkarmani-node-check
 Строгая проверка Xray + Selfsteal через :443: sudo vkarmani-node-check --require-xray
@@ -8762,12 +8924,15 @@ PY_HELPER
 chmod 0700 "$LIB/node_helper.py"
 helper() { python3 "$LIB/node_helper.py" "$@"; }
 # printf is a Bash builtin: SECRET_KEY is not passed as argv/env to an external process.
-printf '%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" | helper init "$NODE_PORT_DEFAULT"
-unset VK_INPUT_SECRET VK_INPUT_PANEL_IP VK_INPUT_DOMAIN
+printf '%s\n%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" "$VK_REALITY_MODE" | helper init "$NODE_PORT_DEFAULT"
+unset VK_INPUT_SECRET VK_INPUT_PANEL_IP VK_INPUT_DOMAIN VK_REALITY_MODE
 rm -f "$ETC/inputs.pending"
 DOMAIN=$(helper get domain)
 PUBLIC_IP=$(helper get public_ipv4)
 NODE_PORT=$(helper get node_port)
+if [[ -n "$NODE_PORT_ARG" && "$NODE_PORT" != "$NODE_PORT_ARG" ]]; then
+    die "STOP: --node-port does not match saved node_port; no implicit migration."
+fi
 if [[ -n "$IMAGE_OVERRIDE" ]]; then
     python3 "$LIB/node_helper.py" image "$IMAGE_OVERRIDE"
 fi
@@ -8813,6 +8978,9 @@ TIME_SERVICE=$(python3 "$TIME_HELPER" select)
 # BOTH the simulation and actual transaction; no whitelist/removal exception.
 NODE_PACKAGES=(openssh-server ufw ipset fail2ban nginx certbot "$TIME_SERVICE" logrotate unattended-upgrades
     ethtool kmod util-linux procps dbus python3-systemd nftables)
+if [[ $VK_CASCADE_ACTIVE -eq 0 && $(helper get reality_mode) != local ]]; then
+    NODE_PACKAGES+=(libnginx-mod-stream)
+fi
 DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
 vk_setup_docker_repository
 # Fail before changing access/boot if this release has no signed package candidates.
@@ -9217,6 +9385,9 @@ rm -f /etc/nginx/sites-enabled/default
 cat > /etc/nginx/conf.d/00-vkarmani-global.conf <<'EOF'
 server_tokens off;
 EOF
+NGINX_HTTP_ROOT_ACTION='return 301 https://'"$DOMAIN"'$request_uri;'
+# Hybrid SNI passthrough preserves our own HTTPS site on public TCP/443.
+# Keep the same safe ACME/HTTP -> HTTPS policy for all ordinary modes.
 cat > /etc/nginx/conf.d/10-vkarmani-http.conf <<EOF
 # Dedicated node only. Unknown Host must not redirect to a user supplied host.
 server {
@@ -9242,7 +9413,7 @@ server {
         disable_symlinks on from=\$document_root;
         try_files \$uri =404;
     }
-    location / { return 301 https://$DOMAIN\$request_uri; }
+    location / { $NGINX_HTTP_ROOT_ACTION }
 }
 EOF
 if [[ ! -s "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" || ! -s "/etc/letsencrypt/live/$DOMAIN/privkey.pem" ]]; then
@@ -9253,16 +9424,26 @@ vk_write_nginx_dropin
 systemctl daemon-reload
 systemctl enable nginx
 systemctl restart nginx
-[[ $(curl --noproxy '*' -4sS --max-time 10 -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:80:$PUBLIC_IP" "http://$DOMAIN/") == 301 ]] || die 'Nginx HTTP redirect check failed.'
+HTTP80_EXPECTED=301
+[[ $(curl --noproxy '*' -4sS --max-time 10 -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:80:$PUBLIC_IP" "http://$DOMAIN/") == "$HTTP80_EXPECTED" ]] || die 'Nginx HTTP mode check failed.'
 certbot certonly --webroot --webroot-path /var/www/vkarmani-node/acme \
     --domain "$DOMAIN" --cert-name "$DOMAIN" --register-unsafely-without-email \
     --agree-tos --non-interactive --keep-until-expiring --key-type ecdsa --preferred-challenges http
+# External selection uses a proxy-protocol stream socket and a separate
+# HTTPS termination socket. Crucially PROXY v1 must NOT be forwarded to external
+# websites; stream's proxy_pass does not enable proxy_protocol on upstream.
+NGINX_SELFSTEAL_HTTPS_SOCKET=/run/vkarmani-selfsteal/nginx.sock
+NGINX_SELFSTEAL_HTTPS_PROXY='proxy_protocol'
+if [[ $(helper get reality_mode) != local ]]; then
+    NGINX_SELFSTEAL_HTTPS_SOCKET=/run/vkarmani-selfsteal/cover.sock
+    NGINX_SELFSTEAL_HTTPS_PROXY=''
+fi
 cat > /etc/nginx/conf.d/20-vkarmani-selfsteal.conf <<EOF
 # Selfsteal is the local REALITY target, not a TLS-terminating VPN frontend.
 # On supported Nginx, reject unknown / absent SNI before certificate disclosure.
 # Legacy packages retain an explicit HTTP refusal, not equivalent TLS protection.
 server {
-    listen unix:/run/vkarmani-selfsteal/nginx.sock ssl $NGINX_HTTP2_LISTEN proxy_protocol default_server;
+    listen unix:$NGINX_SELFSTEAL_HTTPS_SOCKET ssl $NGINX_HTTP2_LISTEN $NGINX_SELFSTEAL_HTTPS_PROXY default_server;
     $NGINX_HTTP2_DIRECTIVE
     server_name _;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -9273,7 +9454,7 @@ server {
     return 421;
 }
 server {
-    listen unix:/run/vkarmani-selfsteal/nginx.sock ssl $NGINX_HTTP2_LISTEN proxy_protocol;
+    listen unix:$NGINX_SELFSTEAL_HTTPS_SOCKET ssl $NGINX_HTTP2_LISTEN $NGINX_SELFSTEAL_HTTPS_PROXY;
     $NGINX_HTTP2_DIRECTIVE
     server_name $DOMAIN;
     server_tokens off;
@@ -9319,6 +9500,52 @@ server {
 }
 EOF
 rm -f /etc/nginx/conf.d/20-vkarmani-reality-cover.conf
+if [[ $(helper get reality_mode) != local ]]; then
+    # No PROXY header to the selected upstream. Dynamic stream upstreams are
+    # resolved by trusted IPv4-only resolvers; there is NO arbitrary SNI proxy.
+    # Exact SNI -> one pre-approved target; our domain -> our HTTPS socket.
+    # All other SNI reaches the locally rejecting HTTPS default server.
+    [[ "$NGINX_BUILD" == *--with-stream_ssl_preread_module* ]] || die 'Nginx requires stream ssl_preread for hybrid Selfsteal.'
+    python3 -I -B - "$DOMAIN" "$(helper get reality_mode)" <<'PY_NGINX_HYBRID_STREAM'
+from pathlib import Path
+import re
+import sys
+
+domain, mode = sys.argv[1:]
+allowed = ('max.ru', 'ya.ru', 'rutube.ru', 'mail.ru')
+if mode not in allowed or not re.fullmatch(r'[a-z0-9.-]{3,253}', domain):
+    raise SystemExit('HYBRID_MODE_OR_DOMAIN_INVALID')
+main = Path('/etc/nginx/nginx.conf')
+conf = main.read_text(encoding='utf-8')
+marker = '# VKARMANI_HYBRID_STREAM_V1'
+if marker in conf or re.search(r'(?m)^\s*stream\s*\{', conf):
+    raise SystemExit('EXISTING_STREAM_OR_HYBRID_CONFIGURATION_REFUSED')
+fragment = Path('/etc/nginx/vkarmani-hybrid-stream.conf')
+if fragment.exists() or fragment.is_symlink():
+    raise SystemExit('HYBRID_FRAGMENT_ALREADY_PRESENT_REFUSED')
+# No user-controlled upstream: only the exact preselected external hostname.
+# The default TLS listener closes unknown SNI on Nginx supporting reject_handshake.
+fragment.write_text('''# An incoming Xray REALITY fallback supplies PROXY v1 on this Unix socket.
+# Do NOT add proxy_protocol on stream proxy_pass: foreign TLS servers reject it.
+resolver 1.1.1.1 1.0.0.1 ipv6=off valid=120s;
+resolver_timeout 5s;
+map $ssl_preread_server_name $vkarmani_hybrid_upstream {
+    default unix:/run/vkarmani-selfsteal/cover.sock;
+    DOMAIN unix:/run/vkarmani-selfsteal/cover.sock;
+    MODE MODE:443;
+}
+server {
+    listen unix:/run/vkarmani-selfsteal/nginx.sock proxy_protocol;
+    ssl_preread on;
+    proxy_pass $vkarmani_hybrid_upstream;
+    proxy_connect_timeout 8s;
+    proxy_timeout 120s;
+}
+'''.replace('DOMAIN', domain).replace('MODE', mode), encoding='ascii')
+fragment.chmod(0o644)
+main.write_text(conf + '\n' + marker + '\nstream {\n    include /etc/nginx/vkarmani-hybrid-stream.conf;\n}\n', encoding='utf-8')
+PY_NGINX_HYBRID_STREAM
+fi
 nginx -t
 systemctl reload nginx
 for _ in $(seq 1 20); do [[ -S /run/vkarmani-selfsteal/nginx.sock ]] && break; sleep 1; done
@@ -9447,7 +9674,7 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
 elif vk_xhttp_prepare_template "$LIB/xhttp_profile.py" "$ETC" "$CORE" "$STATE"; then
     echo 'XHTTP_IMPORT_TEMPLATE_READY=PASS (alternative profile; not active alongside RAW)'
 else
-    die 'XHTTP_IMPORT_TEMPLATE_NOT_VALIDATED_BY_BUNDLED_CORE; third profile required by 2.5.13. Investigate private log/snapshot; NO INSTALL_COMPLETE.'
+    die 'XHTTP_IMPORT_TEMPLATE_NOT_VALIDATED_BY_BUNDLED_CORE; third profile required by 2.5.14. Investigate private log/snapshot; NO INSTALL_COMPLETE.'
 fi
 
 stage 'RAW / XHTTP + REALITY профили и параметры для панели (без API-токена)'
@@ -9568,7 +9795,7 @@ stage 'Установка завершена; проверки ДО переза
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"
 printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
 printf 'Внешний firewall хостера (если есть): разрешить TCP/%s от %s к Node Address, указанному в панели.\n' "$NODE_PORT" "${PANEL_IPS[*]}"
-printf 'Транспорт: VLESS + RAW + REALITY + Vision ИЛИ XHTTP + REALITY без Vision; Selfsteal: /dev/shm/nginx.sock (xver=1)\n'
+printf 'Транспорт: VLESS + RAW + REALITY + Vision ИЛИ XHTTP + REALITY без Vision; REALITY режим=%s\n' "$(helper get reality_mode)"
 printf 'Профиль и действия в панели: /etc/vkarmani-node/PANEL-SETUP.txt\n'
 printf 'REALITY_KEYS_FILE: %s (root:0600; PrivateKey не записывается в install log)\n' "$REALITY_KEYS_FILE"
 if [[ $VK_CASCADE_ACTIVE -eq 0 ]]; then

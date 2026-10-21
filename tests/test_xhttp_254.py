@@ -181,8 +181,10 @@ class XHTTPProfileTests(unittest.TestCase):
 
     def test_nginx_selfsteal_same_h2_proxy_v1_and_no_extra_443(self):
         conf = template('/etc/nginx/conf.d/20-vkarmani-selfsteal.conf')
-        self.assertIn('listen unix:/run/vkarmani-selfsteal/nginx.sock ssl', conf)
-        self.assertIn('proxy_protocol', conf)
+        self.assertIn('listen unix:$NGINX_SELFSTEAL_HTTPS_SOCKET ssl', conf)
+        self.assertIn('NGINX_SELFSTEAL_HTTPS_SOCKET=/run/vkarmani-selfsteal/nginx.sock', SCRIPT)
+        self.assertIn('$NGINX_SELFSTEAL_HTTPS_PROXY', conf)
+        self.assertIn("NGINX_SELFSTEAL_HTTPS_PROXY='proxy_protocol'", SCRIPT)
         self.assertIn('$NGINX_HTTP2_DIRECTIVE', conf)
         self.assertNotRegex(conf, r'(?m)^\s*listen\s+(?:0\.0\.0\.0|\*|\$PUBLIC_IP):443')
         self.assertIn('/dev/shm/nginx.sock', SCRIPT)

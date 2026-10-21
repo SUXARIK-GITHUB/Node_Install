@@ -13,7 +13,7 @@ import unittest
 from common import SCRIPT, module
 
 
-def component_commands(provider, fail_simulation=False):
+def component_commands(provider, fail_simulation=False, reality_mode='local'):
     start = SCRIPT.index("stage 'Компоненты ноды из подписанных репозиториев")
     end = SCRIPT.index('\nensure_sshd_runtime', start)
     fragment = SCRIPT[start:end]
@@ -36,12 +36,14 @@ vk_apt_run(){ "$@"; }
 die(){ printf '%s\n' "$*" >&2; return 1; }
 python3(){ printf '%s\\n' "$TEST_PROVIDER"; }
 LIB="$TEST_LIB"
+VK_CASCADE_ACTIVE=0
+helper(){ [[ "$1" == get && "$2" == reality_mode ]] || return 1; printf '%s\n' "$TEST_REALITY_MODE"; }
 APT=(apt-get -y --no-remove --no-install-recommends -o DPkg::Lock::Timeout=15 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 '''
         p = subprocess.run(['bash', '-c', preamble + fragment], capture_output=True, text=True, timeout=15,
                            env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
                                 'TEST_PROVIDER': provider, 'TEST_LIB': str(root), 'APT_TRACE': str(trace),
-                                'FAIL_SIM': str(int(fail_simulation))})
+                                'FAIL_SIM': str(int(fail_simulation)), 'TEST_REALITY_MODE': reality_mode})
         commands = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
         return p, commands
 
@@ -74,6 +76,23 @@ class PackageCommandTests(unittest.TestCase):
         self.assertEqual(p.returncode, 100)
         self.assertEqual(len(commands), 1)
         self.assertIn('--simulate', commands[0])
+
+    def test_external_reality_requires_signed_stream_package_in_simulation_and_install(self):
+        result, commands = component_commands('systemd-timesyncd', reality_mode='max.ru')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(commands), 2)
+        self.assertIn('--simulate', commands[0])
+        self.assertIn('libnginx-mod-stream', commands[0])
+        self.assertIn('libnginx-mod-stream', commands[1])
+        self.assertIn('--no-remove', commands[0])
+        self.assertIn('--no-remove', commands[1])
+        local, base = component_commands('systemd-timesyncd', reality_mode='local')
+        self.assertEqual(local.returncode, 0, local.stderr)
+        self.assertNotIn('libnginx-mod-stream', base[0])
+        self.assertNotIn('libnginx-mod-stream', base[1])
+        failed, audited = component_commands('systemd-timesyncd', fail_simulation=True, reality_mode='max.ru')
+        self.assertEqual(failed.returncode, 100, failed.stderr)
+        self.assertEqual(len(audited), 1)
 
     def test_component_install_keeps_every_non_time_dependency(self):
         p, commands = component_commands('systemd-timesyncd')

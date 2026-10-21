@@ -26,7 +26,9 @@ class HttpAcme220Tests(unittest.TestCase):
         (cls.challenge/'test-token').chmod(0o644)
         fragment=(template('/etc/nginx/conf.d/10-vkarmani-http.conf')
                   .replace('$PUBLIC_IP:80',f'127.0.0.1:{cls.port}')
-                  .replace('$DOMAIN','node.example.test').replace('\\$','$')
+                  .replace('$DOMAIN','node.example.test')
+                  .replace('$NGINX_HTTP_ROOT_ACTION','return 301 https://node.example.test\\$request_uri;')
+                  .replace('\\$','$')
                   .replace('/var/www/vkarmani-node/acme',str(cls.acme)))
         (cls.root/'temp').mkdir()
         temporary=''.join(f'{d}_temp_path {cls.root}/temp/{d};' for d in
@@ -85,6 +87,69 @@ class HttpAcme220Tests(unittest.TestCase):
             status,_,body=self.request('/.well-known/acme-challenge/unsafe')
             self.assertEqual(status,404);self.assertNotIn(b'PRIVATE_CANARY',body)
         finally:link.unlink()
+
+    def test_hybrid_mode_redirects_to_own_https_and_acme_still_works(self):
+        # Isolated second process checks the new external-SNI HTTP policy.
+        with tempfile.TemporaryDirectory(prefix='vk-http-remote-') as tmp:
+            base = Path(tmp); base.chmod(0o755)
+            with socket.socket() as listener:
+                listener.bind(('127.0.0.1', 0))
+                port = listener.getsockname()[1]
+            acme = base / 'acme'; challenge = acme / '.well-known/acme-challenge'
+            challenge.mkdir(parents=True)
+            (challenge / 'test-token').write_text('REMOTE_MODE_ACME')
+            (challenge / 'test-token').chmod(0o644)
+            fragment = (template('/etc/nginx/conf.d/10-vkarmani-http.conf')
+                        .replace('$PUBLIC_IP:80', f'127.0.0.1:{port}')
+                        .replace('$DOMAIN', 'node.example.test')
+                        .replace('$NGINX_HTTP_ROOT_ACTION', r'return 301 https://node.example.test\$request_uri;')
+                        .replace('\\$', '$')
+                        .replace('/var/www/vkarmani-node/acme', str(acme)))
+            (base / 'temp').mkdir()
+            temporary = ''.join(f'{d}_temp_path {base}/temp/{d};' for d in
+                                 ('client_body','proxy','fastcgi','uwsgi','scgi'))
+            conf = (f'daemon off; master_process off; pid {base}/pid; '
+                    f'error_log {base}/error; events {{worker_connections 64;}} '
+                    f'http {{{temporary}{fragment}}}')
+            config = base / 'nginx.conf'; config.write_text(conf)
+            args = [fixture.NGINX, '-p', str(base)+'/', '-c', str(config)]
+            check = subprocess.run([fixture.NGINX, '-t']+args[1:],
+                                   capture_output=True, text=True, timeout=5)
+            self.assertEqual(check.returncode, 0, check.stderr)
+            proc = subprocess.Popen(args, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            try:
+                for _ in range(100):
+                    self.assertIsNone(proc.poll(), 'private remote-mode Nginx exited')
+                    try:
+                        with socket.create_connection(('127.0.0.1', port), .1):
+                            break
+                    except OSError:
+                        time.sleep(.02)
+                else:
+                    self.fail('private remote-mode Nginx not ready')
+                for path, code in [('/', 301), ('/test?q=1', 301),
+                                   ('/.well-known/acme-challenge/test-token', 200)]:
+                    client = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+                    try:
+                        client.request('GET', path, headers={'Host': 'node.example.test'})
+                        response = client.getresponse()
+                        self.assertEqual(response.status, code, path)
+                        headers = dict(response.getheaders())
+                        if code == 301:
+                            self.assertEqual(headers.get('Location'),
+                                             'https://node.example.test' + path)
+                        else:
+                            self.assertNotIn('Location', headers)
+                            self.assertEqual(response.read(), b'REMOTE_MODE_ACME')
+                    finally:
+                        client.close()
+            finally:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill(); proc.wait(timeout=3)
 
     def test_post_rejected_without_change(self):
         self.assertEqual(self.request('/.well-known/acme-challenge/test-token',method='POST')[0],405)

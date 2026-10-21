@@ -33,7 +33,7 @@ class StaticTests(unittest.TestCase):
         for arg in ('--version', '--help'):
             result = subprocess.run(['bash', str(ROOT / 'install.sh'), arg], text=True, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('2.5.13', result.stdout)
+            self.assertIn('2.5.14', result.stdout)
         result = subprocess.run(['bash', str(ROOT / 'install.sh'), '--invalid'], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 2)
 
@@ -120,7 +120,8 @@ class StaticTests(unittest.TestCase):
         config = template('/etc/nginx/conf.d/10-vkarmani-http.conf')
         self.assertIn('listen $PUBLIC_IP:80;', config)
         self.assertIn('location ^~ /.well-known/acme-challenge/', config)
-        self.assertIn('return 301 https://$DOMAIN', config)
+        self.assertIn('location / { $NGINX_HTTP_ROOT_ACTION }', config)
+        self.assertIn("NGINX_HTTP_ROOT_ACTION='return 301 https://'", SCRIPT)
         self.assertNotIn('listen 443', config)
 
 
