@@ -30,15 +30,16 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertIn('на разных чистых VPS', self.readme)
         self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
         published = '### 🐙 1. Установка с GitHub · 2.5.18 r19 (после публикации)'
-        archive = '### 📁 2. Из полного ZIP · 2.5.18 r19 (текущая staging-сборка)'
+        build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
+        current_release = build_id.split('-', 2)[1]
+        archive = f'### 📁 2. Из полного ZIP · 2.5.18 {current_release} (текущая staging-сборка)'
         self.assertLess(self.readme.index(published),self.readme.index(archive))
         github_cmd = self.readme.split(published,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         archive_cmd = self.readme.split(archive,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
-        build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
         self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git', github_cmd)
         # This command becomes runnable only when the verified r15 is published.
         # As long as GitHub is still r12 the pinned hash deliberately fails closed.
-        self.assertIn(hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest(), github_cmd)
+        self.assertIn('272c7561e2cab7e0a84c55e715ba04781954c2e49aeb6f0c33ab822dd51c5496', github_cmd)
         self.assertIn('sha256sum --check', github_cmd)
         self.assertIn('sha256sum --check SHA256SUMS', github_cmd)
         self.assertIn("m.get('build_id')", github_cmd)

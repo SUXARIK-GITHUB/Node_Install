@@ -24,9 +24,15 @@ import tempfile
 
 try:
     from cover_variants import NAMES, SITES, render
+    from cover_rich import render_rich, PAGES
+    from site_catalog import NAMES as CATALOG_NAMES, THEMES as CATALOG, SITES as CATALOG_SITES
+    from site_audit import audit_bundle
     from nginx_proxy_plan import generate, port
 except ImportError:
     from scripts.cover_variants import NAMES, SITES, render
+    from scripts.cover_rich import render_rich, PAGES
+    from scripts.site_catalog import NAMES as CATALOG_NAMES, THEMES as CATALOG, SITES as CATALOG_SITES
+    from scripts.site_audit import audit_bundle
     from scripts.nginx_proxy_plan import generate, port
 
 MARKER_BEGIN = '    # VKARMANI_R7_STYLE_BEGIN\n'
@@ -35,6 +41,14 @@ STYLE_LOCATION = (MARKER_BEGIN +
                   '    location = /style.css { try_files $uri =404; expires -1; }\n' +
                   MARKER_END)
 STREAM_BLOCK = '\n# VKARMANI_R7_STREAM_BEGIN\nstream {\n    include /etc/nginx/vkarmani-stream-r7/servers.conf;\n}\n# VKARMANI_R7_STREAM_END\n'
+RICH_MARKER = b'    # VKARMANI_R20_RICH_BEGIN\n'
+RICH_LOCATIONS = (RICH_MARKER +
+    b'    location = /journal.html { try_files $uri =404; expires -1; }\n'
+    b'    location = /about.html { try_files $uri =404; expires -1; }\n'
+    b'    location = /questions.html { try_files $uri =404; expires -1; }\n'
+    b'    location = /sitemap.xml { default_type application/xml; try_files $uri =404; expires -1; }\n'
+    b'    # VKARMANI_R20_RICH_END\n')
+RICH_INDEX_LOCATION = b'    location = /index.html { try_files $uri =404; expires -1; }\n'
 HYBRID_MARKER = '# VKARMANI_HYBRID_STREAM_V1'
 HYBRID_TAIL_R18 = (HYBRID_MARKER + '\nstream {\n'
     '    include /etc/nginx/vkarmani-hybrid-stream.conf;\n'
@@ -141,6 +155,21 @@ class NodeWeb:
         actual=self.run(cmd)
         must(actual==expected,'LIVE_CSS_NOT_SERVED')
 
+    def _check_rich_live(self, config, content):
+        """Compare exact HTTPS bytes of each additional page after reload.
+
+        Uses the node's assigned public IPv4 with the actual hostname and public
+        CA verification. Fail the deploy transaction on any wrong/partial page.
+        """
+        domain, ip = config['domain'], config['public_ipv4']
+        for path in (*PAGES, 'robots.txt', 'sitemap.xml'):
+            cmd = ['curl', '-q', '--noproxy', '*', '-4', '--fail',
+                   '--silent', '--show-error', '--http2', '--tlsv1.3',
+                   '--tls-max', '1.3', '--connect-timeout', '5', '--max-time', '15',
+                   '--max-filesize', str(128 * 1024),
+                   '--resolve', f'{domain}:443:{ip}', f'https://{domain}/{path}']
+            must(self.run(cmd) == content[path], 'RICH_LIVE_ROUTE_NOT_VERIFIED_' + path)
+
     def _activate(self, css=None, config=None, css_name='style.css'):
         # Staging changes must be activated, not only syntactically validated.
         self.run(['nginx','-t'])
@@ -226,8 +255,10 @@ class NodeWeb:
     def write_receipt(self,kind,item):
         atomic(self.journal/(kind+'.json'), (json.dumps(item,sort_keys=True,indent=2)+'\n').encode(),self.root,0o600)
 
-    def backup(self,kind,items,metadata):
-        must(self.receipt(kind) is None or self.receipt(kind)['stage']=='rolled_back',
+    def backup(self,kind,items,metadata,allow_active=False):
+        existing=self.receipt(kind)
+        must(existing is None or existing['stage']=='rolled_back' or
+             (allow_active and kind=='site' and existing['stage']=='active'),
              'PREVIOUS_DEPLOY_ACTIVE_OR_PENDING')
         # Never reuse a previous backup directory.
         b=self.journal/(kind+'-'+secrets.token_hex(10))
@@ -249,7 +280,7 @@ class NodeWeb:
 
     def verify_receipt_backups(self,r,files):
         b=self.journal/r['backup']
-        must(b.parent==self.journal and re.fullmatch(r'(site|tcp)-[0-9a-f]{20}',b.name),
+        must(b.parent==self.journal and re.fullmatch(r'(site|tcp|xhttp)-[0-9a-f]{20}',b.name),
              'BACKUP_PATH_INVALID')
         path_check(b,self.root)
         originals={}
@@ -304,60 +335,96 @@ class NodeWeb:
         # content-addressed assets: assets/style-<first 20 hex of sha256>.css.
         return 'assets/style-'+digest(css)[:20]+'.css'
 
-    def site_files(self, receipt=None, css_name=None):
+    def site_files(self, receipt=None, css_name=None, rich=False):
         if receipt is not None:
-            meta=receipt.get('metadata') or {}
-            if 'nginx' in receipt.get('files',{}):
-                # r7..r7f journal: unversioned style.css + edited Nginx location.
-                return {'index':self.site/'index.html',
-                        'css':self.site/'style.css',
-                        'nginx':self.webconf}
-            css_name=meta.get('css')
-        must(isinstance(css_name,str) and
-             re.fullmatch(r'assets/style-[0-9a-f]{20}[.]css',css_name) is not None,
+            meta = receipt.get('metadata') or {}
+            if meta.get('theme_bundle') != 3 and 'nginx' in receipt.get('files', {}):
+                # Legacy R7 receipt: unversioned style.css and edited location.
+                return {'index': self.site/'index.html',
+                        'css': self.site/'style.css', 'nginx': self.webconf}
+            css_name = meta.get('css')
+            rich = meta.get('theme_bundle') == 3
+        must(isinstance(css_name, str) and
+             re.fullmatch(r'assets/style-[0-9a-f]{20}[.]css', css_name) is not None,
              'INVALID_THEME_ASSET_NAME')
-        targets={'index':self.site/'index.html','css':self.site/css_name}
-        if receipt is None or (receipt.get('metadata') or {}).get('theme_bundle')==2:
-            targets['error']=self.site/'404.html'
-            targets['favicon']=self.site/'favicon.svg'
+        targets = {'index': self.site/'index.html', 'css': self.site/css_name}
+        if receipt is None or (receipt.get('metadata') or {}).get('theme_bundle') in (2, 3):
+            targets['error'] = self.site/'404.html'
+            targets['favicon'] = self.site/'favicon.svg'
+        if rich:
+            targets.update({'journal': self.site/'journal.html',
+                            'about': self.site/'about.html',
+                            'questions': self.site/'questions.html',
+                            'robots': self.site/'robots.txt',
+                            'sitemap': self.site/'sitemap.xml',
+                            'nginx': self.webconf})
+        if receipt is not None:
+            stale = (receipt.get('metadata') or {}).get('stale_css')
+            if stale is not None:
+                must(isinstance(stale,str) and re.fullmatch(r'assets/style-[0-9a-f]{20}[.]css',stale),
+                     'INVALID_STALE_CSS_NAME')
+                must(stale != css_name,'STALE_AND_NEW_CSS_COLLISION')
+                targets['stale_css'] = self.site/stale
         return targets
 
-    def site_install(self,theme,expect_domain):
-        must(theme in NAMES,'UNKNOWN_THEME')
-        config=self.ready()
-        current=self.receipt('site')
-        must(current is None or current['stage']=='rolled_back', 'PREVIOUS_DEPLOY_ACTIVE_OR_PENDING')
-        must(expect_domain==config['domain'],'DOMAIN_CONFIRMATION_MISMATCH')
-        for d in (self.site,self.webconf.parent):
-            path_check(d,self.root); must(d.is_dir(),'DIR_INVALID')
-        source=SITES/theme
-        # Verify reviewed catalog files and symlink absence. Rendering changes
-        # only deterministic editorial choices based on the validated domain.
-        for filename in ('index.html','style.css','404.html','favicon.svg'):
-            read(source/filename,SITES.parent,128*1024)
+    def site_install(self, theme, expect_domain, rich_pages=False, switch=False):
+        must(theme in NAMES + CATALOG_NAMES, 'UNKNOWN_THEME')
+        must(theme not in CATALOG_NAMES or rich_pages, 'CATALOG_REQUIRES_RICH_PAGES')
+        config = self.ready()
+        current = self.receipt('site')
+        if switch:
+            must(rich_pages,'SITE_CHANGE_REQUIRES_RICH_PAGES')
+            must(current is not None and current['stage'] == 'active',
+                 'SITE_CHANGE_REQUIRES_ACTIVE_SITE')
+            must(current.get('metadata',{}).get('theme_bundle') == 3,
+                 'SITE_CHANGE_REQUIRES_PREVIOUS_RICH_THEME')
+        else:
+            must(current is None or current['stage'] == 'rolled_back',
+                 'PREVIOUS_DEPLOY_ACTIVE_OR_PENDING')
+        must(expect_domain == config['domain'], 'DOMAIN_CONFIRMATION_MISMATCH')
+        for d in (self.site, self.webconf.parent):
+            path_check(d, self.root); must(d.is_dir(), 'DIR_INVALID')
+        source = (CATALOG_SITES if theme in CATALOG_NAMES else SITES) / theme
+        for filename in ('index.html', 'style.css', '404.html', 'favicon.svg'):
+            read(source/filename, source.parent.parent, 128*1024)
         try:
-            content=render(theme,config['domain'])
-        except (OSError,ValueError) as exc:
-            raise DeployError('THEME_RENDER_FAILED') from exc
-        html,css,error,icon=(content[name] for name in
-                              ('index.html','style.css','404.html','favicon.svg'))
-        must(html.count(b'href="style.css"')==1 and
-             error.count(b'href="style.css"')==1 and
+            content = render_rich(theme, config['domain']) if rich_pages else render(theme, config['domain'])
+            audit_bundle(content, config['domain'], rich=rich_pages)
+        except (OSError, ValueError, TypeError) as exc:
+            raise DeployError('THEME_RENDER_OR_AUDIT_FAILED') from exc
+        html, css, error, icon = (content[name] for name in
+                                  ('index.html', 'style.css', '404.html', 'favicon.svg'))
+        must(html.count(b'href="style.css"') == 1 and
+             error.count(b'href="style.css"') == 1 and
              b'<script' not in html.lower() and b'<script' not in error.lower() and
              b'@import' not in css and b'url(' not in css and
              b'<script' not in icon.lower() and b'<foreignobject' not in icon.lower(),
              'UNREVIEWED_THEME_CONTENT')
-        css_name=self.css_name(css)
-        for_page=b'href="/'+css_name.encode()+b'"'
-        html=html.replace(b'href="style.css"',for_page)
-        html=html.replace(b'href="favicon.svg"', b'href="/favicon.svg"')
-        error=error.replace(b'href="style.css"',for_page)
-        files=self.site_files(css_name=css_name)
-        assets=self.site/'assets'
-        path_check(assets,self.root); must(assets.is_dir(),'DIR_INVALID')
-        # The existing Selfsteal Nginx already serves versioned assets with
-        # its security headers and cache policy; it is verified, never edited.
-        conf=read(self.webconf,self.root)
+        css_name = self.css_name(css)
+        prior_css = (current.get('metadata') or {}).get('css') if switch else None
+        if switch:
+            must(isinstance(prior_css,str) and
+                 re.fullmatch(r'assets/style-[0-9a-f]{20}[.]css',prior_css),
+                 'PRIOR_THEME_ASSET_INVALID')
+            must(prior_css != css_name,'SITE_CHANGE_ALREADY_INSTALLED_CSS')
+        for_page = b'href="/' + css_name.encode() + b'"'
+        targets = {'index': html.replace(b'href="style.css"', for_page).replace(
+                       b'href="favicon.svg"', b'href="/favicon.svg"'),
+                   'css': css,
+                   'error': error.replace(b'href="style.css"', for_page),
+                   'favicon': icon}
+        if rich_pages:
+            for label, filename in (('journal','journal.html'), ('about','about.html'),
+                                    ('questions','questions.html')):
+                targets[label] = content[filename].replace(b'href="/style.css"', for_page).replace(b'href="style.css"', for_page)
+            targets['robots'] = content['robots.txt']
+            targets['sitemap'] = content['sitemap.xml']
+        files = self.site_files(css_name=css_name, rich=rich_pages)
+        if switch:
+            files['stale_css'] = self.site/prior_css
+        assets = self.site/'assets'
+        path_check(assets, self.root); must(assets.is_dir(), 'DIR_INVALID')
+        conf = read(self.webconf, self.root)
         selected = config.get('reality_mode', 'local')
         socket_path = (b'/run/vkarmani-selfsteal/nginx.sock' if selected == 'local' else
                        b'/run/vkarmani-selfsteal/cover.sock')
@@ -365,40 +432,159 @@ class NodeWeb:
              b'root /var/www/vkarmani-node/site;' in conf and
              b'style-[0-9a-f]{20}[.]css' in conf,
              'FOREIGN_OR_UNSUPPORTED_SELFSTEAL')
+        if rich_pages:
+            # Existing managed Nginx configuration only. No global wildcard,
+            # regex route or generic try_files that could expose private files.
+            must(conf.count(RICH_INDEX_LOCATION) == 1 and
+                 b'location = /robots.txt' in conf and b'location / { return 404; }' in conf,
+                 'RICH_REQUIRES_REVIEWED_NGINX_CONFIG')
+            if switch:
+                must(conf.count(RICH_LOCATIONS) == 1,
+                     'SITE_CHANGE_REQUIRES_EXISTING_RICH_NGINX')
+                targets['nginx'] = conf  # do not rewrite a working stream/SSL config
+                previous_files=self.site_files(receipt=current)
+                for label,path in previous_files.items():
+                    expected_hash=current['files'][label]['after_sha']
+                    if expected_hash is None:
+                        must(not path.exists() and not path.is_symlink(),
+                             'PRIOR_SITE_STALE_FILE_REAPPEARED_'+label)
+                    else:
+                        actual_hash=digest(read(path,self.root))
+                        must(actual_hash == expected_hash,
+                             'PRIOR_SITE_CHANGED_OUTSIDE_MANAGED_DEPLOYMENT_'+label)
+                must(files['stale_css'].exists() and not files['stale_css'].is_symlink(),
+                     'PRIOR_THEME_CSS_MISSING')
+            else:
+                must(RICH_MARKER not in conf,'RICH_CONFIGURATION_ALREADY_INSTALLED')
+                targets['nginx'] = conf.replace(RICH_INDEX_LOCATION,
+                                                 RICH_INDEX_LOCATION + RICH_LOCATIONS, 1)
+                for label in ('journal', 'about', 'questions', 'sitemap'):
+                    must(not files[label].exists() and not files[label].is_symlink(),
+                         'RICH_PATH_ALREADY_OWNED_OR_PRESENT_' + label)
+                # Installer-owned robots.txt is replaced only when its bytes match.
+                robots = files['robots']
+                if robots.exists() or robots.is_symlink():
+                    must(read(robots, self.root, 4096) == b'User-agent: *\nDisallow:\n',
+                         'UNREVIEWED_EXISTING_ROBOTS')
         must(not files['css'].exists() and not files['css'].is_symlink(),
              'THEME_ASSET_ALREADY_PRESENT')
         self._check()
         with self.lock():
-            r,old=self.backup('site',files,{'theme':theme,'domain':config['domain'],
-                                             'css':css_name,'theme_bundle':2})
-            targets={'index':html,'css':css,'error':error,'favicon':icon}
-            for label in targets: r['files'][label]['after_sha']=digest(targets[label])
-            self.write_receipt('site',r)
+            must(self.receipt('site') == current, 'CONCURRENT_SITE_RECEIPT_CHANGE')
+            metadata={'theme': theme, 'domain': config['domain'],
+                      'css': css_name, 'theme_bundle': 3 if rich_pages else 2}
+            archived_previous = None
+            if switch:
+                # Preserve the previous active journal before replacing its pointer.
+                # This makes a later rollback restore the previous live theme,
+                # including its backed-up pre-site version.
+                archived_previous = 'site-previous-' + secrets.token_hex(10) + '.json'
+                prior_data = (json.dumps(current,sort_keys=True,indent=2)+'\n').encode()
+                atomic(self.journal/archived_previous,prior_data,self.root,0o600)
+                metadata.update({'previous_receipt':archived_previous,
+                                 'previous_receipt_sha':digest(prior_data),
+                                 'stale_css':prior_css})
+            r, old = self.backup('site', files, metadata, allow_active=switch)
+            for label in targets:
+                r['files'][label]['after_sha'] = digest(targets[label])
+            self.write_receipt('site', r)
             try:
-                # Publish independent assets and error page before the atomic
-                # homepage swap. All four files are journaled for rollback.
-                for label in ('css','favicon','error','index'):
-                    expected=old[label]
-                    cur=None if not files[label].exists() else read(files[label],self.root)
-                    must(cur==expected,'CONCURRENT_SITE_MODIFICATION')
-                    atomic(files[label],targets[label],self.root,
+                # Publish assets first. Swap the homepage last so all existing
+                # local references are ready before any new link is served.
+                order = ('css', 'favicon', 'error')
+                if rich_pages:
+                    order += ('journal', 'about', 'questions', 'robots', 'sitemap', 'nginx')
+                order += ('index',)
+                for label in order:
+                    expected = old[label]
+                    cur = None if not files[label].exists() else read(files[label], self.root)
+                    must(cur == expected, 'CONCURRENT_SITE_MODIFICATION')
+                    atomic(files[label], targets[label], self.root,
                            self.original_mode(r['files'][label]))
-                self._activate(css=css,config=config,css_name=css_name)
-                r['stage']='active';self.write_receipt('site',r)
-                return 'SITE_DEPLOY=PASS theme='+theme+' SELFSTEAL_LOCAL_CHECK=PASS'
+                self._activate(css=css, config=config, css_name=css_name)
+                if rich_pages:
+                    live = dict(content)
+                    for label, filename in (('journal','journal.html'),
+                                            ('about','about.html'), ('questions','questions.html'),
+                                            ('robots','robots.txt'), ('sitemap','sitemap.xml')):
+                        live[filename] = targets[label]
+                    self._check_rich_live(config, live)
+                if switch:
+                    # Do not leave the previous CSS publicly accessible after success;
+                    # its content remains in the private receipt backup for rollback.
+                    remove(files['stale_css'],self.root)
+                r['stage'] = 'active'; self.write_receipt('site', r)
+                return ('SITE_DEPLOY=PASS theme=' + theme +
+                        (' RICH_PAGES=VERIFIED' if rich_pages else '') +
+                        ' SELFSTEAL_LOCAL_CHECK=PASS')
             except BaseException:
                 try:
-                    print(self.recovery('site',r,files,self._activate),file=sys.stderr)
+                    print(self.recovery('site', r, files, self._activate), file=sys.stderr)
+                    if switch:
+                        # Recovery restored the old files: recover the old journal too.
+                        self.write_receipt('site', current)
                 except BaseException:
-                    print('SITE_RECOVERY=PENDING MANUAL_ROLLBACK_REQUIRED',file=sys.stderr)
+                    print('SITE_RECOVERY=PENDING MANUAL_ROLLBACK_REQUIRED', file=sys.stderr)
                 raise
+
+    def _previous_site_receipt(self, receipt):
+        metadata=receipt.get('metadata') or {}
+        name=metadata.get('previous_receipt')
+        if name is None:
+            return None
+        must(isinstance(name,str) and re.fullmatch(r'site-previous-[0-9a-f]{20}[.]json',name),
+             'INVALID_PREVIOUS_RECEIPT_NAME')
+        content=read(self.journal/name,self.root,32768)
+        must(digest(content)==metadata.get('previous_receipt_sha'),
+             'PREVIOUS_RECEIPT_HASH_MISMATCH')
+        old=json.loads(content)
+        must(isinstance(old,dict) and old.get('schema')==1 and
+             old.get('kind')=='site' and old.get('stage')=='active' and
+             isinstance(old.get('metadata'),dict),
+             'PREVIOUS_RECEIPT_INVALID')
+        self.verify_receipt_backups(old,self.site_files(receipt=old))
+        return old
+
+    def _resume_previous_site(self, switched, previous):
+        """Finish a switch rollback interrupted AFTER the files were restored.
+
+        Recovery writes the rolled_back receipt before restoring the previous
+        active pointer. That intermediary is deliberate and must be resumable.
+        Confirm *every* file matches the previous signed active receipt before
+        reactivating it, rather than merely rewriting the journal by assumption.
+        """
+        must(switched.get('stage') == 'rolled_back' and previous is not None,
+             'NO_VERIFIED_PREVIOUS_SITE_RECOVERY')
+        files = self.site_files(receipt=previous)
+        must(set(files) == set(previous.get('files', {})), 'PREVIOUS_RECEIPT_FILESET_MISMATCH')
+        for label, path in files.items():
+            expected = previous['files'][label].get('after_sha')
+            current = None if not path.exists() and not path.is_symlink() else read(path, self.root)
+            must((digest(current) if current is not None else None) == expected,
+                 'RESTORED_PREVIOUS_SITE_DRIFT_' + label.upper())
+        self._check()  # no new mutations; verify restored services before journal change
+        self.write_receipt('site', previous)
+        return 'SITE_CHANGE_ROLLBACK=PASS PREVIOUS_THEME_RESTORED'
 
     def site_rollback(self):
         self.ready()
         with self.lock():
-            r=self.receipt('site')
-            must(r is not None and r['stage'] in ('pending','active'), 'NO_SITE_ROLLBACK')
-            return self.recovery('site',r,self.site_files(receipt=r),self._activate)
+            r = self.receipt('site')
+            must(r is not None, 'NO_SITE_ROLLBACK')
+            if r['stage'] == 'rolled_back':
+                # Interrupted after recovery() committed rolled_back but before
+                # the previous receipt was made active. Repeated calls are safe.
+                previous = self._previous_site_receipt(r)
+                must(previous is not None, 'NO_SITE_ROLLBACK')
+                return self._resume_previous_site(r, previous)
+            must(r['stage'] in ('pending', 'active'), 'NO_SITE_ROLLBACK')
+            previous = self._previous_site_receipt(r)
+            result = self.recovery('site', r, self.site_files(receipt=r), self._activate)
+            if previous is not None:
+                # On a crash/failure at this point the rolled_back receipt is
+                # retained and a subsequent call can resume without guessing.
+                return self._resume_previous_site(r, previous)
+            return result
 
     def tcp_files(self,hybrid=False,receipt=None):
         if receipt is not None:
@@ -503,31 +689,165 @@ class NodeWeb:
                      'THIRD_PARTY_HYBRID_MAIN_EDIT_REFUSE_ROLLBACK')
             return self.recovery('tcp',r,self.tcp_files(receipt=r),self._activate)
 
+    def xhttp_tls_install(self, expected_domain, path, backend_port, backend_check=True):
+        """Stage one H2 grpc_pass route; never touch Xray/Panel or TCP/443.
+
+        A previously deployed rich site must first be rolled back, otherwise
+        its signed nginx receipt would no longer match. Later rich site deploys
+        can safely coexist because they preserve this reviewed extra location.
+        """
+        from importlib.util import module_from_spec, spec_from_file_location
+        source = Path(__file__).resolve().parents[1] / 'integrations/optional_transports.py'
+        spec=spec_from_file_location('vk_optional_transports',source)
+        must(spec is not None and spec.loader is not None,'TRANSPORT_HELPER_UNAVAILABLE')
+        helper=module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        config=self.ready()
+        must(expected_domain == config['domain'], 'DOMAIN_CONFIRMATION_MISMATCH')
+        must(config.get('cascade_role') in (None, '', 'ordinary'),
+             'CASCADE_ENTRY_OR_EXIT_NOT_SUPPORTED_FOR_OPTIONAL_H2_ROUTE')
+        bundle=helper.xhttp_tls(config['domain'],backend_port,path)
+        current_site=self.receipt('site')
+        must(current_site is None or current_site['stage']=='rolled_back',
+             'ROLLBACK_MANAGED_SITE_BEFORE_OPTIONAL_XHTTP_ROUTE')
+        self._check()
+        original=read(self.webconf,self.root)
+        ending=b'    location / { return 404; }'
+        marker=b'    # VKARMANI_R23_XHTTP_TLS_BEGIN\n'
+        must(original.count(ending)==1 and marker not in original and
+             b'root /var/www/vkarmani-node/site;' in original and
+             b'listen unix:/run/vkarmani-selfsteal/' in original and
+             b'style-[0-9a-f]{20}[.]css' in original,
+             'UNSUPPORTED_OR_FOREIGN_SELFSTEAL_NGINX_CONFIGURATION')
+        # On an actual node, the generated server's domain must match exactly.
+        if self.root == ROOT:
+            must(('server_name ' + expected_domain + ';').encode() in original,
+                 'HTTPS_DOMAIN_NOT_PRESENT_IN_NGINX')
+        if backend_check:
+            with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as sock:
+                sock.settimeout(2)
+                try: sock.connect(('127.0.0.1',backend_port))
+                except OSError as exc: raise DeployError('XHTTP_BACKEND_NOT_LISTENING') from exc
+        snippet=bundle['nginx-location.conf']
+        desired=original.replace(ending,marker+snippet+b'    # VKARMANI_R23_XHTTP_TLS_END\n'+ending,1)
+        with self.lock():
+            must(self.receipt('site')==current_site,'CONCURRENT_MANAGED_SITE_CHANGE')
+            r,_=self.backup('xhttp',{'nginx':self.webconf},
+                            {'domain':expected_domain,'backend_port':backend_port,
+                             'path_sha256':digest(path.encode())})
+            r['files']['nginx']['after_sha']=digest(desired)
+            self.write_receipt('xhttp',r)
+            try:
+                must(read(self.webconf,self.root)==original,'CONCURRENT_NGINX_EDIT')
+                atomic(self.webconf,desired,self.root,self.original_mode(r['files']['nginx']))
+                self._activate()
+                r['stage']='active'
+                self.write_receipt('xhttp',r)
+                return 'XHTTP_TLS_ROUTE_DEPLOY=PASS TLS_SITE_CHECK=PASS VLESS_E2E=NOT_TESTED'
+            except BaseException:
+                try:
+                    print(self.recovery('xhttp',r,{'nginx':self.webconf},self._activate),file=sys.stderr)
+                except BaseException:
+                    print('XHTTP_ROUTE_RECOVERY=PENDING_MANUAL_ROLLBACK',file=sys.stderr)
+                raise
+
+    def xhttp_tls_rollback(self):
+        self.ready()
+        with self.lock():
+            site=self.receipt('site')
+            must(site is None or site['stage']=='rolled_back',
+                 'ROLLBACK_MANAGED_SITE_BEFORE_XHTTP_ROUTE_REMOVAL')
+            r=self.receipt('xhttp')
+            must(r is not None and r['stage'] in ('active','pending'),
+                 'NO_XHTTP_ROUTE_ROLLBACK')
+            must(set(r.get('files',{}))=={'nginx'},'XHTTP_RECEIPT_FILESET_INVALID')
+            return self.recovery('xhttp',r,{'nginx':self.webconf},self._activate)
+
     def status(self):
         self.ready()
-        return {'site':None if self.receipt('site') is None else self.receipt('site')['stage'],
-                'tcp':None if self.receipt('tcp') is None else self.receipt('tcp')['stage']}
+        site=self.receipt('site')
+        return {'site':None if site is None else site['stage'],
+                'site_theme':None if site is None else (site.get('metadata') or {}).get('theme'),
+                'tcp':None if self.receipt('tcp') is None else self.receipt('tcp')['stage'],
+                'xhttp_tls':None if self.receipt('xhttp') is None else self.receipt('xhttp')['stage']}
 
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest='action',required=True)
-    a=sub.add_parser('site-deploy');a.add_argument('--theme',required=True,choices=NAMES)
+    a=sub.add_parser('site-deploy');a.add_argument('--theme',required=True,choices=NAMES + CATALOG_NAMES)
     a.add_argument('--expected-domain',required=True);a.add_argument('--confirm-staging',action='store_true')
+    a.add_argument('--rich-pages',action='store_true',help='stage opt-in three-page site with exact Nginx routes')
+    change=sub.add_parser('site-change',help='transactionally replace an already active rich site; restore previous on failure')
+    change.add_argument('--theme',required=True,choices=NAMES + CATALOG_NAMES)
+    change.add_argument('--expected-domain',required=True)
+    change.add_argument('--confirm-staging',action='store_true')
     b=sub.add_parser('tcp-deploy');b.add_argument('--listen',type=int,required=True)
     b.add_argument('--backend',type=int,required=True);b.add_argument('--confirm-staging',action='store_true')
-    for name in ('site-rollback','tcp-rollback'):
+    x=sub.add_parser('xhttp-tls-deploy',help='optional reviewed Nginx H2 route on staging only')
+    x.add_argument('--expected-domain',required=True)
+    x.add_argument('--path',required=True)
+    x.add_argument('--backend-port',required=True,type=int)
+    x.add_argument('--confirm-staging',action='store_true')
+    for name in ('site-rollback','tcp-rollback','xhttp-tls-rollback'):
         q=sub.add_parser(name);q.add_argument('--confirm-staging',action='store_true')
     sub.add_parser('status')
+    sub.add_parser('site-catalog', help='read-only list of available themes, no root or installation')
+    preview=sub.add_parser('site-preview', help='generate complete local HTML, no VPS changes')
+    preview.add_argument('--theme', choices=NAMES + CATALOG_NAMES, required=True)
+    preview.add_argument('--domain', default='preview.example.test')
+    preview.add_argument('--output', type=Path, required=True)
     args=p.parse_args(argv)
+    if args.action == 'site-catalog':
+        try:
+            from cover_variants import THEMES as ORIGINAL
+        except ImportError:
+            from scripts.cover_variants import THEMES as ORIGINAL
+        for name in NAMES + CATALOG_NAMES:
+            if name in ORIGINAL:
+                category = ORIGINAL[name]['label']
+                title = ORIGINAL[name]['names'][0]
+            else:
+                category = CATALOG[name].category
+                title = CATALOG[name].title
+            print(f'{name}\t{category}\t{title}')
+        return 0
+    if args.action == 'site-preview':
+        try:
+            out=args.output
+            path_check(out, ROOT, missing=True)
+            must(not out.exists() and out.parent.is_dir(), 'PREVIEW_DESTINATION_EXISTS_OR_PARENT_MISSING')
+            bundle=render_rich(args.theme, args.domain)
+            audit_bundle(bundle, args.domain, rich=True)
+            out.mkdir(mode=0o755)
+            try:
+                for name, content in bundle.items():
+                    dest = out / name
+                    path_check(dest, ROOT, missing=True)
+                    with dest.open('xb') as fp:
+                        fp.write(content)
+                    dest.chmod(0o644)
+            except BaseException:
+                for name in bundle:
+                    (out / name).unlink(missing_ok=True)
+                out.rmdir()
+                raise
+            print('SITE_PREVIEW=PASS files=' + str(len(bundle)) + ' theme=' + args.theme)
+            return 0
+        except (DeployError, ValueError, OSError) as exc:
+            print('SITE_PREVIEW=STOP ' + str(exc),file=sys.stderr)
+            return 1
     if os.geteuid()!=0:
         print('DEPLOY=STOP ROOT_REQUIRED',file=sys.stderr);return 2
     if args.action!='status' and not args.confirm_staging:
         print('DEPLOY=STOP EXPLICIT_STAGING_CONFIRMATION_REQUIRED',file=sys.stderr);return 2
     try:
         app=NodeWeb()
-        if args.action=='site-deploy': result=app.site_install(args.theme,args.expected_domain)
+        if args.action=='site-deploy': result=app.site_install(args.theme,args.expected_domain,rich_pages=args.rich_pages)
+        elif args.action=='site-change': result=app.site_install(args.theme,args.expected_domain,rich_pages=True,switch=True)
         elif args.action=='tcp-deploy':result=app.tcp_install(args.listen,args.backend)
+        elif args.action=='xhttp-tls-deploy':result=app.xhttp_tls_install(args.expected_domain,args.path,args.backend_port)
+        elif args.action=='xhttp-tls-rollback':result=app.xhttp_tls_rollback()
         elif args.action=='site-rollback':result=app.site_rollback()
         elif args.action=='tcp-rollback':result=app.tcp_rollback()
         else:result=json.dumps(app.status(),sort_keys=True)

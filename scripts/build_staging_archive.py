@@ -127,7 +127,71 @@ UNTRACKED_ALLOWED = {
     'integrations/connection_quality.py',
     'docs/RELEASE_2.5.18_R19_HYBRID_HOTFIX_20261021.md',
     'tests/test_2518_r19_hybrid_permissions.py',
+    'integrations/network_health.py',
+    'scripts/cover_rich.py',
+    'scripts/site_audit.py',
+    'tests/test_r20_network_health.py',
+    'tests/test_r20_rich_site.py',
+    'docs/RELEASE_2.5.18_R20_RICH_SITES_NETWORK.md',
 }
+
+# R21: the original twelve immutable handmade covers remain in cover-variants.
+# Only the reviewed generated static catalog and its support files are additional.
+try:
+    from site_catalog import NAMES as R21_CATALOG
+except ImportError:
+    from scripts.site_catalog import NAMES as R21_CATALOG
+R21_FILES = ('index.html', 'journal.html', 'about.html', 'questions.html',
+             '404.html', 'style.css', 'favicon.svg', 'robots.txt', 'sitemap.xml')
+UNTRACKED_ALLOWED.update(
+    f'site-catalog/{name}/{file}' for name in R21_CATALOG for file in R21_FILES
+)
+UNTRACKED_ALLOWED.update({
+    'scripts/site_catalog.py', 'scripts/build_site_gallery.py',
+    'integrations/selfsteal_health.py', 'preview/site-gallery/index.html',
+    'tests/test_r21_site_catalog.py', 'tests/test_r21_site_change.py',
+    'tests/test_r21_host_diagnostics.py', 'tests/test_r21_gallery_release.py',
+    'docs/RELEASE_2.5.18_R21_CATALOG_AND_SAFETY.md',
+    'scripts/signature_sites.py', 'integrations/transport_profile_audit.py',
+    'scripts/network_compare.py', 'tests/test_r22_signature_sites.py',
+    'tests/test_r22_transport_profile_audit.py', 'tests/test_r22_network_compare.py',
+    'docs/RELEASE_2.5.18_R22_SIGNATURE_SITES_TRANSPORT_NETWORK.md',
+    'integrations/optional_transports.py',
+    'integrations/network_tuning.py',
+    'integrations/quality_probe.py',
+    'integrations/throughput_probe.py',
+    'integrations/selfsteal_runtime_probe.py',
+    'scripts/site_visual_review.py',
+    'tests/test_r23_transport_network_visual.py',
+    'docs/RELEASE_2.5.18_R23_OPTIONAL_TRANSPORTS_VISUAL_NETWORK.md',
+    'preview/site-gallery/visual-review-desktop.jpg',
+    'preview/site-gallery/visual-review-mobile.jpg',
+    'preview/site-gallery/visual-review-r23.json',
+    'scripts/site_manager.py',
+    'integrations/selfsteal_chain.py',
+    'integrations/path_mtu_diagnostics.py',
+    'tests/test_r24_phase1_site_selfsteal_mtu.py',
+    'docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md',
+    'integrations/transport_readiness.py',
+    'tests/test_r25_transport_readiness.py',
+    'tests/test_r25_transaction_recovery.py',
+    'docs/RELEASE_2.5.18_R25_TRANSACTION_AND_TRANSPORT_READINESS.md',
+    'docs/MAINTAINER_HANDOFF_R25.md',
+    'integrations/finalmask_profile.py',
+    'scripts/measurement_review.py',
+    'tests/test_r26_finalmask.py',
+    'tests/test_r26_runtime_gate.py',
+    'tests/test_r26_measurement_review.py',
+    'docs/RELEASE_2.5.18_R26_FINALMASK_TRANSPORT_QA.md',
+    'scripts/terminal_ui.py',
+    'integrations/vps_connectivity.py',
+    'scripts/removal_plan.py',
+    'tests/test_r27_terminal_ui.py',
+    'tests/test_r27_vps_connectivity.py',
+    'tests/test_r27_removal_plan.py',
+    'docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md',
+})
+
 
 
 def baseline_manifest():

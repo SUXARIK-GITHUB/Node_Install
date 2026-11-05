@@ -1,5 +1,13 @@
 <div align="center">
 
+**Текущее дополнение r27 (staging):** гибридное чёрно-зелёное меню `sudo bash install.sh --menu`, мастер выбора Ordinary/Entry/Exit, первая тема `00. Авто (Рандом)` из **120** сайтов, необязательные дополнительные параметры, отдельный прокручиваемый журнал. `--vps-check` добавляет проверки HTTPS/сервисов, ICMP, p50/p95/jitter, traceroute, CDN и отдельный ограниченный тест скорости только к своему iperf3-серверу. Для таблиц `--vps-check --format table services`. Режимы отмены/удаления предоставляют только **безопасную инвентаризацию и узкий SSH/UFW rollback**, а НЕ автоматическую очистку ОС. Полное восстановление — через проверенный snapshot VPS. См. [инструкцию r27](docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md).
+
+
+
+**Дополнение r26 (staging):** `--finalmask defaults|status|snippet|menu|enable|disable` позволяет отдельно выбрать включение/выключение и параметры `lengths` (байты), `delays` (мс), `maxSplit` (разбиения) для **клиентского исходящего VLESS Xray JSON**. Установка ноды/Panel/клиент не модифицируется, по умолчанию FinalMask выключен. Опционально `--transport-readiness --xray-bin` проверяет конфигурации установленным Xray (`run -test`), а `--measure-compare` сопоставляет уже имеющиеся прямые HTTPS/iperf3 отчёты без утверждений о скорости VPN. [Подробности и примеры чисел](docs/RELEASE_2.5.18_R26_FINALMASK_TRANSPORT_QA.md). Это не подтверждает эффективность маскировки от DPI или законченную установку Hysteria2/AWG2.
+
+**Дополнение r25 (staging):** исправлены повторные откаты после прерывания операций сайта и ограниченного сетевого тюнинга; `--transport-readiness` проверяет приватные шаблоны XHTTP/TLS, Hysteria2 и AmneziaWG2 только на согласованность, **не** устанавливает сервис и всегда требует отдельной runtime-приёмки. Ошибка опциональной темы после INSTALL_COMPLETE имеет код 20 (`CORE=PASS`, `OPTIONAL_SITE=FAILED`). Подробности: `docs/RELEASE_2.5.18_R25_TRANSACTION_AND_TRANSPORT_READINESS.md`.
+
 # 🌌 VKARMANI · NODE INSTALL
 
 **VLESS · REALITY · Vision · IPv4-only · Nginx Selfsteal**
@@ -13,11 +21,29 @@
 
 **Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
 
+**Текущий архив проекта — 2.5.18 r27 (гибридный TUI и диагностика VPS), 2026-11-05, `INCOMPLETE_STAGING_ONLY`.** Полный ZIP, поверх исходного r19 (GitHub `main` не изменён). **120 тематических сайтов:** 12 сохранённых исходных, 96 вариантов общего генератора и 12 дополнительных тематик с **собственными HTML-композициями**. 28 визуальных семейств (16 базовых + 12 отдельных). Внутри каталога находятся 1080 статических файлов, это **НЕ 1080 независимых сайтов**. Оригинальные чужие HTML/ассеты не переносились. См. [отчёт r24](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md) и [историю r23](docs/RELEASE_2.5.18_R23_OPTIONAL_TRANSPORTS_VISUAL_NETWORK.md).
+
+**Что работает:** локальная галерея 120 сайтов (`preview/site-gallery/index.html`), `site-catalog`, `site-preview`, транзакционные `site-deploy`, `site-change`, `site-rollback`, диагностика selfsteal и сети, **новая проверка Xray JSON** (`integrations/transport_profile_audit.py`) и **сравнение двух сетевых снимков** (`scripts/network_compare.py`) — исключительно чтение. **Новое в r23:** 240 визуальных проверок Chromium и контактные листы; локальный TLS/Unix PROXY v1 selfsteal-пробник, конфигурационные bundles для XHTTP/TLS/H2, Hysteria2 и AWG2, optional атомарная установка/откат Nginx-маршрута XHTTP, измерение HTTPS и TCP iperf3, узкий условный backlog tuning. **НЕ считать готовым:** новые протоколы не активируются автоматически и не подтверждены реальным Xray/AWG runtime; нагрузка удалённого VPN и DPI не измерены. Произвольные sysctl/ядра/маршруты не меняются. Безопасная установка по умолчанию сохраняет RAW/Vision/XHTTP/REALITY, Nginx, Docker и каскад без изменений.
+
+**В r24 (заход 1/2):** `bash install.sh --site-manager menu` объединяет управление всеми 120 сайтами; `--site-theme 111-atlas-docs` позволяет явно выбрать сайт для новой ordinary staging-установки (публикуется **после** `INSTALL_COMPLETE`). `--selfsteal-verify` проверяет локальную цепочку selfsteal и `nginx -t`; `--path-mtu` выполняет read-only диагностику, ICMP — только с `--probe`; `--transport-audit` подключает прежний JSON-аудитор к общему CLI. Парольный SSH сохранён; вход по ключам НЕ внедряется. **Это не полная модернизация протоколов:** их активация и измерения эффективности остаются в заходе 2. [Подробности и rollback](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md).
+
+**Локальная проверка без установки:**
+
+```bash
+python3 scripts/staging_web_deploy.py site-catalog
+python3 scripts/site_audit.py --rich
+python3 scripts/build_site_gallery.py --check
+bash install.sh --diagnose-network
+bash install.sh --diagnose-selfsteal
+python3 integrations/transport_profile_audit.py examples/inbound-raw-full.example.json --expected-domain node.example.com
+```
+
+**Просмотр сайтов:** распакуйте полный ZIP и откройте `preview/site-gallery/index.html` обычным браузером; новая тема содержит собственные HTML/CSS/SVG и внутренние страницы. Перед production — реальные staging VPS и проверяемый snapshot.
+
 <a id="github-install"></a>
 ### 🐙 1. Установка с GitHub · 2.5.18 r19 (после публикации)
 
-**Версия 2.5.18 r19 — staging; публикация в `main` и успешный GitHub Actions CI должны быть проверены отдельно.**
-При подготовке источником была опубликованная r16 (до локальной r17), коммит GitHub `580fb94dd57b680e2aa8f38b295d9563d2bca686` (2.5.15 r16). Установка со старой версии остановится на контрольной сумме. Никакой автоматической миграции действующих нод.
+**Это исторический проверяемый пример именно для r19 в GitHub, а НЕ установка r27 из ZIP.** В репозитории `main` проверен коммит r19 `d03259ee31d7692c41b7c4ac222deb3a6c5151b0`; перед любым запуском перепроверьте актуальное состояние ветки, контрольную сумму и build ID. Для работы над текущей r27 используйте **только полный ZIP ниже**. Автоматических миграций существующих узлов нет.
 
 Только **новая чистая staging VPS**: snapshot диска с проверенным восстановлением, консоль провайдера, DNS A на назначенный публичный IPv4 ноды. Выполнять от `root`:
 
@@ -46,24 +72,54 @@ bash ./install.sh
 
 Последняя команда — обычный `bash ./install.sh` **без нестандартного порта**. Node API TCP/2222 и клиентский TCP/443 остаются настройками по умолчанию. Автоперезагрузка выполняется только по штатному сценарию успешно завершённой новой установки. При неполной установке нельзя обойти `--finish-install`/fail-closed проверки.
 
-**До публикации r19 в GitHub эта команда должна отказывать по SHA-256.** Для тестирования неопубликованной сборки используйте архив ниже.
+**Эта команда относится только к r19.** Она должна отказывать по SHA-256, если содержимое ветки GitHub отличается от проверенной r19. Для текущей r27 используйте ZIP ниже.
 
 <a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.18 r19 (текущая staging-сборка)
+### 📁 2. Из полного ZIP · 2.5.18 r27 (текущая staging-сборка)
 
 Полный ZIP сначала передаётся на отдельную **чистую VPS**. Проверяйте SHA-256 архива по независимому доверенному каналу. Внутренний `SHA256SUMS` удостоверяет целостность, но не происхождение архива. Перед первым запуском — snapshot целого диска и доступная аварийная консоль хостера.
 
 ```bash
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-unzip -q Node_Install_2.5.18-docs-menu_20261021-r19-hybrid-worker-permissions.zip
+unzip -q Node_Install_2.5.18-docs-menu_20261105-r27-hybrid-menu-vps-diagnostics.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
 bash -n install.sh
 bash ./install.sh --version
+# На интерактивной VPS команда откроет новое чёрно-зелёное меню.
 bash ./install.sh
+# Альтернативы: bash ./install.sh --menu ; bash ./install.sh --install-direct
 ```
+
+**История первого захода r24:** см. [r24 release note](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md). Режимы, начатые в r23, описаны в [r23](docs/RELEASE_2.5.18_R23_OPTIONAL_TRANSPORTS_VISUAL_NETWORK.md). Скрипты новых транспортов требуют полного ZIP, не входят в отдельный `install.sh`. Безопасная установка по умолчанию не запускает их.
+
+**Каталог и предпросмотр без root:** `python3 scripts/staging_web_deploy.py site-catalog`, `python3 scripts/site_audit.py --rich` и галерея `preview/site-gallery/index.html`. Из 120 тем 12 исходных сохранены; 96 сгенерированных и 12 отдельно оформленных находятся в `site-catalog/`.
+
+**Переключение уже установленного сайта после snapshot на staging:**
+
+```bash
+sudo python3 scripts/staging_web_deploy.py site-change --theme 110-blue-harbor --expected-domain node.example.com --confirm-staging
+sudo python3 scripts/staging_web_deploy.py status
+sudo python3 scripts/staging_web_deploy.py site-rollback --confirm-staging
+```
+
+**Новая диагностика:** `bash install.sh --diagnose-selfsteal` читает локальные права доступа и конфигурацию Nginx, не передаёт секреты. `--diagnose-network` теперь показывает TCP buffers, softnet, listen drops и socket counters. Только чтение.
+
+**Новая read-only проверка VPN-профиля:** `python3 integrations/transport_profile_audit.py path/to/profile.json --expected-domain node.example.com` проверяет связку RAW/REALITY/Vision или XHTTP/REALITY, Unix-сокет, `xver`, SNI и правила fail-closed каскада. Печатает только коды ошибок, без ключей и IP клиентов. Это не доказательство реальной работы VPN. Сетевой отчёт по двум снимкам: `python3 scripts/network_compare.py before.json after.json --seconds 60` — сравнивает накопительные счётчики как интервальные изменения, не обещая ускорения.
+
+**Не запускайте установку ZIP на рабочей VPS.** Дополнительные страницы включаются отдельно, только после полной успешной установки на новой staging VPS и проверки snapshot. Пример для уже готовой тестовой ноды (укажите свой реальный FQDN):
+
+```bash
+sudo python3 scripts/staging_web_deploy.py site-deploy --theme 01-atelier --expected-domain node.example.com --rich-pages --confirm-staging
+sudo python3 scripts/staging_web_deploy.py status
+# Если требуется вернуть предыдущую версию сайта:
+sudo python3 scripts/staging_web_deploy.py site-rollback --confirm-staging
+```
+
+Встроенный `install.sh` **не включает rich pages автоматически**, RAW/Vision/XHTTP/REALITY, сертификаты, Panel, Bridge и Nginx Stream не изменены. Команда развёртывания имеет обязательные проверки exact allowlist Nginx, TLS 1.3, HTTP/2 и реального HTTPS-ответа страниц. При ошибке автоматически откатывает собственные файлы, а при неполном откате останавливается с явным требованием ручного восстановления. Это не замена полному VPS snapshot.
+
 
 **Диагностика сети и нескольких IPv4 без изменения настроек:**
 
@@ -916,7 +972,7 @@ sudo bash ./install.sh --rkn-sync-panel
 <a id="verification"></a>
 ## ✅ Проверки и границы готовности
 
-**Статус:** 2.5.15 r16 — локальная непубликованная staging-сборка поверх опубликованной 2.5.13 r12. Тесты исходников проводятся автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
+**Статус:** 2.5.18 r27 (гибридное меню и offline-проверки) — полный ZIP staging-candidate поверх опубликованной в GitHub 2.5.18 r19. Новые сайты и сетевая диагностика проверяются автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
 
 ```bash
 bash -n install.sh
@@ -932,17 +988,19 @@ sudo bash ./install.sh --check
 
 **Для двухсерверной приёмки** нужны: живой клиент, внешний IPv4 именно Exit, HTTPS через SOCKS, DNS A через UDP ASSOCIATE, отдельный UDP echo, фазы `baseline → outage → recovery`, проверка отсутствия DIRECT/DNS утечек на Entry и восстановления после reboot. Скрипт `scripts/cascade_live_probe.py` **не останавливает Exit** — это делает оператор **только на TEST VPS**, с независимой фиксацией факта. [Live-процедура, параметры и безопасность](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
 
-| Гейт | Статус r15 |
+| Гейт | Статус r27 |
 |---|---|
-| Генерация/синтаксис профилей и offline-регрессии | Подготовлены; перепроверяются в точной сборке |
-| Полная установка на новую VPS, Remnawave Panel, сертификаты | **NOT RUN** |
-| REALITY-клиент, TCP/UDP/DNS, внешний IP, отключение Exit | **NOT RUN** |
-| Restore snapshot, reboot, 24-часовая нагрузка | **NOT RUN** |
+| Исходные профили, генераторы, offline-регрессии | Проверяются на чистой ZIP-распаковке |
+| 120 × desktop/mobile Chromium снимков | **240/240** без автоматических ошибок компоновки; ручные листы включены |
+| Изолированный Nginx, TLS на Unix-сокете, PROXY v1 | Проверено локально с тестовым сертификатом |
+| Новые XHTTP/Hysteria2/AWG2 на реальном Xray/AWG | **НЕ ПРОВЕРЕНО — не активируются автоматически** |
+| Реальный удалённый iperf3/VPN throughput и DPI | **НЕ ИЗМЕРЯЛИСЬ** |
+| Полная проверка Panel и клиентов на VPS | **Исключена из задания владельцем** |
 
 ---
 
 <div align="center">
 
-**VKARMANI · 2.5.15** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
+**VKARMANI · 2.5.18 r27** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
 
 </div>

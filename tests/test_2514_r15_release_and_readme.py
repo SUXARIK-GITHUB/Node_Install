@@ -43,8 +43,10 @@ class Release2514Tests(unittest.TestCase):
         command = self.readme.split(heading, 1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         self.assertEqual(subprocess.run(['bash', '-n'], input=command, text=True,
                                         capture_output=True).returncode, 0)
-        expected = hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest()
-        self.assertIn(expected, command)
+        # This section documents the published historical r19 source, not local r20.
+        historical_r19_sha256 = '272c7561e2cab7e0a84c55e715ba04781954c2e49aeb6f0c33ab822dd51c5496'
+        self.assertIn(historical_r19_sha256, command)
+        self.assertNotEqual(historical_r19_sha256, hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest())
         self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git', command)
         self.assertIn('sha256sum --check SHA256SUMS', command)
         self.assertIn('python3 scripts/verify_release.py --root .', command)
@@ -52,17 +54,22 @@ class Release2514Tests(unittest.TestCase):
         self.assertIn('bash ./install.sh\n', command + '\n')
         self.assertNotIn('--node-port', command)
         self.assertNotIn('curl | bash', command)
-        self.assertIn('Для тестирования неопубликованной сборки используйте архив', self.readme)
+        manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
+        release = manifest['build_id'].split('-', 2)[1]
+        self.assertIn(f'Для текущей {release} используйте ZIP ниже', self.readme)
 
     def test_archive_command_consistent_with_manifest_build(self):
-        filename='Node_Install_2.5.18-docs-menu_20261021-r19-hybrid-worker-permissions.zip'
+        manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
+        filename=f'Node_Install_2.5.18-docs-menu_{manifest["build_id"]}.zip'
         self.assertIn('unzip -q ' + filename, self.readme)
         self.assertNotIn('bash ./install.sh --node-port 32443', self.readme)
         self.assertIn('NODE_PORT_DEFAULT=2222', SCRIPT)
-        self.assertIn('## 2.5.18 r19', (ROOT/'CHANGELOG.md').read_text().splitlines()[0])
-        manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
+        release = manifest['build_id'].split('-', 2)[1]
+        self.assertIn('## 2.5.18 ' + release, (ROOT/'CHANGELOG.md').read_text().splitlines()[0])
         self.assertEqual(manifest['version'], '2.5.18')
-        self.assertEqual(manifest['build_id'], '20261021-r19-hybrid-worker-permissions')
+        # The source/ZIP verification checks hashes; the release regex must not reject
+        # the next legitimate r24/r25 staging revision solely due to its number.
+        self.assertRegex(manifest['build_id'], r'^20261105-r[0-9]{2}-[A-Za-z0-9_.-]+$')
         self.assertEqual(manifest['release_status'], 'INCOMPLETE_STAGING_ONLY')
 
 

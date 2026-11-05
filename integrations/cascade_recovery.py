@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Create and VERIFY a limited local, immutable cascade role-state backup.
 
-Does not include host snapshots, Panel DB, Docker volumes, secrets belonging to
-other services, or live rollback. Backup contains PRIVATE SECRET_KEY and REALITY
-material: keep offline/encrypted at rest. No restoration into live system.
+Does not include host snapshots, Panel DB, Docker volumes, remnanode.env,
+or live rollback. Backup contains PRIVATE cascade role/REALITY key material,
+but NOT the RemnaNode SECRET_KEY from remnanode.env. It cannot by itself
+restore Panel-to-Node connectivity. Keep encrypted/offline and retain a separate,
+verified VPS snapshot and Panel/database backup. No live restore command.
 """
 import argparse
 import hashlib

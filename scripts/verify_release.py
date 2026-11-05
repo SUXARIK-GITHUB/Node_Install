@@ -184,6 +184,106 @@ def verify_bytes(files):
                     'tests/test_2518_r19_hybrid_permissions.py'}
         if not expected.issubset(files):
             raise ValueError('missing r19 hybrid hotfix files')
+    if m['build_id'].startswith('20261105-r20-'):
+        expected = {'docs/RELEASE_2.5.18_R20_RICH_SITES_NETWORK.md',
+                    'integrations/network_health.py',
+                    'scripts/cover_rich.py',
+                    'scripts/site_audit.py',
+                    'tests/test_r20_network_health.py',
+                    'tests/test_r20_rich_site.py'}
+        if not expected.issubset(files):
+            raise ValueError('missing r20 rich site/network source or offline tests')
+        if '--diagnose-network' not in installer or '--rich-pages' not in files['scripts/staging_web_deploy.py'].decode():
+            raise ValueError('missing r20 CLI hooks')
+    if m['build_id'].startswith('20261105-r21-'):
+        important = {
+            'docs/RELEASE_2.5.18_R21_CATALOG_AND_SAFETY.md',
+            'scripts/site_catalog.py', 'scripts/build_site_gallery.py',
+            'integrations/selfsteal_health.py',
+            'tests/test_r21_site_catalog.py', 'tests/test_r21_site_change.py',
+            'tests/test_r21_host_diagnostics.py', 'tests/test_r21_gallery_release.py',
+            'preview/site-gallery/index.html',
+            'integrations/network_health.py', 'scripts/site_audit.py',
+            'scripts/staging_web_deploy.py',
+        }
+        if not important <= files.keys():
+            raise ValueError('R21_REQUIRED_SOURCE_MISSING: ' + repr(sorted(important-files.keys())))
+        files_per_site = {'index.html', 'journal.html', 'about.html', 'questions.html',
+                          '404.html', 'style.css', 'favicon.svg', 'robots.txt', 'sitemap.xml'}
+        catalog = {}
+        for name in files:
+            if name.startswith('site-catalog/'):
+                match = re.fullmatch(r'site-catalog/([0-9]{2,3}-[a-z0-9-]+)/([^/]+)',name)
+                if not match:
+                    raise ValueError('R21_INVALID_CATALOG_PATH: '+name)
+                catalog.setdefault(match[1],set()).add(match[2])
+        if len(catalog)!=96 or any(fs != files_per_site for fs in catalog.values()):
+            raise ValueError('R21_CATALOG_INCOMPLETE: expected 96 sites x 9 files')
+        if len(files['preview/site-gallery/index.html']) < 20_000:
+            raise ValueError('R21_GALLERY_MISSING_OR_INCOMPLETE')
+        if '--diagnose-selfsteal' not in installer or '--diagnose-network' not in installer:
+            raise ValueError('R21_MISSING_READONLY_DIAGNOSTICS')
+        deployed=files['scripts/staging_web_deploy.py'].decode('utf-8')
+        if 'site-change' not in deployed or 'site-preview' not in deployed or 'site-catalog' not in deployed:
+            raise ValueError('R21_MISSING_THEME_MANAGEMENT')
+        if '108' not in readme.split('---',1)[0]:
+            raise ValueError('R21_README_SITE_COUNT_MISSING')
+    if m['build_id'].startswith('20261105-r22-'):
+        required = {
+            'docs/RELEASE_2.5.18_R22_SIGNATURE_SITES_TRANSPORT_NETWORK.md',
+            'scripts/signature_sites.py', 'integrations/transport_profile_audit.py',
+            'scripts/network_compare.py', 'tests/test_r22_signature_sites.py',
+            'tests/test_r22_transport_profile_audit.py', 'tests/test_r22_network_compare.py',
+            'scripts/site_catalog.py', 'scripts/site_audit.py', 'scripts/staging_web_deploy.py',
+            'preview/site-gallery/index.html'
+        }
+        if not required <= files.keys():
+            raise ValueError('R22_REQUIRED_SOURCE_MISSING: '+repr(sorted(required-files.keys())))
+        expected_per_site = {'index.html', 'journal.html', 'about.html', 'questions.html',
+                             '404.html', 'style.css', 'favicon.svg', 'robots.txt', 'sitemap.xml'}
+        catalog = {}
+        for path in files:
+            if path.startswith('site-catalog/'):
+                match = re.fullmatch(r'site-catalog/([0-9]{2,3}-[a-z0-9-]+)/([^/]+)',path)
+                if not match:
+                    raise ValueError('R22_BAD_CATALOG_PATH')
+                catalog.setdefault(match[1],set()).add(match[2])
+        if len(catalog)!=108 or any(entries!=expected_per_site for entries in catalog.values()):
+            raise ValueError('R22_CATALOG_INCOMPLETE: expected 108 x 9')
+        bespoke = {p for p in catalog if int(p.split('-',1)[0]) in range(109,121)}
+        if len(bespoke)!=12:
+            raise ValueError('R22_BESPOKE_CATALOG_INCOMPLETE')
+        gallery = files['preview/site-gallery/index.html']
+        if gallery.count(b'../../site-catalog/') < 108:
+            raise ValueError('R22_GALLERY_MISSING_NEW_SITES')
+        if '120' not in readme.split('---',1)[0] or 'r22' not in readme.split('---',1)[0]:
+            raise ValueError('R22_README_BUILD_ID_OR_COUNT_INCONSISTENT')
+        transport = files['integrations/transport_profile_audit.py']
+        if b'SELFSTEAL_UNIX_PROXY_PROTOCOL_VERSION_MISMATCH' not in transport or b'CASCADE_ENTRY_FAIL_CLOSED' not in transport:
+            raise ValueError('R22_TRANSPORT_AUDITOR_MISSING_GATES')
+    if m['build_id'].startswith('20261105-r24-'):
+        required = {
+            'scripts/site_manager.py', 'integrations/selfsteal_chain.py',
+            'integrations/path_mtu_diagnostics.py',
+            'tests/test_r24_phase1_site_selfsteal_mtu.py',
+            'docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md',
+            'scripts/staging_web_deploy.py', 'integrations/transport_profile_audit.py',
+            'preview/site-gallery/index.html',
+        }
+        if not required <= files.keys():
+            raise ValueError('R24_MISSING_PHASE1_SOURCES')
+        for flag in ('--site-manager', '--site-theme', '--selfsteal-verify',
+                     '--path-mtu', '--transport-audit'):
+            if flag not in installer:
+                raise ValueError('R24_MISSING_PHASE1_CLI_' + flag)
+        manager = files['scripts/site_manager.py'].decode('utf-8')
+        if 'installer_lock' not in manager or '--confirm-staging' not in manager:
+            raise ValueError('R24_SITE_MANAGER_TRANSACTION_GATES_MISSING')
+        if 'r24' not in readme.split('---',1)[0] or '120' not in readme.split('---',1)[0]:
+            raise ValueError('R24_README_STATUS_OR_CATALOG_MISSING')
+        # The user explicitly requires password login on nodes; no new key login.
+        if 'PubkeyAuthentication no' not in installer or 'PasswordAuthentication yes' not in installer:
+            raise ValueError('R24_PASSWORD_SSH_COMPATIBILITY_BROKEN')
     expected_archive = 'Node_Install_2.5.18-docs-menu_' + m['build_id'] + '.zip'
     if expected_archive not in readme.split('---', 1)[0]:
         raise ValueError('README release command/build ID inconsistent')

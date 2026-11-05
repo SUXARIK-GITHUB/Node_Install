@@ -7269,13 +7269,33 @@ VK_CASCADE_ACTIVE=0
 VK_CASCADE_BUNDLE_SHA=''
 VK_CASCADE_HELPER=''
 VK_REALITY_MODE='local'  # saved with initial inputs; ordinary only
+VK_INITIAL_SITE_THEME=''  # optional first-install site, no SSH/network defaults changed
+VK_WIZARD_INPUT_FD=''  # anonymous inherited Linux memfd, never argv/env secret
+VK_DIRECT_REALITY_MODE=''  # explicit only with reviewed wizard channel
 
 usage() {
     cat <<'HELP'
 VKarmani Remnawave Node Installer 2.5.18
 
-  sudo bash install.sh                         # установка + один auto-reboot после успешных проверок
+  sudo bash install.sh                         # НОВОЕ: гибридное чёрно-зелёное меню в интерактивном TTY
+  sudo bash install.sh --menu                  # то же самое явно, без системных изменений до выбора
+  sudo bash install.sh --install-direct        # прежний интерактивный прямой установщик (без wizard UI)
+  bash install.sh --vps-check local            # быстрая read-only VPS-диагностика
+  bash install.sh --vps-check services         # HTTPS-доступность сайтов/API; только по выбору
+  bash install.sh --vps-check ping --host github.com # ICMP, потери, средняя задержка
+  bash install.sh --vps-check quality --host github.com # HTTPS jitter/p50/p95
+  bash install.sh --vps-check trace --host github.com # hops/traceroute, если установлен
+  bash install.sh --vps-check speed --server OWN_PUBLIC_IPV4 # bounded iperf3 к СВОЕМУ серверу
+  bash install.sh --removal-plan plan           # безопасный обзор состояния и checkpoint
+  sudo bash install.sh --removal-plan recover-network --confirm-network-only # только вооруженный SSH/UFW rollback
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
+  sudo bash install.sh --site-theme 111-atlas-docs --no-reboot # выбрать сайт при новой staging-установке
+  bash install.sh --site-manager list             # каталог 120 тем, только чтение
+  bash install.sh --site-manager menu             # интерактивное управление сайтом на завершённой staging-ноде
+  bash install.sh --site-manager preview --theme 111-atlas-docs --output /tmp/site-preview
+  sudo bash install.sh --site-manager deploy --theme 111-atlas-docs --expected-domain node.example.com --confirm-staging
+  sudo bash install.sh --site-manager change --theme 116-vinyl-room --expected-domain node.example.com --confirm-staging
+  sudo bash install.sh --site-manager rollback --confirm-staging
   sudo bash install.sh --cascade-role entry --cascade-bundle /root/entry/role-bundle.json --no-reboot
   sudo bash install.sh --cascade-role exit --cascade-bundle /root/exit/role-bundle.json --no-reboot
       # Только ДВЕ НОВЫЕ выделенные staging VPS; нужные исходники integrations/ из этого ZIP
@@ -7298,6 +7318,24 @@ VKarmani Remnawave Node Installer 2.5.18
   sudo bash install.sh --diagnose-resources    # 3-секундный срез ресурсов, без настройки
   bash install.sh --diagnose-node --domain node.example.com # IPv4, DNS, routing, conntrack, TCP; только чтение
   bash install.sh --diagnose-quality --seconds 15    # агрегированное RTT/retrans TCP/443, без IP клиентов
+  bash install.sh --diagnose-network                 # ядро TCP, qdisc, NIC, conntrack; только чтение
+  bash install.sh --diagnose-selfsteal               # права сокетов, Nginx и сайт, без секретов; только чтение
+  bash install.sh --selfsteal-verify [--public-check] # локальный TLS+PROXY+Nginx; только чтение
+  bash install.sh --path-mtu --target YOUR_OWN_IPV4 [--probe] # route/link; ICMP лишь при --probe
+  bash install.sh --transport-audit examples/inbound-raw-full.example.json # статический JSON аудит
+  bash install.sh --transport-readiness xhttp-tls --bundle /root/xhttp-private --expected-domain node.example.com # проверка приватного bundle; REVIEW не означает рабочий VPN
+  bash install.sh --finalmask defaults          # опциональные числа TCP FinalMask, выключен по умолчанию
+  bash install.sh --finalmask snippet --output /root/private/finalmask-snippet.json --lengths 80-160 --delays 0-5 --max-split 2-4 # только фрагмент JSON
+  bash install.sh --finalmask status --input /root/private/client.json --outbound-tag proxy # проверить текущий FinalMask, только чтение
+  bash install.sh --finalmask menu --input /root/private/client.json --output /root/private/client-variant.json --outbound-tag proxy # включить/выключить (client outbound)
+  bash install.sh --finalmask enable --input /root/private/client.json --output /root/private/client-variant.json --outbound-tag proxy --lengths 80-160 --delays 0-5 --max-split 2-4
+  bash install.sh --finalmask disable --input /root/private/client.json --output /root/private/client-no-mask.json --outbound-tag proxy
+  bash install.sh --selfsteal-runtime-probe --domain node.example.com --socket /run/vkarmani-selfsteal/cover.sock --proxy-v1 # TLS на локальном Unix-сокете
+  bash install.sh --quality-probe --domain node.example.com --ip 203.0.113.10 --samples 8 # HTTPS-метрики; укажите СВОЙ публичный IP
+  bash install.sh --throughput-probe --server 203.0.113.10 --seconds 5 # TCP скорость к СВОЕМУ iperf3 серверу; опционально
+  bash install.sh --optional-transport xhttp-tls --domain node.example.com --output /root/xhttp-private # приватные STAGING шаблоны, не активирует ноду
+  bash install.sh --network-tuning plan before.json after.json --seconds 60 # только план; apply требует --confirm-staging
+  bash install.sh --measure-compare before.json after.json # сравнить локальные отчёты HTTPS/iperf3, не VPN/DPI
   sudo bash install.sh --enable-rkn-guard      # подключить rkn-guard data на готовой 2.5.2–2.5.18 ноде
   sudo bash install.sh --rkn-update            # немедленно обновить IPv4-список с GitHub
   sudo bash install.sh --rkn-sync-panel        # обновить исключение IP панели без GitHub
@@ -7344,6 +7382,16 @@ while (($#)); do
                 echo '--cascade-bundle must be one absolute root-private file path' >&2; exit 2;
             }
             VK_CASCADE_BUNDLE_ARG=$2; shift 2 ;;
+        --wizard-input-fd)
+            [[ $# -ge 2 && -z "$VK_WIZARD_INPUT_FD" && "$2" =~ ^[0-9]{1,3}$ ]] || { echo 'STOP: invalid wizard input descriptor' >&2; exit 2; }
+            VK_WIZARD_INPUT_FD=$2; shift 2 ;;
+        --reality-mode)
+            [[ $# -ge 2 && -z "$VK_DIRECT_REALITY_MODE" ]] || { echo 'STOP: invalid explicit REALITY mode' >&2; exit 2; }
+            case "$2" in local|max.ru|ya.ru|rutube.ru|mail.ru) ;; *) echo 'STOP: unsupported REALITY' >&2; exit 2 ;; esac
+            VK_DIRECT_REALITY_MODE=$2; shift 2 ;;
+        --site-theme)
+            [[ $# -ge 2 && -z "$VK_INITIAL_SITE_THEME" ]] || { echo 'STOP: --site-theme requires exactly one ID' >&2; exit 2; }
+            VK_INITIAL_SITE_THEME=$2; shift 2 ;;
         --node-port)
             [[ $# -ge 2 && -z "$NODE_PORT_ARG" ]] || { echo '--node-port must be specified once' >&2; exit 2; }
             NODE_PORT_ARG=$2; shift 2 ;;
@@ -7355,6 +7403,11 @@ while (($#)); do
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
+if [[ -n "$VK_DIRECT_REALITY_MODE" && -z "$VK_WIZARD_INPUT_FD" ]] ||
+   [[ -n "$VK_WIZARD_INPUT_FD" && -z "$VK_DIRECT_REALITY_MODE" && -z "$VK_CASCADE_ROLE_ARG" ]]; then
+    echo 'STOP: wizard fd and REALITY mode must be supplied together for ordinary node' >&2
+    exit 2
+fi
 # Only a fresh Ordinary enrollment can choose the management port; 61001 is
 # reserved by Remnawave. The client port remains TCP/443 in this release.
 if [[ -n "$NODE_PORT_ARG" ]]; then
@@ -7434,6 +7487,42 @@ vk_collect_inputs() {
         vk_validate_ipv4 "$VK_INPUT_PANEL_IP" && vk_validate_domain "$VK_INPUT_DOMAIN" || return 1
         unset saved
         printf 'Продолжение: три значения восстановлены из закрытого inputs.pending; вопросов нет.\n'
+        return 0
+    fi
+    if [[ -n "${VK_WIZARD_INPUT_FD:-}" ]]; then
+        # A sealed anonymous descriptor from the reviewed interactive Python UI.
+        # Neither the credential nor the answers are carried in argv/env/stdout.
+        [[ "$VK_WIZARD_INPUT_FD" =~ ^[0-9]{1,3}$ && "$VK_WIZARD_INPUT_FD" -ge 3 ]] || {
+            vk_input_error 'invalid wizard descriptor'; return 2;
+        }
+        [[ -e "/proc/self/fd/$VK_WIZARD_INPUT_FD" ]] || {
+            vk_input_error 'wizard descriptor not inherited'; return 2;
+        }
+        local fd_identity
+        fd_identity=$(readlink -- "/proc/self/fd/$VK_WIZARD_INPUT_FD") || return 2
+        [[ "$fd_identity" == /memfd:node-install-input\ \(deleted\) || "$fd_identity" == memfd:node-install-input\ \(deleted\) ]] || {
+            vk_input_error 'wizard accepts only anonymous memfd; no secret file'; return 2;
+        }
+        unset fd_identity
+        IFS= read -r -u "$VK_WIZARD_INPUT_FD" VK_INPUT_SECRET || { vk_input_error 'wizard secret missing'; return 2; }
+        IFS= read -r -u "$VK_WIZARD_INPUT_FD" VK_INPUT_DOMAIN || { vk_input_error 'wizard domain missing'; return 2; }
+        IFS= read -r -u "$VK_WIZARD_INPUT_FD" VK_INPUT_PANEL_IP || { vk_input_error 'wizard panel IPv4 missing'; return 2; }
+        local extra_line=''
+        if IFS= read -r -u "$VK_WIZARD_INPUT_FD" extra_line; then
+            vk_input_error 'wizard channel contains unexpected extra data'; return 2;
+        fi
+        exec {VK_WIZARD_INPUT_FD}<&- || return 2
+        VK_INPUT_SECRET=$(vk_trim "$VK_INPUT_SECRET")
+        if [[ "$VK_INPUT_SECRET" == SECRET_KEY=* ]]; then VK_INPUT_SECRET=${VK_INPUT_SECRET#SECRET_KEY=}; fi
+        [[ "${#VK_INPUT_SECRET}" -ge 64 && "${#VK_INPUT_SECRET}" -le 65536 && "$VK_INPUT_SECRET" =~ ^[A-Za-z0-9_+/=-]+$ ]] || {
+            unset VK_INPUT_SECRET; vk_input_error 'invalid secret from wizard'; return 2;
+        }
+        VK_INPUT_DOMAIN=$(vk_trim "$VK_INPUT_DOMAIN")
+        VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN,,}; VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN%.}
+        vk_validate_domain "$VK_INPUT_DOMAIN" && vk_validate_ipv4 "$VK_INPUT_PANEL_IP" || {
+            unset VK_INPUT_SECRET; vk_input_error 'invalid wizard domain or IPv4'; return 2;
+        }
+        echo 'WIZARD_INPUT=VALIDATED (secret never shown)'
         return 0
     fi
     command -v stty >/dev/null || { vk_input_error 'Требуется stty (coreutils).'; return 1; }
@@ -7556,6 +7645,38 @@ vk_initial_install_menu() {
     return 2
 }
 [[ $EUID -eq 0 ]] || { echo 'Запустите через sudo bash или от root.' >&2; exit 1; }
+# Validate an explicit site choice BEFORE any APT, SSH, firewall, or boot changes.
+if [[ -n "$VK_INITIAL_SITE_THEME" ]]; then
+    [[ "$VK_INITIAL_SITE_THEME" =~ ^[0-9]{2,3}-[a-z0-9-]{2,72}$ ]] || {
+        echo 'STOP: --site-theme expects a reviewed catalog ID (see --site-manager list)' >&2; return 2;
+    }
+    VK_SITE_SOURCE_ROOT="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    [[ -f "$VK_SITE_SOURCE_ROOT/scripts/staging_web_deploy.py" && ! -L "$VK_SITE_SOURCE_ROOT/scripts/staging_web_deploy.py" &&
+       ( -f "$VK_SITE_SOURCE_ROOT/cover-variants/$VK_INITIAL_SITE_THEME/index.html" ||
+         -f "$VK_SITE_SOURCE_ROOT/site-catalog/$VK_INITIAL_SITE_THEME/index.html" ) ]] || {
+        echo 'STOP: --site-theme requires the full reviewed site catalog ZIP' >&2; return 2;
+    }
+    [[ -z "$VK_CASCADE_ROLE_ARG" && -z "$VK_CASCADE_BUNDLE_ARG" && $VK_CASCADE_ACTIVE -eq 0 &&
+       ! -e "$STATE/INSTALL_COMPLETE" && ! -e "$STATE/finalization" && ! -e "$STATE/role.json" ]] || {
+        echo 'STOP: --site-theme allowed only on fresh ordinary staging enrollment; for completed node use --site-manager' >&2; return 2;
+    }
+    # A selected site is executable Python+HTML from this archive; verify the
+    # complete local ZIP tree and checksums before modifying any host state.
+    [[ -f "$VK_SITE_SOURCE_ROOT/scripts/verify_release.py" &&
+       ! -L "$VK_SITE_SOURCE_ROOT/scripts/verify_release.py" ]] || {
+        echo 'STOP: --site-theme requires a complete source ZIP with verified manifest checksums' >&2; return 2;
+    }
+    command -v python3 >/dev/null || {
+        echo 'STOP: Python3 required BEFORE using --site-theme; host unchanged' >&2; return 2;
+    }
+    if ! python3 -I -B "$VK_SITE_SOURCE_ROOT/scripts/verify_release.py" \
+           --root "$VK_SITE_SOURCE_ROOT" >/dev/null; then
+        echo 'STOP: site source tree/manifest verification failed; host unchanged' >&2
+        return 2
+    fi
+    # This flag is an explicit staging opt-in. It will not weaken node key/SSH policies.
+fi
+
 # No role migration or implicit ordinary downgrade. These tests precede host writes.
 if [[ -n "$VK_CASCADE_ROLE_ARG" || -n "$VK_CASCADE_BUNDLE_ARG" ]]; then
     [[ -n "$VK_CASCADE_ROLE_ARG" && -n "$VK_CASCADE_BUNDLE_ARG" ]] || {
@@ -7573,15 +7694,30 @@ if [[ -e "$STATE/role.json" || -e "$ETC/cascade-role.json" || -L "$STATE/role.js
 fi
 # The interactive menu is only for NEW unowned hosts, not pending resumptions.
 if [[ ! -e "$STATE/owned-installation" && ! -e "$STATE/INSTALL_COMPLETE" && ! -e "$STATE/finalization" && ! -e "$ETC/config.json" && $VK_CASCADE_ACTIVE -eq 0 && -z "$VK_CASCADE_ROLE_ARG" ]]; then
-    vk_initial_install_menu || return $?
+    if [[ -n "$VK_WIZARD_INPUT_FD" ]]; then
+        VK_REALITY_MODE=$VK_DIRECT_REALITY_MODE
+    else
+        # Redundant fail-closed readback immediately before the legacy menu.
+        [[ ! -e "$STATE/owned-installation" ]] || { echo 'STOP: owned node cannot enter initial menu' >&2; return 2; }
+        vk_initial_install_menu || return $?
+    fi
 fi
 if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then VK_CASCADE_ACTIVE=1; fi
+if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$VK_INITIAL_SITE_THEME" ]]; then
+    echo 'STOP: --site-theme is reserved for a new ordinary node; cascade role must not publish an unreviewed cover.' >&2
+    return 2
+fi
 if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$NODE_PORT_ARG" ]]; then
     echo 'STOP: --node-port is reserved for a new Ordinary node; cascade ports must match the reviewed role bundle.' >&2
     return 2
 fi
 if [[ $VK_CASCADE_ACTIVE -eq 1 && $WEEKLY_REBOOT -eq 1 ]]; then
     echo 'STOP: cascade weekly reboot requires peer coordination and is prohibited.' >&2; return 2
+fi
+if [[ -n "$VK_WIZARD_INPUT_FD" ]] &&
+   { [[ -e "$STATE/owned-installation" || -e "$STATE/INSTALL_COMPLETE" || -e "$STATE/finalization" || -e "$ETC/config.json" ]]; }; then
+    echo 'STOP: wizard cannot overwrite/resume existing installation; inspect saved state' >&2
+    return 2
 fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     [[ -z "$NODE_PORT_ARG" ]] || { echo "STOP: --node-port cannot migrate an installed node; no changes." >&2; return 2; }
@@ -9922,7 +10058,28 @@ stage 'Сохранение финальной фазы: NTP/приёмка → 
 vk_write_finalizer_helper "$LIB/finalize_install.py"
 python3 -I -B "$LIB/finalize_install.py" prepare
 python3 -I -B "$LIB/finalize_install.py" finish
-stage 'Установка завершена; проверки ДО перезагрузки пройдены'
+# An optional theme failure is NOT a failed core installation. Keep a
+# machine-readable partial result and return a distinct code after reporting.
+VK_SITE_PARTIAL_FAILURE=0
+if [[ -n "${VK_INITIAL_SITE_THEME:-}" ]]; then
+    stage 'Явно выбранный сайт: атомарная публикация после успешного INSTALL_COMPLETE'
+    # The existing staging engine has its own locked receipt, ownership checks,
+    # Nginx/HTTPS probes and exact-file rollback. Never reconfigure SSH/Docker.
+    if python3 -B "$VK_SITE_SOURCE_ROOT/scripts/staging_web_deploy.py" site-deploy \
+           --theme "$VK_INITIAL_SITE_THEME" --expected-domain "$DOMAIN" \
+           --rich-pages --confirm-staging; then
+        echo "SITE_THEME=PASS theme=$VK_INITIAL_SITE_THEME"
+    else
+        echo 'SITE_THEME=STOP; core node committed; original site rollback attempted; check journal for pending recovery.' >&2
+        echo 'AUTO_REBOOT=DISABLED_AFTER_OPTIONAL_SITE_FAILURE; review site journal and provider snapshot.' >&2
+        NO_REBOOT=1
+        VK_SITE_PARTIAL_FAILURE=1
+    fi
+fi
+if (( VK_SITE_PARTIAL_FAILURE )); then
+    echo 'CORE_NODE=COMMITTED; OPTIONAL_SITE=FAILED; see final INSTALL_RESULT' >&2
+fi
+stage 'Установка завершена; проверки ДО перезагрузки пройдены' 
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"
 printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
 printf 'Внешний firewall хостера (если есть): разрешить TCP/%s от %s к Node Address, указанному в панели.\n' "$NODE_PORT" "${PANEL_IPS[*]}"
@@ -9965,6 +10122,15 @@ if [[ $NO_REBOOT -eq 0 ]]; then
 else
     echo 'AUTO_REBOOT=DISABLED_BY_FLAG. Выполните sudo reboot после проверки второго парольного SSH-входа.'
 fi
+if (( VK_SITE_PARTIAL_FAILURE )); then
+    # The finalizer already committed INSTALL_COMPLETE. Do not invoke on_error:
+    # it would incorrectly create INSTALL_FAILED and corrupt a healthy node.
+    echo 'INSTALL_RESULT=PARTIAL CORE=PASS OPTIONAL_SITE=FAILED AUTO_REBOOT=DISABLED' >&2
+    echo 'EXIT_CODE=20; inspect site journal and retry only via --site-manager deploy/rollback.' >&2
+    trap - ERR INT TERM HUP
+    return 20
+fi
+echo 'INSTALL_RESULT=PASS CORE=PASS OPTIONAL_SITE=PASS_OR_NOT_REQUESTED'
 
 }
 vkarmani_repair_main() {
@@ -10849,15 +11015,531 @@ if __name__ == '__main__':
 VK_CONNECTION_QUALITY_PY
 }
 
+# R20: inspect host TCP/qdisc/NIC without changing the host.
+# Bundled copy keeps the read-only command usable from standalone install.sh.
+vkarmani_network_health_main() {
+    python3 -I -B - "$@" <<'VK_NETWORK_HEALTH_PY'
+#!/usr/bin/env python3
+"""Read-only, privacy-limited host network diagnostics for VKarmani nodes.
+
+Never changes sysctl, qdisc, interfaces, routes or firewall. Does not resolve
+names, send traffic, print gateways, NIC addresses, peers, MACs or secret data.
+Snapshot counters are cumulative; this is NOT a throughput benchmark.
+"""
+import argparse
+import json
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+MAX_OUTPUT = 512 * 1024
+IFNAME = re.compile(r'[A-Za-z0-9_.:@-]{1,64}\Z')
+PARAMS = {
+    'congestion_control': 'net/ipv4/tcp_congestion_control',
+    'available_congestion_controls': 'net/ipv4/tcp_available_congestion_control',
+    'default_qdisc': 'net/core/default_qdisc',
+    'tcp_mtu_probing': 'net/ipv4/tcp_mtu_probing',
+    'ip_forward': 'net/ipv4/ip_forward',
+    'rp_filter_all': 'net/ipv4/conf/all/rp_filter',
+    'somaxconn': 'net/core/somaxconn',
+    'tcp_max_syn_backlog': 'net/ipv4/tcp_max_syn_backlog',
+    'tcp_rmem': 'net/ipv4/tcp_rmem',
+    'tcp_wmem': 'net/ipv4/tcp_wmem',
+    'rmem_max': 'net/core/rmem_max',
+    'wmem_max': 'net/core/wmem_max',
+    'tcp_fastopen': 'net/ipv4/tcp_fastopen',
+    'ip_local_port_range': 'net/ipv4/ip_local_port_range',
+    'ipv6_disabled': 'net/ipv6/conf/all/disable_ipv6',
+}
+
+
+def run(argv):
+    if argv[0] not in ('ip', 'tc') or not shutil.which(argv[0]):
+        return None
+    try:
+        p = subprocess.run(argv, text=True, capture_output=True,
+                           stdin=subprocess.DEVNULL, timeout=5, check=False)
+        if p.returncode or len(p.stdout) > MAX_OUTPUT:
+            return None
+        return p.stdout
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+        return None
+
+
+def read(path):
+    try:
+        value = Path(path).read_bytes()
+        if len(value) > MAX_OUTPUT:
+            return None
+        return value.decode('ascii', errors='strict').strip()
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
+def default_interface(payload):
+    """Select an unambiguous primary IPv4 route, without emitting gateways."""
+    try:
+        rows = json.loads(payload)
+        if not isinstance(rows, list):
+            return None, 'ROUTE_SCHEMA'
+        candidates = []
+        for row in rows:
+            if not isinstance(row, dict):
+                return None, 'ROUTE_SCHEMA'
+            if row.get('dst') not in (None, 'default', '0.0.0.0/0'):
+                continue
+            dev = row.get('dev')
+            metric = row.get('metric', 0)
+            if not isinstance(dev, str) or not IFNAME.fullmatch(dev):
+                return None, 'ROUTE_INTERFACE_INVALID'
+            if isinstance(metric, bool) or not isinstance(metric, int) or metric < 0:
+                return None, 'ROUTE_METRIC_INVALID'
+            candidates.append((metric, dev))
+        if not candidates:
+            return None, 'ROUTE_MISSING'
+        minmetric = min(item[0] for item in candidates)
+        interfaces = {dev for metric, dev in candidates if metric == minmetric}
+        if len(interfaces) != 1:
+            return None, 'ROUTE_AMBIGUOUS'
+        return next(iter(interfaces)), None
+    except (ValueError, TypeError, OverflowError):
+        return None, 'ROUTE_UNPARSEABLE'
+
+
+def qdisc_summary(payload):
+    """Keep only qdisc types/queue drops, never dump device options or handles."""
+    try:
+        rows = json.loads(payload)
+        if not isinstance(rows, list) or len(rows) > 128:
+            raise ValueError('invalid qdisc array')
+        kinds, root, drops = [], None, 0
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError('invalid qdisc row')
+            kind = row.get('kind')
+            if not isinstance(kind, str) or not re.fullmatch(r'[a-z0-9_-]{1,32}', kind):
+                raise ValueError('bad qdisc type')
+            kinds.append(kind)
+            if row.get('root') is True or row.get('parent') == 'root':
+                root = kind
+            stats = row.get('stats')
+            if isinstance(stats, dict):
+                queue = stats.get('queue') or {}
+                if isinstance(queue, dict):
+                    n = queue.get('drops', 0)
+                    if type(n) is int and n >= 0 and row.get('drops') is None:
+                        drops += n
+            n = row.get('drops')
+            if type(n) is int and n >= 0:
+                drops += n
+        if not kinds:
+            return {'verified': False, 'reason': 'EMPTY_QDISC'}
+        # A multiqueue virtio device normally has mq at root; fq may live below it.
+        effective_fq = 'fq' in kinds and (root in ('fq', 'mq', None))
+        return {'verified': True, 'root_kind': root,
+                'kinds': sorted(set(kinds)), 'fq_present': effective_fq,
+                'queue_drops_cumulative': drops}
+    except (ValueError, TypeError, OverflowError):
+        return {'verified': False, 'reason': 'QDISC_UNPARSEABLE'}
+
+
+def interface_counters(payload, expected):
+    try:
+        rows = json.loads(payload)
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise ValueError('wrong link array')
+        row = rows[0]
+        if not isinstance(row, dict) or row.get('ifname') != expected:
+            raise ValueError('wrong interface')
+        s = row.get('stats64', row.get('stats'))
+        if not isinstance(s, dict):
+            raise ValueError('statistics unavailable')
+        result = {'verified': True, 'mtu': row.get('mtu') if type(row.get('mtu')) is int else None}
+        for direction in ('rx', 'tx'):
+            entry = s.get(direction)
+            if not isinstance(entry, dict):
+                raise ValueError('missing counters')
+            for key in ('packets', 'bytes', 'dropped', 'errors'):
+                val = entry.get(key)
+                if type(val) is not int or val < 0:
+                    raise ValueError('invalid counter')
+                result[direction + '_' + key] = val
+        return result
+    except (ValueError, TypeError, OverflowError):
+        return {'verified': False, 'reason': 'LINK_COUNTERS_UNPARSEABLE'}
+
+
+def softnet_summary(raw):
+    if raw is None:
+        return {'verified': False, 'reason': 'SOFTNET_NOT_AVAILABLE'}
+    processed = dropped = squeeze = 0
+    try:
+        for line in raw.splitlines():
+            cols = line.split()
+            if len(cols) < 3:
+                raise ValueError('short row')
+            values = [int(col, 16) for col in cols[:3]]
+            processed += values[0]
+            dropped += values[1]
+            squeeze += values[2]
+        return {'verified': True, 'processed_cumulative': processed,
+                'dropped_cumulative': dropped, 'time_squeeze_cumulative': squeeze}
+    except (ValueError, OverflowError):
+        return {'verified': False, 'reason': 'SOFTNET_UNPARSEABLE'}
+
+
+def natural_number(value):
+    try:
+        if value is None or not re.fullmatch(r'[0-9]{1,18}', value):
+            return None
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+
+def _proc_columns(raw, prefix, allowed):
+    """Parse aggregate /proc/net/netstat and /proc/net/snmp two-line sections.
+
+    Return only explicitly allowed counters, never connection/peer details.
+    """
+    if raw is None:
+        return {'verified': False, 'reason': 'PROC_COUNTERS_UNAVAILABLE'}
+    lines = raw.splitlines()
+    for first, second in zip(lines, lines[1:]):
+        if not first.startswith(prefix + ':') or not second.startswith(prefix + ':'):
+            continue
+        names = first.split()[1:]
+        values = second.split()[1:]
+        if len(names) != len(values) or len(names) > 4096:
+            break
+        numbers = {}
+        for name, value in zip(names, values):
+            if name in allowed:
+                if not re.fullmatch(r'[0-9]{1,20}', value):
+                    return {'verified': False, 'reason': 'COUNTER_INVALID'}
+                numbers[name] = int(value)
+        return {'verified': bool(numbers), 'counters': numbers} if numbers else {'verified': False, 'reason': 'COUNTER_SET_NOT_FOUND'}
+    return {'verified': False, 'reason': 'PROC_COUNTERS_UNPARSEABLE'}
+
+
+def socket_counters(raw):
+    """Aggregate only socket counts; /proc/net/sockstat contains no peer IDs."""
+    if raw is None:
+        return {'verified': False, 'reason': 'SOCKSTAT_UNAVAILABLE'}
+    result = {}
+    for line in raw.splitlines():
+        parts = line.split()
+        if not parts or parts[0] not in ('TCP:', 'UDP:'):
+            continue
+        if len(parts) % 2 != 1:
+            return {'verified': False, 'reason': 'SOCKSTAT_UNPARSEABLE'}
+        for key, val in zip(parts[1::2], parts[2::2]):
+            if key in ('inuse', 'orphan', 'tw', 'alloc', 'mem'):
+                if not val.isascii() or not re.fullmatch(r'[0-9]{1,18}', val):
+                    return {'verified': False, 'reason': 'SOCKSTAT_INVALID'}
+                result[parts[0][:-1].lower() + '_' + key] = int(val)
+    return {'verified': bool(result), 'counts': result}
+
+
+TCP_COUNTERS = frozenset(('ListenOverflows', 'ListenDrops', 'TCPTimeouts',
+                          'TCPLossProbes', 'TCPLossProbeRecovery',
+                          'TCPFastOpenActiveFail', 'TCPSynRetrans', 'TCPBacklogDrop'))
+
+
+def snapshot(command=run, reader=read):
+    params = {key: reader('/proc/sys/' + path) for key, path in PARAMS.items()}
+    route = command(['ip', '-j', '-4', 'route', 'show', 'default'])
+    iface, reason = default_interface(route) if route is not None else (None, 'IP_COMMAND_UNAVAILABLE')
+    qdisc = {'verified': False, 'reason': 'ROUTE_UNAVAILABLE'}
+    counters = {'verified': False, 'reason': 'ROUTE_UNAVAILABLE'}
+    if iface is not None:
+        qraw = command(['tc', '-j', '-s', 'qdisc', 'show', 'dev', iface])
+        qdisc = qdisc_summary(qraw) if qraw is not None else {'verified': False, 'reason': 'TC_UNAVAILABLE'}
+        lraw = command(['ip', '-j', '-s', 'link', 'show', 'dev', iface])
+        counters = (interface_counters(lraw, iface) if lraw is not None
+                    else {'verified': False, 'reason': 'LINK_UNAVAILABLE'})
+    ct_current = natural_number(reader('/proc/sys/net/netfilter/nf_conntrack_count'))
+    ct_max = natural_number(reader('/proc/sys/net/netfilter/nf_conntrack_max'))
+    conntrack = {'verified': ct_current is not None and ct_max not in (None, 0),
+                 'count': ct_current, 'capacity': ct_max,
+                 'usage_percent': (round(ct_current / ct_max * 100, 2)
+                                   if ct_current is not None and ct_max not in (None, 0) else None)}
+    softnet = softnet_summary(reader('/proc/net/softnet_stat'))
+    tcp_stats = _proc_columns(reader('/proc/net/netstat'), 'TcpExt', TCP_COUNTERS)
+    sock_stats = socket_counters(reader('/proc/net/sockstat'))
+    warnings = []
+    if params['congestion_control'] != 'bbr':
+        warnings.append('BBR_NOT_ACTIVE_OR_UNVERIFIED')
+    if params['default_qdisc'] != 'fq':
+        warnings.append('FQ_DEFAULT_NOT_ACTIVE_OR_UNVERIFIED')
+    if not qdisc.get('verified'):
+        warnings.append('ACTIVE_QDISC_NOT_VERIFIED')
+    elif not qdisc.get('fq_present'):
+        warnings.append('FQ_NOT_FOUND_ON_ACTIVE_INTERFACE')
+    if conntrack['usage_percent'] is not None and conntrack['usage_percent'] >= 85:
+        warnings.append('CONNTRACK_CAPACITY_HIGH')
+    if not counters.get('verified'):
+        warnings.append('ACTIVE_INTERFACE_COUNTERS_UNVERIFIED')
+    if (tcp_stats['verified'] and (tcp_stats['counters'].get('ListenOverflows', 0) > 0
+                                   or tcp_stats['counters'].get('ListenDrops', 0) > 0)):
+        warnings.append('LISTEN_OVERFLOW_OR_DROP_SEEN_CUMULATIVE')
+    return {'schema': 1, 'status': 'REVIEW' if warnings else 'INFO',
+            'network_interface': iface, 'route_status': 'OK' if iface else reason,
+            'parameters': params, 'qdisc': qdisc,
+            'interface_counters': counters, 'softnet': softnet, 'conntrack': conntrack,
+            'tcp_host_counters': tcp_stats, 'socket_counts': sock_stats,
+            'observations': warnings,
+            'limitations': [
+                'All packet/drop counters are cumulative since reset, not measured rates',
+                'A default fq sysctl does not prove active qdisc uses fq',
+                'BBR affects host TCP, not all internal proxy or UDP traffic',
+                'No end-to-end client quality, DPI or congestion attribution is inferred',
+                'TCP counters are cumulative and cannot identify affected users',
+                'No sysctl, qdisc, MTU or buffer parameter is modified',
+            ], 'actions_performed': 'NONE'}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--strict', action='store_true')
+    args = parser.parse_args(argv)
+    result = snapshot()
+    print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True))
+    return 2 if args.strict and result['status'] != 'INFO' else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+VK_NETWORK_HEALTH_PY
+}
+
+
+vkarmani_selfsteal_health_main() {
+    local tool
+    tool=$(mktemp /tmp/vkarmani-selfsteal-diagnose.XXXXXXXX) || return 1
+    chmod 0700 "$tool" || { rm -f "$tool"; return 1; }
+    cat > "$tool" <<'VK_SELFSTEAL_HEALTH_PY'
+#!/usr/bin/env python3
+"""Read-only local selfsteal/Nginx permission audit (not a live TLS probe).
+
+No network connections; no secret, domain, client IP, certificate path or raw
+config is printed. Use /usr/local/sbin/vkarmani-selfsteal-check for live TLS and
+HTTP/2 verification on an installed node. Never changes files or services.
+"""
+import argparse
+import grp
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+
+MODES = frozenset(('local', 'max.ru', 'ya.ru', 'rutube.ru', 'mail.ru'))
+SOCKET_DIR = 'run/vkarmani-selfsteal'
+CONF = 'etc/nginx/conf.d/20-vkarmani-selfsteal.conf'
+SETTINGS = 'etc/vkarmani-node/config.json'
+INDEX = 'var/www/vkarmani-node/site/index.html'
+MAX_FILE = 512 * 1024
+
+
+def regular_bytes(path, maximum=MAX_FILE):
+    try:
+        s = path.lstat()
+        if not stat.S_ISREG(s.st_mode) or s.st_nlink != 1 or s.st_size > maximum:
+            return None
+        return path.read_bytes()
+    except (OSError, ValueError):
+        return None
+
+
+def _stat(path):
+    try:
+        if path.is_symlink():
+            return {'exists': True, 'kind': 'symlink', 'mode': None}
+        st = path.lstat()
+    except (OSError, ValueError):
+        return {'exists': False, 'kind': 'missing', 'mode': None}
+    kind = 'directory' if stat.S_ISDIR(st.st_mode) else ('socket' if stat.S_ISSOCK(st.st_mode) else 'other')
+    return {'exists': True, 'kind': kind, 'mode': f'{stat.S_IMODE(st.st_mode):04o}',
+            'uid': st.st_uid, 'gid': st.st_gid}
+
+
+def snapshot(root=Path('/')):
+    """Only whitelist paths and boolean/static metadata; no private contents."""
+    root = Path(root)
+    notes = []
+    cfg = regular_bytes(root/SETTINGS, 16384)
+    mode = 'unknown'
+    try:
+        config = json.loads(cfg) if cfg is not None else None
+        if not isinstance(config, dict):
+            raise ValueError('config not found or invalid')
+        selected = config.get('reality_mode', 'local')
+        if selected not in MODES:
+            notes.append('UNKNOWN_REALITY_MODE')
+        else:
+            mode = 'local' if selected == 'local' else 'hybrid'
+    except (ValueError, UnicodeError, TypeError):
+        notes.append('CONFIG_NOT_READABLE_OR_INVALID')
+    base = root / SOCKET_DIR
+    directory = _stat(base)
+    try:
+        worker_gid = grp.getgrnam('www-data').gr_gid
+    except KeyError:
+        worker_gid = None
+        notes.append('NGINX_WORKER_GROUP_NOT_FOUND')
+    if directory.get('kind') != 'directory':
+        notes.append('SELFSTEAL_RUNTIME_DIRECTORY_MISSING_OR_UNSAFE')
+    elif (directory['uid'] != 0 or directory['gid'] != worker_gid or
+          directory['mode'] != '0750'):
+        notes.append('SELFSTEAL_DIRECTORY_PERMISSIONS_MISMATCH')
+    # Always return only socket type and existence, never the socket contents.
+    sock_names = ('nginx.sock', 'cover.sock') if mode == 'hybrid' else ('nginx.sock',)
+    sockets = {name: _stat(base/name)['kind'] for name in sock_names}
+    for name, kind in sockets.items():
+        if kind != 'socket':
+            notes.append('REQUIRED_' + name.replace('.','_').upper() + '_MISSING')
+    config_bytes = regular_bytes(root/CONF)
+    checks = {
+        'nginx_config_readable': config_bytes is not None,
+        'expected_socket_listener': False,
+        'public_root_referenced': False,
+        'deny_unknown_routes': False,
+        'ssl_certificate_configured': False,
+    }
+    if config_bytes is None:
+        notes.append('NGINX_CONFIG_NOT_READABLE')
+    else:
+        expected = 'cover.sock' if mode == 'hybrid' else 'nginx.sock'
+        checks['expected_socket_listener'] = ('listen unix:/run/vkarmani-selfsteal/'+expected).encode() in config_bytes
+        checks['public_root_referenced'] = b'root /var/www/vkarmani-node/site;' in config_bytes
+        checks['deny_unknown_routes'] = b'location / { return 404; }' in config_bytes
+        checks['ssl_certificate_configured'] = b'ssl_certificate /etc/letsencrypt/live/' in config_bytes
+        for key, success in checks.items():
+            if not success:
+                notes.append(key.upper() + '_UNVERIFIED')
+    public_page = regular_bytes(root/INDEX,128*1024)
+    checks['public_homepage_readable'] = public_page is not None
+    if public_page is None:
+        notes.append('PUBLIC_HOMEPAGE_MISSING_OR_UNSAFE')
+    # No credential/IP/domain leakage; stable, machine-readable status.
+    return {'schema': 1, 'status': 'REVIEW' if notes else 'STATIC_CHECKS_OK',
+            'mode': mode, 'runtime_dir': {'exists': directory['exists'], 'kind': directory['kind'],
+                                          'permissions_expected': directory.get('mode') == '0750' and
+                                          directory.get('uid') == 0 and directory.get('gid') == worker_gid},
+            'sockets': sockets, 'checks': checks, 'observations': notes,
+            'limitations': ['This is a static permission/config inspection, not a REALITY, TLS or HTTP/2 connection test',
+                            'Use the installed selfsteal-check script plus staging client/Panel E2E testing'],
+            'actions_performed': 'NONE'}
+
+
+def main(argv=None):
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--strict', action='store_true')
+    args=p.parse_args(argv)
+    result=snapshot()
+    print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    return 2 if args.strict and result['status']!='STATIC_CHECKS_OK' else 0
+
+
+if __name__=='__main__':sys.exit(main())
+VK_SELFSTEAL_HEALTH_PY
+    python3 -B "$tool" "$@"
+    local rc=$?
+    rm -f -- "$tool"
+    return "$rc"
+}
+
+vkarmani_r23_bundle_tool() {
+    local module="$1" root_dir tool_path
+    shift
+    case "$module" in
+        quality_probe|throughput_probe|optional_transports|network_tuning|selfsteal_runtime_probe|selfsteal_chain|path_mtu_diagnostics|transport_profile_audit|transport_readiness|finalmask_profile) ;;
+        *) echo 'STOP: unsupported r23 tool' >&2; return 2 ;;
+    esac
+    root_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    tool_path="$root_dir/integrations/$module.py"
+    if [[ ! -f "$tool_path" || -L "$tool_path" ]]; then
+        echo 'STOP: нужен ПОЛНЫЙ ZIP проекта; отдельный install.sh не содержит r23 инструмент' >&2
+        return 2
+    fi
+    python3 -B "$tool_path" "$@"
+}
+
+
+vkarmani_r24_site_manager() {
+    local root_dir tool_path
+    root_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    tool_path="$root_dir/scripts/site_manager.py"
+    [[ -f "$tool_path" && ! -L "$tool_path" ]] || {
+        echo 'STOP: для каталога нужен полный ZIP Node_Install (scripts/site_manager.py)' >&2
+        return 2
+    }
+    python3 -B "$tool_path" "$@"
+}
+
+
+vkarmani_r26_measure_compare() {
+    local root_dir tool_path
+    root_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    tool_path="$root_dir/scripts/measurement_review.py"
+    [[ -f "$tool_path" && ! -L "$tool_path" ]] || {
+        echo 'STOP: need complete reviewed ZIP (scripts/measurement_review.py)' >&2
+        return 2
+    }
+    python3 -B "$tool_path" "$@"
+}
+
+vkarmani_r27_script() {
+    local script="$1" root_dir tool_path
+    shift
+    case "$script" in terminal_ui|removal_plan) ;; *) echo 'STOP: unsupported r27 script' >&2; return 2 ;; esac
+    root_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    tool_path="$root_dir/scripts/$script.py"
+    [[ -f "$tool_path" && ! -L "$tool_path" ]] || { echo 'STOP: complete reviewed ZIP required (scripts missing)' >&2; return 2; }
+    command -v python3 >/dev/null 2>&1 || { echo 'STOP: Python3 required for terminal UI' >&2; return 2; }
+    python3 -I -B "$tool_path" "$@"
+}
+
+vkarmani_r27_connectivity() {
+    local root_dir tool_path
+    root_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    tool_path="$root_dir/integrations/vps_connectivity.py"
+    [[ -f "$tool_path" && ! -L "$tool_path" ]] || { echo 'STOP: full ZIP required' >&2; return 2; }
+    python3 -I -B "$tool_path" "$@"
+}
+
 # VKARMANI_COMPLETE_PAYLOAD_2_1_1
 # Sourcing definitions is intentionally inert: used by offline regression tests.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
+        --menu) shift; vkarmani_r27_script terminal_ui "$@" ;;
+        --install-direct) shift; vkarmani_main "$@" ;;
+        --vps-check) shift; vkarmani_r27_connectivity "$@" ;;
+        --removal-plan) shift; vkarmani_r27_script removal_plan "$@" ;;
+        --site-manager) shift; vkarmani_r24_site_manager "$@" ;;
+        --selfsteal-verify) shift; vkarmani_r23_bundle_tool selfsteal_chain "$@" ;;
+        --path-mtu) shift; vkarmani_r23_bundle_tool path_mtu_diagnostics "$@" ;;
+        --transport-audit) shift; vkarmani_r23_bundle_tool transport_profile_audit "$@" ;;
+        --transport-readiness) shift; vkarmani_r23_bundle_tool transport_readiness "$@" ;;
+        --finalmask) shift; vkarmani_r23_bundle_tool finalmask_profile "$@" ;;
         --update-cover) shift; vkarmani_site_main update "$@" ;;
         --rollback-cover) shift; vkarmani_site_main rollback "$@" ;;
         --diagnose-resources) shift; vkarmani_resources_main "$@" ;;
         --diagnose-node) shift; vkarmani_node_diagnostics_main "$@" ;;
         --diagnose-quality) shift; vkarmani_quality_main "$@" ;;
+        --diagnose-network) shift; vkarmani_network_health_main "$@" ;;
+        --diagnose-selfsteal) shift; vkarmani_selfsteal_health_main "$@" ;;
+        --selfsteal-runtime-probe) shift; vkarmani_r23_bundle_tool selfsteal_runtime_probe "$@" ;;
+        --quality-probe) shift; vkarmani_r23_bundle_tool quality_probe "$@" ;;
+        --throughput-probe) shift; vkarmani_r23_bundle_tool throughput_probe "$@" ;;
+        --optional-transport) shift; vkarmani_r23_bundle_tool optional_transports "$@" ;;
+        --network-tuning) shift; vkarmani_r23_bundle_tool network_tuning "$@" ;;
+        --measure-compare) shift; vkarmani_r26_measure_compare "$@" ;;
         --repair-network) shift; vkarmani_repair_network_main "$@" ;;
         --repair-node) shift; vkarmani_repair_main "$@" ;;
         --repair-acceptance) shift; vkarmani_repair_acceptance_main "$@" ;;
@@ -10882,6 +11564,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             [[ -x /usr/local/sbin/vkarmani-node-maintain ]] || { echo 'Нужна завершённая установка 2.1.x. Старые ноды автоматически не мигрируются.'; exit 1; }
             exec /usr/local/sbin/vkarmani-node-maintain "$ACTION" "$@"
             ;;
-        *) vkarmani_main "$@" ;;
+        *)
+            if [[ $# -eq 0 && -t 0 && -t 1 && -t 2 ]]; then
+                vkarmani_r27_script terminal_ui
+            else
+                vkarmani_main "$@"
+            fi ;;
     esac
 fi

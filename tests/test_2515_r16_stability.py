@@ -114,7 +114,9 @@ class StabilityR16Tests(unittest.TestCase):
         self.assertIn('оператор', text)
         self.assertIn('nightly', text)
         self.assertIn('26.10.17', text)
-        self.assertIn('2.5.18 r19', (ROOT/'CHANGELOG.md').read_text().splitlines()[0])
+        current_build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
+        release = current_build_id.split('-', 2)[1]
+        self.assertIn('2.5.18 ' + release, (ROOT/'CHANGELOG.md').read_text().splitlines()[0])
 
 
 if __name__ == '__main__':
