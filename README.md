@@ -1,6 +1,8 @@
 <div align="center">
 
-**Текущее дополнение r27 (staging):** гибридное чёрно-зелёное меню `sudo bash install.sh --menu`, мастер выбора Ordinary/Entry/Exit, первая тема `00. Авто (Рандом)` из **120** сайтов, необязательные дополнительные параметры, отдельный прокручиваемый журнал. `--vps-check` добавляет проверки HTTPS/сервисов, ICMP, p50/p95/jitter, traceroute, CDN и отдельный ограниченный тест скорости только к своему iperf3-серверу. Для таблиц `--vps-check --format table services`. Режимы отмены/удаления предоставляют только **безопасную инвентаризацию и узкий SSH/UFW rollback**, а НЕ автоматическую очистку ОС. Полное восстановление — через проверенный snapshot VPS. См. [инструкцию r27](docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md).
+**Текущее дополнение r28 (staging, исправление GitHub Actions):** Python 3.10/3.11 теперь разбирают генератор сайтов; локальные тесты Nginx не требуют записи в системные логи, тестовый Xray использует свой доверенный исполняемый файл вместо системной ссылки. Команда `tests/run.sh` выполняет синтаксические проверки до тестов. Версия r28 будет доступна из GitHub `main` **только после публикации**; до этого используйте проверенный полный ZIP. См. [отчёт r28](docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md).
+
+**Дополнение r27 (staging):** гибридное чёрно-зелёное меню `sudo bash install.sh --menu`, мастер выбора Ordinary/Entry/Exit, первая тема `00. Авто (Рандом)` из **120** сайтов, необязательные дополнительные параметры, отдельный прокручиваемый журнал. `--vps-check` добавляет проверки HTTPS/сервисов, ICMP, p50/p95/jitter, traceroute, CDN и отдельный ограниченный тест скорости только к своему iperf3-серверу. Для таблиц `--vps-check --format table services`. Режимы отмены/удаления предоставляют только **безопасную инвентаризацию и узкий SSH/UFW rollback**, а НЕ автоматическую очистку ОС. Полное восстановление — через проверенный snapshot VPS. См. [инструкцию r27](docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md).
 
 
 
@@ -21,7 +23,7 @@
 
 **Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
 
-**Текущий архив проекта — 2.5.18 r27 (гибридный TUI и диагностика VPS), 2026-11-05, `INCOMPLETE_STAGING_ONLY`.** Полный ZIP, поверх исходного r19 (GitHub `main` не изменён). **120 тематических сайтов:** 12 сохранённых исходных, 96 вариантов общего генератора и 12 дополнительных тематик с **собственными HTML-композициями**. 28 визуальных семейств (16 базовых + 12 отдельных). Внутри каталога находятся 1080 статических файлов, это **НЕ 1080 независимых сайтов**. Оригинальные чужие HTML/ассеты не переносились. См. [отчёт r24](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md) и [историю r23](docs/RELEASE_2.5.18_R23_OPTIONAL_TRANSPORTS_VISUAL_NETWORK.md).
+**Текущий архив проекта — 2.5.18 r28 (CI portability hotfix), 2026-11-05, `INCOMPLETE_STAGING_ONLY`.** Полный ZIP на основе r27. В GitHub `main` опубликован r27 (`67f10f888037be99f3cbbba25db7904cabec5cc4`); r28 отдельно проверяется и до публикации `main` не заменяется. **120 тематических сайтов:** 12 сохранённых исходных, 96 вариантов общего генератора и 12 дополнительных тематик с **собственными HTML-композициями**. 28 визуальных семейств (16 базовых + 12 отдельных). Внутри каталога находятся 1080 статических файлов, это **НЕ 1080 независимых сайтов**. Оригинальные чужие HTML/ассеты не переносились. См. [отчёт r24](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md) и [историю r23](docs/RELEASE_2.5.18_R23_OPTIONAL_TRANSPORTS_VISUAL_NETWORK.md).
 
 **Что работает:** локальная галерея 120 сайтов (`preview/site-gallery/index.html`), `site-catalog`, `site-preview`, транзакционные `site-deploy`, `site-change`, `site-rollback`, диагностика selfsteal и сети, **новая проверка Xray JSON** (`integrations/transport_profile_audit.py`) и **сравнение двух сетевых снимков** (`scripts/network_compare.py`) — исключительно чтение. **Новое в r23:** 240 визуальных проверок Chromium и контактные листы; локальный TLS/Unix PROXY v1 selfsteal-пробник, конфигурационные bundles для XHTTP/TLS/H2, Hysteria2 и AWG2, optional атомарная установка/откат Nginx-маршрута XHTTP, измерение HTTPS и TCP iperf3, узкий условный backlog tuning. **НЕ считать готовым:** новые протоколы не активируются автоматически и не подтверждены реальным Xray/AWG runtime; нагрузка удалённого VPN и DPI не измерены. Произвольные sysctl/ядра/маршруты не меняются. Безопасная установка по умолчанию сохраняет RAW/Vision/XHTTP/REALITY, Nginx, Docker и каскад без изменений.
 
@@ -41,9 +43,41 @@ python3 integrations/transport_profile_audit.py examples/inbound-raw-full.exampl
 **Просмотр сайтов:** распакуйте полный ZIP и откройте `preview/site-gallery/index.html` обычным браузером; новая тема содержит собственные HTML/CSS/SVG и внутренние страницы. Перед production — реальные staging VPS и проверяемый snapshot.
 
 <a id="github-install"></a>
-### 🐙 1. Установка с GitHub · 2.5.18 r19 (после публикации)
+### 🐙 1. Установка с GitHub · 2.5.18 r28 (после публикации)
 
-**Это исторический проверяемый пример именно для r19 в GitHub, а НЕ установка r27 из ZIP.** В репозитории `main` проверен коммит r19 `d03259ee31d7692c41b7c4ac222deb3a6c5151b0`; перед любым запуском перепроверьте актуальное состояние ветки, контрольную сумму и build ID. Для работы над текущей r27 используйте **только полный ZIP ниже**. Автоматических миграций существующих узлов нет.
+**Основной способ установки после публикации r28 в `main`.** Сейчас в `main` находится r27; этот блок специально остановится при несовпадении `build_id`, чтобы не запустить старую версию. Использовать только на новой **staging VPS**, после проверенного snapshot и проверки аварийной консоли.
+
+```bash
+set -Eeuo pipefail
+[[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
+cd /root
+[[ ! -e Node_Install-2.5.18 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
+git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.18
+cd /root/Node_Install-2.5.18
+printf '%s  %s\n' '2e64804a1077c3c5843cb65cbc5beccac4de806fa7a29bd9a9d739306f1a46e6' 'install.sh' | sha256sum --check
+sha256sum --check SHA256SUMS
+python3 scripts/verify_release.py --root .
+python3 - <<'PY_VERIFY_BUILD'
+import json
+from pathlib import Path
+m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
+if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
+        '2.5.18', '20261105-r28-ci-portability-hotfix', 'INCOMPLETE_STAGING_ONLY'):
+    raise SystemExit('STOP: GitHub version/build/status mismatch; installer NOT launched')
+PY_VERIFY_BUILD
+bash -n install.sh
+[[ "$(bash ./install.sh --version)" == '2.5.18' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
+bash ./install.sh --menu
+```
+
+Строгие `SHA256SUMS`/манифест проверяют содержимое клона, но не удостоверяют автора Git-коммита; SHA-256 установщика и коммит нужно сверить по независимому доверенному каналу. **Не запускайте команду на production** до отдельной staging-приёмки. Установка не должна выполняться при незавершённом CI.
+
+<details><summary>Историческая команда r19 (НЕ для текущей ветки main)</summary>
+
+### 🐙 Архивная установка с GitHub · 2.5.18 r19
+
+
+**Это архивный пример для r19, а НЕ инструкция для текущей GitHub `main`.** Исторический коммит r19 — `d03259ee31d7692c41b7c4ac222deb3a6c5151b0`, но `main` уже обновлён до r27; старая команда специально не должна запускать иной build. Для r28 используйте полный ZIP до её публикации. Автоматических миграций существующих узлов нет.
 
 Только **новая чистая staging VPS**: snapshot диска с проверенным восстановлением, консоль провайдера, DNS A на назначенный публичный IPv4 ноды. Выполнять от `root`:
 
@@ -72,17 +106,20 @@ bash ./install.sh
 
 Последняя команда — обычный `bash ./install.sh` **без нестандартного порта**. Node API TCP/2222 и клиентский TCP/443 остаются настройками по умолчанию. Автоперезагрузка выполняется только по штатному сценарию успешно завершённой новой установки. При неполной установке нельзя обойти `--finish-install`/fail-closed проверки.
 
-**Эта команда относится только к r19.** Она должна отказывать по SHA-256, если содержимое ветки GitHub отличается от проверенной r19. Для текущей r27 используйте ZIP ниже.
+**Эта команда относится только к r19.** Она должна отказывать по SHA-256, если содержимое ветки GitHub отличается от проверенной r19. Для текущей r28 используйте ZIP ниже.
+
+
+</details>
 
 <a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.18 r27 (текущая staging-сборка)
+### 📁 2. Из полного ZIP · 2.5.18 r28 (текущая staging-сборка)
 
 Полный ZIP сначала передаётся на отдельную **чистую VPS**. Проверяйте SHA-256 архива по независимому доверенному каналу. Внутренний `SHA256SUMS` удостоверяет целостность, но не происхождение архива. Перед первым запуском — snapshot целого диска и доступная аварийная консоль хостера.
 
 ```bash
 set -Eeuo pipefail
 [[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-unzip -q Node_Install_2.5.18-docs-menu_20261105-r27-hybrid-menu-vps-diagnostics.zip
+unzip -q Node_Install_2.5.18-docs-menu_20261105-r28-ci-portability-hotfix.zip
 cd Node_Install
 python3 scripts/verify_release.py --root .
 sha256sum --check SHA256SUMS
@@ -972,7 +1009,7 @@ sudo bash ./install.sh --rkn-sync-panel
 <a id="verification"></a>
 ## ✅ Проверки и границы готовности
 
-**Статус:** 2.5.18 r27 (гибридное меню и offline-проверки) — полный ZIP staging-candidate поверх опубликованной в GitHub 2.5.18 r19. Новые сайты и сетевая диагностика проверяются автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
+**Статус:** 2.5.18 r28 (исправления CI и прежний интерфейс r27) — полный ZIP staging-кандидат поверх опубликованной в GitHub 2.5.18 r27. Новые сайты и сетевая диагностика проверяются автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
 
 ```bash
 bash -n install.sh
@@ -988,7 +1025,7 @@ sudo bash ./install.sh --check
 
 **Для двухсерверной приёмки** нужны: живой клиент, внешний IPv4 именно Exit, HTTPS через SOCKS, DNS A через UDP ASSOCIATE, отдельный UDP echo, фазы `baseline → outage → recovery`, проверка отсутствия DIRECT/DNS утечек на Entry и восстановления после reboot. Скрипт `scripts/cascade_live_probe.py` **не останавливает Exit** — это делает оператор **только на TEST VPS**, с независимой фиксацией факта. [Live-процедура, параметры и безопасность](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
 
-| Гейт | Статус r27 |
+| Гейт | Статус r28 |
 |---|---|
 | Исходные профили, генераторы, offline-регрессии | Проверяются на чистой ZIP-распаковке |
 | 120 × desktop/mobile Chromium снимков | **240/240** без автоматических ошибок компоновки; ручные листы включены |
@@ -1001,6 +1038,6 @@ sudo bash ./install.sh --check
 
 <div align="center">
 
-**VKARMANI · 2.5.18 r27** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
+**VKARMANI · 2.5.18 r28** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
 
 </div>

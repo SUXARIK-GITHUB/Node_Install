@@ -38,25 +38,25 @@ class Release2514Tests(unittest.TestCase):
         self.assertIn("'2.5.14','2.5.15','2.5.16','2.5.17','2.5.18'", (ROOT / 'scripts/staging_web_deploy.py').read_text())
 
     def test_github_command_pinned_to_this_build_and_no_nondefault_port(self):
-        heading = '### 🐙 1. Установка с GitHub · 2.5.18 r19 (после публикации)'
+        manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
+        release = manifest['build_id'].split('-', 2)[1]
+        heading = f'### 🐙 1. Установка с GitHub · 2.5.18 {release} (после публикации)'
         self.assertEqual(self.readme.count(heading), 1)
-        command = self.readme.split(heading, 1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        command = self.readme.split(heading, 1)[1].split('```bash\n', 1)[1].split('\n```', 1)[0]
         self.assertEqual(subprocess.run(['bash', '-n'], input=command, text=True,
                                         capture_output=True).returncode, 0)
-        # This section documents the published historical r19 source, not local r20.
-        historical_r19_sha256 = '272c7561e2cab7e0a84c55e715ba04781954c2e49aeb6f0c33ab822dd51c5496'
-        self.assertIn(historical_r19_sha256, command)
-        self.assertNotEqual(historical_r19_sha256, hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest())
+        installer_sha256 = hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest()
+        self.assertIn(installer_sha256, command)
         self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git', command)
         self.assertIn('sha256sum --check SHA256SUMS', command)
         self.assertIn('python3 scripts/verify_release.py --root .', command)
-        self.assertIn("'2.5.18', '20261021-r19-hybrid-worker-permissions'", command)
-        self.assertIn('bash ./install.sh\n', command + '\n')
+        self.assertIn("'2.5.18', '" + manifest['build_id'] + "'", command)
+        self.assertIn('bash ./install.sh --menu', command)
         self.assertNotIn('--node-port', command)
         self.assertNotIn('curl | bash', command)
-        manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
-        release = manifest['build_id'].split('-', 2)[1]
-        self.assertIn(f'Для текущей {release} используйте ZIP ниже', self.readme)
+        self.assertIn(f'В GitHub `main` опубликован r27', self.readme)
+        self.assertIn('Историческая команда r19', self.readme)
+        self.assertIn('20261021-r19-hybrid-worker-permissions', self.readme)
 
     def test_archive_command_consistent_with_manifest_build(self):
         manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())

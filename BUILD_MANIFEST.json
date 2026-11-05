@@ -1,5 +1,5 @@
 {
-  "build_id": "20261105-r27-hybrid-menu-vps-diagnostics",
+  "build_id": "20261105-r28-ci-portability-hotfix",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
     "SHA256SUMS"
@@ -26,14 +26,14 @@
     {
       "mode": "0644",
       "path": "CHANGELOG.md",
-      "sha256": "b8f75fe021357a67e6640d85049e7472c334eaa09a68dfb0cb7453fe8ea29032",
-      "size": 123236
+      "sha256": "298fa2d4c4fa9a7035b9026380a44e0514e8fe4ca80b9de2c183264f17f84685",
+      "size": 124332
     },
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "fa20579e9ff8b9400972ee70b023995f0f85a61c05ce721ba25d5ab787bb0848",
-      "size": 62078
+      "sha256": "a220daf3e0253fe81f51389d12b61e31cbf06d307fd525cd40ff9ca2c26c0a4c",
+      "size": 65184
     },
     {
       "mode": "0644",
@@ -622,6 +622,12 @@
       "path": "docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md",
       "sha256": "e7a819a4e3321cef9b43fd1f4dbbbe8bde7ba335b660cb02ccc32122cf5d8a17",
       "size": 15520
+    },
+    {
+      "mode": "0644",
+      "path": "docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md",
+      "sha256": "13020bd9f16c70d121370c0b05ac46c59889f93ba01af82c31727f0307f4e47f",
+      "size": 3372
     },
     {
       "mode": "0644",
@@ -1988,8 +1994,8 @@
     {
       "mode": "0644",
       "path": "scripts/build_staging_archive.py",
-      "sha256": "580db946df208e79afd897e79b3aca2f7c7aa09a4fcf2cc5ab191e1d13202e07",
-      "size": 14218
+      "sha256": "c704a18bf64d69cae37477c95e19832b0f90d037076e2a9982594e262a840c73",
+      "size": 14307
     },
     {
       "mode": "0644",
@@ -2048,8 +2054,8 @@
     {
       "mode": "0644",
       "path": "scripts/site_catalog.py",
-      "sha256": "7c916b639ab6408becf192b116de90173f769e5c915d79e4039ecc897d8f4078",
-      "size": 67490
+      "sha256": "1061ae25d1f4e31861385327929063663c4ea19b26de432ef1ba8d89ea147fcb",
+      "size": 67679
     },
     {
       "mode": "0644",
@@ -2084,8 +2090,8 @@
     {
       "mode": "0644",
       "path": "scripts/verify_release.py",
-      "sha256": "f582b420623531c06703c2c586034945e2c577fa9faafccff21ecc022dba5dfe",
-      "size": 18819
+      "sha256": "d0ec1e3b7e18fa5aea9e670cc39107e9e2952795e10a0d13076e7a2672216fa6",
+      "size": 19318
     },
     {
       "mode": "0644",
@@ -7964,8 +7970,8 @@
     {
       "mode": "0644",
       "path": "tests/run.sh",
-      "sha256": "cf43cb03766a9846e2ca2d55b36be9eb7a4e1d509eb128ef71a00e85219a73eb",
-      "size": 641
+      "sha256": "ccd7118895987081dfdca50b56bee74981a486c7903213c4e885d7d8cafc1ea6",
+      "size": 1086
     },
     {
       "mode": "0644",
@@ -8144,8 +8150,8 @@
     {
       "mode": "0644",
       "path": "tests/test_2514_r15_release_and_readme.py",
-      "sha256": "d5e85944fa61baa274a2c9d59833a7ede971e1cac65529be02cadc8a054252d5",
-      "size": 4409
+      "sha256": "4d87af9cac28687c2cd632e6f53702c470d83438848ec84102f95aaaf7275a9d",
+      "size": 4327
     },
     {
       "mode": "0644",
@@ -8204,8 +8210,8 @@
     {
       "mode": "0644",
       "path": "tests/test_docs_ui_255.py",
-      "sha256": "d95a31394360016090b1ef37152392fb2efb9fda4982f3ccd01e671d7273af30",
-      "size": 12575
+      "sha256": "5c08e4f1d95f66db27360507160e73628d18bfecca80c035538877002db4f77e",
+      "size": 12506
     },
     {
       "mode": "0644",
@@ -8378,8 +8384,8 @@
     {
       "mode": "0644",
       "path": "tests/test_r23_transport_network_visual.py",
-      "sha256": "f78ad1d6f1dd2a249a2100071b572950ce8a5f3e8e1528263e24751c641f52e5",
-      "size": 19593
+      "sha256": "7aa2aba3cf50843946eb9b2275804664fb860619efa08479251838ac07948ab3",
+      "size": 19625
     },
     {
       "mode": "0644",
@@ -8414,8 +8420,8 @@
     {
       "mode": "0644",
       "path": "tests/test_r26_runtime_gate.py",
-      "sha256": "b53d0c29108632f9976b5c5cc7a23ebd000170d3a369a77360cbf622947c8690",
-      "size": 3117
+      "sha256": "0baa54515394cd4c3bdaadefc7dc79651a1fe2f0f5fe5be6b12b767969890dbb",
+      "size": 3406
     },
     {
       "mode": "0644",
@@ -8434,6 +8440,12 @@
       "path": "tests/test_r27_vps_connectivity.py",
       "sha256": "fa0633e6816270a2194b7d4b7f37a5237a86650c1bf0229ef14185e06946afd3",
       "size": 7685
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_r28_ci_portability.py",
+      "sha256": "86596d9548c29e66e20a4036511a961cc60c5250e02009e0bdc78fc883c22521",
+      "size": 2168
     },
     {
       "mode": "0644",

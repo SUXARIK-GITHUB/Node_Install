@@ -284,6 +284,15 @@ def verify_bytes(files):
         # The user explicitly requires password login on nodes; no new key login.
         if 'PubkeyAuthentication no' not in installer or 'PasswordAuthentication yes' not in installer:
             raise ValueError('R24_PASSWORD_SSH_COMPATIBILITY_BROKEN')
+    if m['build_id'].startswith('20261105-r28-'):
+        needed = {'docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md',
+                  'tests/test_r28_ci_portability.py',
+                  'tests/test_r23_transport_network_visual.py',
+                  'tests/test_r26_runtime_gate.py'}
+        if not needed <= files.keys():
+            raise ValueError('R28_CI_PORTABILITY_SOURCES_MISSING')
+        if 'r28' not in readme.split('---', 1)[0]:
+            raise ValueError('R28_README_RELEASE_MISSING')
     expected_archive = 'Node_Install_2.5.18-docs-menu_' + m['build_id'] + '.zip'
     if expected_archive not in readme.split('---', 1)[0]:
         raise ValueError('README release command/build ID inconsistent')

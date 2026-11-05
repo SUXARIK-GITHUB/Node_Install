@@ -190,6 +190,8 @@ UNTRACKED_ALLOWED.update({
     'tests/test_r27_vps_connectivity.py',
     'tests/test_r27_removal_plan.py',
     'docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md',
+    'tests/test_r28_ci_portability.py',
+    'docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md',
 })
 
 

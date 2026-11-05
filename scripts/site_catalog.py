@@ -377,8 +377,11 @@ def shell(spec, page, heading, body, description):
     logo=e(spec.emblem)
     stylesheet='style.css'  # relative for offline previews and valid at /journal.html
     art_html = art(spec)
+    # Avoid reusing the surrounding f-string quote inside an expression: that
+    # syntax requires Python 3.12+, while the supported CI includes 3.10/3.11.
+    color_scheme = 'dark' if spec.layout in ('terminal','dashboard','gallery','luxury','museum') else 'light'
     head=(f'<!doctype html>\n<html lang="{spec.language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-          f'<meta name="description" content="{description}"><meta name="color-scheme" content="{'dark' if spec.layout in ('terminal','dashboard','gallery','luxury','museum') else 'light'}">'
+          f'<meta name="description" content="{description}"><meta name="color-scheme" content="{color_scheme}">'
           f'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'self\'; img-src \'self\'; base-uri \'none\'; form-action \'none\'">'
           f'<title>{title}</title><link rel="stylesheet" href="{stylesheet}"><link rel="icon" href="favicon.svg" type="image/svg+xml"></head><body class="layout-{spec.layout}"><div class="page">'
           f'<a class="skip" href="#main">{e(words["read"])}</a><header class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true">{logo}</span>{e(spec.title)}</a>'

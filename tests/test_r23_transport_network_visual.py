@@ -169,7 +169,7 @@ class NginxXHTTP(unittest.TestCase):
             conf=root/'nginx.conf'
             conf.write_text('worker_processes 1;\npid '+str(root/'nginx.pid')+';\n'
                 'error_log '+str(root/'err.log')+' warn;\n'
-                'events { worker_connections 64; }\nhttp { server { '
+                'events { worker_connections 64; }\nhttp { access_log off; server { '
                 'listen 127.0.0.1:39088; server_name node.example.test;\n'
                 +fragment+'\nlocation / { return 404; } } }\n')
             cp=subprocess.run(['nginx','-t','-c',str(conf)],capture_output=True,text=True,timeout=8)
@@ -192,7 +192,7 @@ class SelfstealSocketRuntime(unittest.TestCase):
             conf=root/'nginx.conf'
             conf.write_text('worker_processes 1;\npid '+str(root/'nginx.pid')+';\n'
                 'error_log '+str(root/'error.log')+' warn;\n'
-                'events { worker_connections 64; }\nhttp { server { '
+                'events { worker_connections 64; }\nhttp { access_log off; server { '
                 'listen unix:'+str(sock)+' ssl proxy_protocol; '
                 'server_name node.example.test; '
                 'ssl_certificate '+str(cert)+'; ssl_certificate_key '+str(key)+'; '
