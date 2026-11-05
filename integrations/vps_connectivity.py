@@ -364,6 +364,51 @@ def cloudflare_edge(*, probe=None):
         return {'status':'UNVERIFIED'}
 
 
+def full_check(*, speed_server=None, local_probe=local_snapshot, service_probe=services,
+               quality_probe=quality, ping_probe=icmp_probe, trace_probe=trace,
+               edge_probe=cloudflare_edge, speed_probe=speed, progress=None):
+    """One read-only VPS assessment. Independent failures never hide other results.
+
+    Public speed requires an explicitly supplied owned iperf3 server; the
+    estimator never silently downloads unknown objects or contacts a speed CDN.
+    """
+    if speed_server is not None:
+        try:
+            if not ipaddress.IPv4Address(speed_server).is_global:
+                raise ValueError('PUBLIC_OWNED_IPERF_SERVER_REQUIRED')
+        except ipaddress.AddressValueError as exc:
+            raise ValueError('PUBLIC_OWNED_IPERF_SERVER_REQUIRED') from exc
+    record={'schema':1,'kind':'FULL_VPS','status':'INFO',
+            'limitations':['Read-only from VPS public network; not a client VPN E2E acceptance',
+                           'HTTP 401 means authentication required; 403 is not proof of a block',
+                           'ICMP loss and HTTPS failure are different measurements',
+                           'Speed requires a separately authorized iperf3 endpoint']}
+    def stage(key, caption, fn):
+        if progress:progress(caption)
+        try:record[key]=fn()
+        except (OSError,ValueError,TypeError,subprocess.TimeoutExpired):
+            record[key]={'status':'UNVERIFIED','reason':key.upper()+'_CHECK_ERROR'}
+    stage('host','Проверка операционной системы и ресурсов',local_probe)
+    stage('services','HTTPS доступность публичных сервисов',lambda:service_probe(progress=progress))
+    stage('quality','HTTPS задержка и скачки',lambda:quality_probe('github.com'))
+    stage('ping','ICMP потери и задержка',lambda:ping_probe('github.com'))
+    stage('route','Маршрут до GitHub',lambda:trace_probe('github.com'))
+    stage('cdn','CDN точка Cloudflare',edge_probe)
+    if speed_server is None:
+        record['speed']={'status':'SKIPPED','reason':'OWN_IPERF3_SERVER_NOT_PROVIDED'}
+    else:
+        stage('speed','Download/Upload до вашего iperf3',lambda:speed_probe(speed_server,seconds=5))
+    if any(r.get('status') in ('REVIEW','UNVERIFIED','STOP','TCP_ERROR','TIMEOUT')
+           for r in record.values() if isinstance(r,dict)):
+        record['status']='REVIEW'
+    listed=record.get('services',{}).get('results',[])
+    if not listed or any(row.get('status') not in ('REACHABLE','AUTH_REQUIRED','RATE_LIMITED')
+                         for row in listed):
+        # HTTP 403/451 stays REVIEW; never call it a proven block or success.
+        record['status']='REVIEW'
+    return record
+
+
 def history_dir(root=None):
     """Private per-user history, never in the repository or system installer state."""
     return Path(root) if root is not None else Path.home()/'.local/state/vkarmani-network-diagnostics'
@@ -476,6 +521,32 @@ def render_table(report):
         rows=[(key,report.get(key,'—')) for key in selected]
         rows.extend((f'service/{key}',val) for key,val in report.get('services',{}).items())
         return 'СОСТОЯНИЕ VPS · только чтение\n'+table(('Проверка','Результат'),rows,(28,42))
+    if kind=='FULL_VPS':
+        sections=['NODE INSTALL / КОМПЛЕКСНАЯ ПРОВЕРКА VPS',
+                  'Диагностика только чтения. Доступность HTTPS не означает успешную авторизацию.']
+        host=report.get('host',{})
+        selected=('os','architecture','kernel','cpu_logical','ram_mib','disk_free_mib',
+                  'default_route','owned_installation','markers')
+        sections.append('\nСИСТЕМА / ГОТОВНОСТЬ')
+        sections.append(table(('Показатель','Результат'),[(key,host.get(key,'—')) for key in selected],(27,42)))
+        for label,key in (('ПУБЛИЧНЫЕ СЕРВИСЫ','services'),
+                          ('HTTPS ЗАДЕРЖКИ / JITTER','quality'),
+                          ('PING / ПОТЕРИ','ping'),('МАРШРУТ','route'),
+                          ('CLOUDFLARE EDGE','cdn'),('СКОРОСТЬ (ТОЛЬКО СВОЙ IPERF3)','speed')):
+            sections.append('\n'+label)
+            sub=report.get(key,{})
+            if key=='speed' and sub.get('status')=='SKIPPED':
+                sections.append('SKIPPED · для измерения укажи свой публичный iperf3 сервер')
+            elif sub.get('status')=='UNVERIFIED':
+                sections.append('UNVERIFIED · '+sub.get('reason','проверка недоступна'))
+            elif key=='cdn':
+                sections.append(table(('Поле','Значение'),[(k,v) for k,v in sub.items() if k!='limitations'],(27,42)))
+            elif key=='services':
+                sections.append(render_table(sub))
+            else:
+                sections.append(render_table(sub))
+        sections.append('\nСТАТУС: '+report.get('status','UNKNOWN')+' · результаты без изменений ОС')
+        return '\n'.join(sections)
     if kind=='CUSTOM':
         row=report.get('result',{})
         return 'HTTPS ПРОВЕРКА · '+value(report.get('host'))+'\n'+table(
@@ -514,6 +585,8 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest='action',required=True)
     sub.add_parser('local')
+    full=sub.add_parser('full',help='one integrated read-only VPS and services check')
+    full.add_argument('--speed-server',help='optional public IPv4 of owned iperf3 service')
     sub.add_parser('services')
     one=sub.add_parser('custom');one.add_argument('--host',required=True);one.add_argument('--port',type=int,default=443)
     q=sub.add_parser('quality');q.add_argument('--host',default='cloudflare.com');q.add_argument('--samples',type=int,default=5)
@@ -529,7 +602,8 @@ def main(argv=None):
     p.add_argument('--format',choices=('json','table'),default='json',help='table = readable terminal view, json = API output')
     args=p.parse_args(argv)
     try:
-        if args.action=='local':result=local_snapshot()
+        if args.action=='full':result=full_check(speed_server=args.speed_server,progress=lambda stage:print('CHECKING: '+stage,flush=True))
+        elif args.action=='local':result=local_snapshot()
         elif args.action=='services':result=services(progress=lambda name:print('CHECKING '+name,flush=True))
         elif args.action=='catalog':result={'services':[{'name':n,'host':h,'category':c} for n,h,_,c in SERVICES]}
         elif args.action=='history':result={'kind':'HISTORY','names':reports_list()}

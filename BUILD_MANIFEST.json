@@ -1,5 +1,5 @@
 {
-  "build_id": "20261105-r28-ci-portability-hotfix",
+  "build_id": "20261105-r29-terminal-retry-full-vps",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
     "SHA256SUMS"
@@ -26,14 +26,14 @@
     {
       "mode": "0644",
       "path": "CHANGELOG.md",
-      "sha256": "298fa2d4c4fa9a7035b9026380a44e0514e8fe4ca80b9de2c183264f17f84685",
-      "size": 124332
+      "sha256": "528c2862e6273ca09ef092fc48037437ea3118492350716e3cc01b7c87b926f5",
+      "size": 125762
     },
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "a220daf3e0253fe81f51389d12b61e31cbf06d307fd525cd40ff9ca2c26c0a4c",
-      "size": 65184
+      "sha256": "7a4f8ce0a1135a09339db604df11ee52b571067565796064b02fbdd3715e8728",
+      "size": 70768
     },
     {
       "mode": "0644",
@@ -628,6 +628,12 @@
       "path": "docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md",
       "sha256": "13020bd9f16c70d121370c0b05ac46c59889f93ba01af82c31727f0307f4e47f",
       "size": 3372
+    },
+    {
+      "mode": "0644",
+      "path": "docs/RELEASE_2.5.18_R29_TERMINAL_RETRY_FULL_VPS.md",
+      "sha256": "25eb27ae5a32f824628c7a398e067601a03a53a8f7973d782268eba06a644122",
+      "size": 4554
     },
     {
       "mode": "0644",
@@ -1754,8 +1760,8 @@
     {
       "mode": "0644",
       "path": "integrations/vps_connectivity.py",
-      "sha256": "4169ed1a7617dd3b58a65191f8c607c3c42d917cdfd5207ca9efdf69e5d9af49",
-      "size": 28500
+      "sha256": "887f5003fcbf6b7054794266010deab1aecc3a9d01a628973faba6a0404b4ab6",
+      "size": 33521
     },
     {
       "mode": "0644",
@@ -1994,8 +2000,8 @@
     {
       "mode": "0644",
       "path": "scripts/build_staging_archive.py",
-      "sha256": "c704a18bf64d69cae37477c95e19832b0f90d037076e2a9982594e262a840c73",
-      "size": 14307
+      "sha256": "77419ebe596ac7df8ba3c9995b2b32abbebe8b8db1c764ae330e77ade01cff3d",
+      "size": 14403
     },
     {
       "mode": "0644",
@@ -2084,14 +2090,14 @@
     {
       "mode": "0644",
       "path": "scripts/terminal_ui.py",
-      "sha256": "b5fd1a3d91dc4c952c249af35bb155e887ea7346a719c8c5734b97f6c8391f1c",
-      "size": 42234
+      "sha256": "9fcaa61132d2fe8b2c7b9fd9738d0089263040a018b68ffa4f9ef4e891d1b782",
+      "size": 42722
     },
     {
       "mode": "0644",
       "path": "scripts/verify_release.py",
-      "sha256": "d0ec1e3b7e18fa5aea9e670cc39107e9e2952795e10a0d13076e7a2672216fa6",
-      "size": 19318
+      "sha256": "6b830ef5b64ac72ea3cc5529d4929e5da46d980f87a7e06eee58e36442cca80e",
+      "size": 19860
     },
     {
       "mode": "0644",
@@ -8150,7 +8156,7 @@
     {
       "mode": "0644",
       "path": "tests/test_2514_r15_release_and_readme.py",
-      "sha256": "4d87af9cac28687c2cd632e6f53702c470d83438848ec84102f95aaaf7275a9d",
+      "sha256": "6e917bba5b259992840bf5a4e75f90e74c52876f13820084ffd1a94967cf7438",
       "size": 4327
     },
     {
@@ -8446,6 +8452,12 @@
       "path": "tests/test_r28_ci_portability.py",
       "sha256": "86596d9548c29e66e20a4036511a961cc60c5250e02009e0bdc78fc883c22521",
       "size": 2168
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_r29_tui_full_vps.py",
+      "sha256": "5fdaf4f3c06186fe3f7bd2a125c7a3c47bfef7273919f927ed5c0f41f798bdea",
+      "size": 8347
     },
     {
       "mode": "0644",

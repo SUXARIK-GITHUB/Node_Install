@@ -44,6 +44,17 @@ REALITY=('local','max.ru','ya.ru','rutube.ru','mail.ru')
 USAGE_HINT='↑↓/jk выбор · Enter подтвердить · Esc назад · 0 выход'
 MAX_LOG_LINES=700
 
+def release_label():
+    # Cosmetic only: never trust this in place of the installer release verifier.
+    try:
+        data=json.loads((ROOT/'BUILD_MANIFEST.json').read_text(encoding='utf-8'))
+        build=data.get('build_id','')
+        revision=re.search(r'-r([0-9]{2})-',build)
+        return 'v2.5.18 r'+revision.group(1) if revision else 'v2.5.18'
+    except (OSError,ValueError,TypeError):
+        return 'v2.5.18'
+
+
 
 def validate_domain(value):
     if not isinstance(value,str) or not value or len(value)>253 or value.endswith('..'):
@@ -171,6 +182,7 @@ def linewrap(text,width):
 
 
 class Terminal:
+    """Stable SSH TUI: one physical screen update per user action, no timed erases."""
     def __init__(self,win):
         self.save_reports=False
         self.win=win
@@ -179,14 +191,24 @@ class Terminal:
             curses.start_color()
             try:curses.use_default_colors()
             except curses.error:pass
-            # black background; green typography, amber warnings, red failures
-            for num,fg,bg in ((1,curses.COLOR_GREEN,curses.COLOR_BLACK),
-                               (2,curses.COLOR_BLACK,curses.COLOR_GREEN),
-                               (3,curses.COLOR_YELLOW,curses.COLOR_BLACK),
-                               (4,curses.COLOR_RED,curses.COLOR_BLACK)):
+            if curses.COLORS>=256:
+                # 256-colour palette degrades gracefully to 16-colour terminals.
+                palette=((1,157,16),(2,157,22),(3,221,16),(4,203,16),
+                         (5,114,16),(6,120,16),(7,157,16),(8,71,16))
+            else:
+                palette=((1,curses.COLOR_GREEN,curses.COLOR_BLACK),
+                         (2,curses.COLOR_WHITE,curses.COLOR_GREEN),
+                         (3,curses.COLOR_YELLOW,curses.COLOR_BLACK),
+                         (4,curses.COLOR_RED,curses.COLOR_BLACK),
+                         (5,curses.COLOR_GREEN,curses.COLOR_BLACK),
+                         (6,curses.COLOR_GREEN,curses.COLOR_BLACK),
+                         (7,curses.COLOR_GREEN,curses.COLOR_BLACK),
+                         (8,curses.COLOR_GREEN,curses.COLOR_BLACK))
+            for num,fg,bg in palette:
                 curses.init_pair(num,fg,bg)
             self.colors=True
-        curses.curs_set(0)
+        try:curses.curs_set(0)
+        except curses.error:pass
         win.keypad(True)
         self.note=''
 
@@ -199,56 +221,80 @@ class Terminal:
         try:self.win.addnstr(y,x,str(text),max(0,width-x-1),self.attr(kind,bold))
         except curses.error:pass
 
+    def present(self):
+        """Let ncurses update only changed cells: prevents SSH blinking/flicker."""
+        self.win.noutrefresh()
+        curses.doupdate()
+
     def paint(self,title,subtitle='',footer=USAGE_HINT):
         self.win.erase()
         height,width=self.win.getmaxyx()
-        self.put(0,2,'NODE INSTALL  /  VKARMANI',bold=True)
-        self.put(1,2,'─'*max(0,width-4))
-        self.put(2,2,title.upper(),bold=True)
-        self.put(3,2,subtitle[:max(0,width-4)])
-        self.put(height-3,2,'─'*max(0,width-4))
-        self.put(height-2,2,footer)
-        if self.note:self.put(height-4,2,self.note,kind=3)
-        self.win.refresh()
+        if height<17 or width<55:
+            self.put(0,1,'NODE INSTALL | увеличьте окно терминала',kind=3)
+            self.put(2,1,'Рекомендуемый размер: 80 x 24',kind=5)
+            return
+        edge='─'*max(0,width-4)
+        self.put(0,1,'╭'+edge+'╮',kind=8)
+        for y in range(1,height-1):
+            self.put(y,1,'│',kind=8)
+            self.put(y,width-2,'│',kind=8)
+        self.put(height-1,1,'╰'+edge+'╯',kind=8)
+        brand='NODE INSTALL'
+        self.put(1,max(3,(width-len(brand))//2),brand,kind=6,bold=True)
+        caption='VKARMANI  /  SERVER CONTROL'
+        self.put(2,max(3,(width-len(caption))//2),caption,kind=5)
+        version=release_label()
+        if width>=79:self.put(2,width-5-len(version),version,kind=5)
+        self.put(3,3,'─'*max(0,width-7),kind=8)
+        self.put(4,3,title.upper()[:max(1,width-8)],kind=6,bold=True)
+        self.put(5,3,subtitle[:max(1,width-8)],kind=5)
+        self.put(height-4,3,'─'*max(0,width-7),kind=8)
+        self.put(height-2,3,footer[:max(1,width-8)],kind=5)
+        if self.note:self.put(height-5,3,self.note[:max(1,width-8)],kind=3)
 
     def message(self,title,lines,*,wait=True,warning=False):
         self.paint(title,footer='ENTER / ESC — назад')
-        h,w=self.win.getmaxyx(); row=5
+        h,w=self.win.getmaxyx(); row=7
         for line in lines:
-            for sub in linewrap(line,max(20,w-6)):
+            for sub in linewrap(line,max(20,w-9)):
                 if row>=h-5:break
-                self.put(row,3,sub,kind=3 if warning else 1)
+                self.put(row,4,sub,kind=3 if warning else 1)
                 row+=1
-        self.win.refresh()
-        if wait:self.win.getch()
+        self.present()
+        return self.win.getch() if wait else None
 
     def menu(self,title,items,subtitle='',*,start=0,footer=USAGE_HINT,auto_zero=False):
-        """Items [(label,detail)], returns index or None. Paging is automatic."""
-        i=min(start,len(items)-1) if items else 0
+        """Stable menu, arrows/pages and numeric shortcuts; no redraw while idle."""
+        if not items:return None
+        i=max(0,min(start,len(items)-1))
         while True:
             self.paint(title,subtitle,footer)
             h,w=self.win.getmaxyx()
-            available=max(3,(h-10)//2)
+            available=max(1,(h-14)//2)
             offset=max(0,min(i-available//2,max(0,len(items)-available)))
             for pos in range(offset,min(len(items),offset+available)):
-                y=5+2*(pos-offset)
+                y=7+2*(pos-offset)
                 label,desc=items[pos]
                 selected=pos==i
                 prefix='' if auto_zero and pos==0 else '%02d. '%(pos if auto_zero else pos+1)
-                text=('❯ ' if selected else '  ')+prefix+label
-                self.put(y,3,text,kind=2 if selected else 1,bold=selected)
-                self.put(y+1,6,desc[:max(0,w-9)],kind=1)
-            self.put(h-5,3,f'{i+1}/{len(items)} · прокрутка' if items else 'Пусто')
-            self.win.refresh()
+                marker='❯ ' if selected else '  '
+                row=(marker+prefix+label)[:max(0,w-10)]
+                if selected:
+                    # Green highlight remains within the frame on narrow terminals.
+                    self.put(y,4,(' '*max(0,w-10)),kind=2)
+                self.put(y,4,row,kind=2 if selected else 1,bold=selected)
+                self.put(y+1,7,desc[:max(0,w-12)],kind=5)
+            self.put(h-5,4,f'{i+1}/{len(items)} · PgUp/PgDn страницы' if len(items)>available else '')
+            self.present()
             key=self.win.getch()
             if key==ord('0') and auto_zero:return 0
             if key in (27,ord('0'),ord('q')):return None
             if key in (curses.KEY_UP,ord('k')):i=(i-1)%len(items)
             elif key in (curses.KEY_DOWN,ord('j')):i=(i+1)%len(items)
-            elif key in (curses.KEY_PPAGE,):i=max(0,i-available)
-            elif key in (curses.KEY_NPAGE,):i=min(len(items)-1,i+available)
-            elif key in (curses.KEY_HOME,):i=0
-            elif key in (curses.KEY_END,):i=len(items)-1
+            elif key==curses.KEY_PPAGE:i=max(0,i-available)
+            elif key==curses.KEY_NPAGE:i=min(len(items)-1,i+available)
+            elif key==curses.KEY_HOME:i=0
+            elif key==curses.KEY_END:i=len(items)-1
             elif key in (10,13,curses.KEY_ENTER):return i
             elif 49<=key<=57:
                 n=key-49
@@ -263,7 +309,7 @@ class Terminal:
             masked=('●'*min(len(value), max(1,w-9))) if secret else ''.join(value)
             if len(masked)>w-9:masked='…'+masked[-(w-10):]
             self.put(6,3,'> '+masked)
-            self.win.refresh()
+            self.present()
             try:key=self.win.get_wch()
             except curses.error:continue
             if key in ('\n','\r',curses.KEY_ENTER):return ''.join(value)
@@ -280,7 +326,7 @@ class Terminal:
         return entered==phrase
 
     def logs(self,title,command,*,pass_fd=None,redact=()):
-        """Log pane runs a bounded external command. No credentials in argv."""
+        """Progressive scrollable command pane; no 8Hz full-screen repaint."""
         log=deque(maxlen=MAX_LOG_LINES)
         old_sig=signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT,signal.SIG_IGN)
@@ -292,48 +338,59 @@ class Terminal:
                      pass_fds=((pass_fd,) if pass_fd is not None else ()),bufsize=0) as proc:
                 channel=proc.stdout.fileno()
                 os.set_blocking(channel,False)
-                remainder=b''; scroll=0; auto=True
+                remainder=b''; scroll=0; auto=True; eof=False
+                previous_state=None; dirty=True
                 while True:
-                    ready,_,_=select.select([channel],[],[],0.12)
+                    # Closed pipe must not spin in a select(2) busy loop.
+                    if eof:
+                        time.sleep(0.08)
+                        ready=[]
+                    else:
+                        ready,_,_=select.select([channel],[],[],0.15)
                     if ready:
                         try:chunk=os.read(channel,32768)
-                        except BlockingIOError:chunk=b''
-                        if chunk:
+                        except BlockingIOError:chunk=None
+                        if chunk==b'':eof=True
+                        elif chunk:
                             remainder+=chunk
-                            # Bound any untrusted stdout line and never echo live secrets.
                             if len(remainder)>65536 and b'\n' not in remainder:
-                                log.append('[TRUNCATED LONG LOG LINE]')
-                                remainder=b''
+                                log.append('[TRUNCATED LONG LOG LINE]');remainder=b'';dirty=True
                             while b'\n' in remainder:
                                 row,remainder=remainder.split(b'\n',1)
                                 text=row.decode('utf-8','replace').replace('\x1b','?')
                                 for private in redact:
                                     if private:text=text.replace(private,'[REDACTED]')
-                                log.append(text[:1000])
-                    self.paint(title,'Команда выполняется · PgUp/PgDn прокрутка; Esc после завершения',
-                               footer='PgUp/PgDn — прокрутка · End — к последней строке · Esc — после завершения')
-                    h,w=self.win.getmaxyx(); slots=max(1,h-10)
-                    if auto:scroll=max(0,len(log)-slots)
-                    for y,line in enumerate(list(log)[scroll:scroll+slots],start=5):
-                        self.put(y,2,line[:max(0,w-4)],kind=(4 if any(word in line for word in ('DNS_ERROR','TLS_ERROR','TCP_ERROR','STOP:','TIMEOUT','INVALID','UNREACHABLE')) else (3 if 'REVIEW' in line or 'RESTRICTED_OR_PROTECTED' in line or 'AUTH_REQUIRED' in line else 1)))
+                                log.append(text[:1000]);dirty=True
                     done=proc.poll() is not None
-                    self.put(h-5,2,('Завершено; код '+str(proc.returncode) if done else 'Выполняется...'),
-                             kind=1 if done and proc.returncode==0 else 3)
-                    self.win.refresh()
-                    key=self.win.getch()
-                    if key==curses.KEY_PPAGE:auto=False;scroll=max(0,scroll-slots)
-                    if key==curses.KEY_NPAGE:auto=False;scroll=min(max(0,len(log)-slots),scroll+slots)
-                    if key==curses.KEY_END:auto=True
-                    if done and key in (27,10,13,ord('q')):
-                        break
-                    if done and not ready and not remainder:
-                        # Remain on result screen until operator acknowledges.
-                        pass
                     if done and remainder:
                         text=remainder.decode('utf-8','replace')
                         for private in redact:
                             if private:text=text.replace(private,'[REDACTED]')
-                        log.append(text[:1000]);remainder=b''
+                        log.append(text[:1000]);remainder=b'';dirty=True
+                    state=(done,proc.returncode)
+                    if state!=previous_state:dirty=True;previous_state=state
+                    key=self.win.getch()
+                    h,w=self.win.getmaxyx();slots=max(1,h-14)
+                    if key==curses.KEY_PPAGE:auto=False;scroll=max(0,scroll-slots);dirty=True
+                    elif key==curses.KEY_NPAGE:auto=False;scroll=min(max(0,len(log)-slots),scroll+slots);dirty=True
+                    elif key==curses.KEY_END:auto=True;dirty=True
+                    elif key==curses.KEY_RESIZE:dirty=True
+                    if done and key in (27,10,13,ord('q')):break
+                    if not dirty:continue
+                    self.paint(title, 'Протокол проверки • PgUp/PgDn прокрутка • Esc после завершения',
+                         footer='PgUp/PgDn прокрутка  ·  End к результату  ·  Esc назад')
+                    if auto:scroll=max(0,len(log)-slots)
+                    self.put(6,4,('ГОТОВО' if done and proc.returncode==0 else
+                                  ('ОШИБКА / ПРОВЕРЬ ЖУРНАЛ' if done else 'ВЫПОЛНЯЕТСЯ')),
+                             kind=1 if not done or proc.returncode==0 else 4,bold=True)
+                    self.put(6,max(28,w-21),f'Строк: {len(log)}',kind=5)
+                    for y,line in enumerate(list(log)[scroll:scroll+slots],start=8):
+                        if y>=h-5:break
+                        kind=4 if any(word in line for word in ('DNS_ERROR','TLS_ERROR','TCP_ERROR','STOP:','TIMEOUT','INVALID','UNREACHABLE')) else (3 if 'REVIEW' in line or 'RESTRICTED_OR_PROTECTED' in line or 'AUTH_REQUIRED' in line else 1)
+                        self.put(y,4,line[:max(0,w-9)],kind=kind)
+                    self.put(h-5,4,'Код завершения: '+str(proc.returncode) if done else 'Процесс работает; дождитесь результата',kind=1 if not done or proc.returncode==0 else 3)
+                    self.present()
+                    dirty=False
                 return proc.returncode
         except (OSError,ValueError,subprocess.SubprocessError) as exc:
             self.message('Команда не запущена',[type(exc).__name__,'Изменения не подтверждены.'],warning=True)
@@ -394,8 +451,19 @@ class Terminal:
             self.message('Права доступа',['Для установки нужен root: sudo bash install.sh --menu'],warning=True)
             return
         if not preinstall_state_guard():
-            self.message('Установка запрещена',['На VPS обнаружены следы установки или незавершённые операции.',
-                           'Используй диагностику/восстановление. Данные не перезаписаны.'],warning=True)
+            choice=self.menu('УСТАНОВКА УЖЕ НАЧАТА',[
+                ('Проверить состояние установки','Только чтение; checkpoint и доступный rollback'),
+                ('Завершить финальный checkpoint','Только при сохранённом проверенном checkpoint 2.5.18'),
+                ('Восстановление SSH/UFW','Ограниченный откат, если разрешён маркером'),
+                ('Назад','Не менять состояние VPS')],
+                'Новая установка запрещена; удалять маркеры или переустанавливать нельзя')
+            if choice==0:self.action('--removal-plan','plan')
+            elif choice==1:
+                if self.agree('ВНИМАНИЕ: ФИНАЛИЗАЦИЯ',
+                    'Только если в журнале явно указан FINALIZATION_PENDING. '
+                    'Установщик повторно проверит checkpoint до любых изменений.', 'FINISH'):
+                    self.action('--finish-install')
+            elif choice==2:self.remove(full=False)
             return
         mode_id=self.menu('ТИП УСТАНОВКИ',[('Обычная Node','VLESS / RAW / REALITY / Selfsteal'),
                             ('Cascade Entry','Входная нода, нужен закрытый bundle'),
@@ -491,71 +559,28 @@ class Terminal:
                      'Не удаляйте checkpoint/backup при ошибке; проверьте журнал.'],warning=rc!=0)
 
     def vps(self):
-        choices=[('Быстрая проверка VPS','ОС, RAM, диск, сеть, маркеры; без изменений'),
-                 ('Доступность сервисов','VK / Яндекс / MAX / YouTube / Reddit / GitHub / X / GPT / AI'),
-                 ('ICMP Ping и потери','Задержка и потери, если сервис разрешает ICMP'),
-                 ('HTTPS Jitter и скачки','p50/p95, jitter, failure rate, не ICMP'),
-                 ('Прыжки / Traceroute','Маршрут и видимые узлы, если traceroute установлен'),
-                 ('Тест скорости Download/Upload','Только к СВОЕМУ iperf3 серверу, расход трафика'),
-                 ('GeoIP / Cloudflare Edge','Внешний HTTPS-запрос; Cloudflare увидит IP VPS'),
-                 ('Проверить свой домен','Только публичная HTTPS-цель; защита SSRF'),
-                 ('Сетевая диагностика ядра','BBR, qdisc, NIC, conntrack, только чтение'),
-                 ('Сохранение результатов','ВКЛ/ВЫКЛ · сейчас НЕ сохраняются автоматически'),
-                 ('История проверок','Просмотр имён сохранённых отчётов'),
-                 ('Посмотреть отчёт','Открыть сохранённый результат по ID'),
-                 ('Сравнить отчёты','Сопоставить две проверки одного типа')]
-        while True:
-            pos=self.menu('ПРОВЕРКА VPS / СЕТЬ',choices,'Выбери проверку; внешние запросы только по явному выбору')
-            if pos is None:return
-            if pos==9:
-                self.save_reports=not self.save_reports
-                choices[9]=('Сохранение результатов',
-                            'ВКЛ — только явно запущенные пробы' if self.save_reports else 'ВЫКЛ — без записи на диск')
-                continue
-            if pos==10:
-                self.action('--vps-check','history');continue
-            if pos==11:
-                name=self.field('ИСТОРИЯ','Имя JSON файла отчёта (из раздела История)')
-                if name:self.action('--vps-check','show',name)
-                continue
-            if pos==12:
-                first=self.field('СРАВНЕНИЕ','Имя более раннего JSON отчёта')
-                second=self.field('СРАВНЕНИЕ','Имя более позднего JSON отчёта') if first else None
-                if first and second:self.action('--vps-check','compare',first,second)
-                continue
-            cmd=['--vps-check']
-            if pos==0:cmd+=['local']
-            elif pos==1:cmd+=['services']
-            elif pos in (2,3,4,7):
-                host=self.field('ЦЕЛЬ ПРОВЕРКИ','Публичный домен / IPv4',initial='cloudflare.com' if pos<7 else '')
-                if not host:continue
-                if pos==2:cmd+=['ping','--host',host]
-                elif pos==3:cmd+=['quality','--host',host]
-                elif pos==4:cmd+=['trace','--host',host]
-                else:
-                    port=self.field('HTTPS ПОРТ','Введите TCP порт, Enter = 443',initial='443')
-                    if port is None:continue
-                    if not port.isdecimal() or not 1<=int(port)<=65535:
-                        self.message('Порт HTTPS',['Допустимо число 1..65535.'],warning=True);continue
-                    cmd+=['custom','--host',host,'--port',port]
-            elif pos==5:
-                ip=self.field('Тест скорости','Публичный IPv4 ТВОЕГО iperf3 сервера')
-                if not ip:continue
-                try:validate_panel_ip(ip)
-                except ValueError:self.message('Ошибка',['Требуется публичный IPv4.'],warning=True);continue
-                if not self.agree('НАБЛЮДЕНИЕ ЗА НАГРУЗКОЙ',
-                       'Тест запускается против указанного тобой iperf3 сервера и расходует трафик. Другая сторона должна быть твоей.', 'SPEED'):
-                    continue
-                cmd+=['speed','--server',ip,'--seconds','5']
-            elif pos==6:
-                if not self.agree('GEOIP / CDN',
-                   'Cloudflare получит публичный IP VPS. Запрос без токенов и клиентских данных.', 'GEOIP'):
-                    continue
-                cmd+=['edge']
-            elif pos==8:cmd=['--diagnose-network']
-            if cmd[0]=='--vps-check':
-                cmd[1:1]=['--format','table']+(['--save'] if self.save_reports else [])
-            self.action(*cmd)
+        """One entry, one comprehensive read-only diagnostic; no nested menus."""
+        confirm=self.message('КОМПЛЕКСНАЯ ПРОВЕРКА VPS',[
+            'ОС / ресурсы / IPv4 · публичные сервисы · HTTPS задержка и скачки',
+            'ICMP потери · маршрут · CDN · при наличии собственного iperf3 — скорость.',
+            'Запросы отправляются напрямую с VPS, сервисы видят её публичный IP.',
+            'Это диагностика сети, без установки пакетов и изменения настроек.',
+            'Для продолжения нажмите ENTER; ESC — отмена.'],wait=True)
+        if confirm==27:return
+        ip=self.field('СКОРОСТЬ (НЕОБЯЗАТЕЛЬНО)',
+            'Свой публичный IPv4 iperf3 сервера, ENTER = пропустить',maxlen=45)
+        if ip is None:return
+        args=['--vps-check','--format','table','full']
+        if ip:
+            try:validate_panel_ip(ip)
+            except ValueError:
+                self.message('Тест скорости',['Адрес должен быть публичным IPv4; тест не запускается.'],warning=True)
+                return
+            if not self.agree('ТЕСТ ПРОПУСКНОЙ СПОСОБНОСТИ',
+                'Только к принадлежащему вам iperf3-серверу; измерение расходует трафик.', 'SPEED'):
+                return
+            args+=['--speed-server',ip]
+        self.action(*args)
 
     def remove(self,full=False):
         self.action('--removal-plan','plan')
@@ -670,7 +695,7 @@ def plain_main():
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         print('NODE_MENU=STOP INTERACTIVE_TTY_REQUIRED (ssh -t)',file=sys.stderr)
         return 2
-    choices=['Проверка VPS (локально, только чтение)',
+    choices=['Комплексная проверка VPS (только чтение)',
              'Установка Node (требуется полноценный терминал)',
              'План восстановления после сбоя','План полного удаления','Выход']
     while True:
@@ -680,7 +705,7 @@ def plain_main():
         except (EOFError,KeyboardInterrupt):return 0
         if choice in ('0','5','q'):return 0
         if choice=='1':
-            subprocess.run(['bash',str(INSTALLER),'--vps-check','local'],check=False)
+            subprocess.run(['bash',str(INSTALLER),'--vps-check','--format','table','full'],check=False)
         elif choice in ('3','4'):
             subprocess.run(['bash',str(INSTALLER),'--removal-plan','plan'],check=False)
             if choice=='4':print('Полное удаление безопасно только через snapshot хостера.')

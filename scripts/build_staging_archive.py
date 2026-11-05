@@ -192,6 +192,8 @@ UNTRACKED_ALLOWED.update({
     'docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md',
     'tests/test_r28_ci_portability.py',
     'docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md',
+    'tests/test_r29_tui_full_vps.py',
+    'docs/RELEASE_2.5.18_R29_TERMINAL_RETRY_FULL_VPS.md',
 })
 
 

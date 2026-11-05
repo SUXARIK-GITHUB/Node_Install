@@ -284,6 +284,14 @@ def verify_bytes(files):
         # The user explicitly requires password login on nodes; no new key login.
         if 'PubkeyAuthentication no' not in installer or 'PasswordAuthentication yes' not in installer:
             raise ValueError('R24_PASSWORD_SSH_COMPATIBILITY_BROKEN')
+    if m['build_id'].startswith('20261105-r29-'):
+        expected={'scripts/terminal_ui.py','integrations/vps_connectivity.py',
+                  'tests/test_r29_tui_full_vps.py',
+                  'docs/RELEASE_2.5.18_R29_TERMINAL_RETRY_FULL_VPS.md'}
+        if not expected <= files.keys():
+            raise ValueError('R29_TERMINAL_OR_VPS_FILES_MISSING')
+        if 'r29' not in readme.split('---', 1)[0] or 'full' not in files['integrations/vps_connectivity.py'].decode():
+            raise ValueError('R29_MENU_OR_FULL_CHECK_MISSING')
     if m['build_id'].startswith('20261105-r28-'):
         needed = {'docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md',
                   'tests/test_r28_ci_portability.py',

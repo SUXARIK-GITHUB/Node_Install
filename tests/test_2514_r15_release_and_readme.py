@@ -54,7 +54,7 @@ class Release2514Tests(unittest.TestCase):
         self.assertIn('bash ./install.sh --menu', command)
         self.assertNotIn('--node-port', command)
         self.assertNotIn('curl | bash', command)
-        self.assertIn(f'В GitHub `main` опубликован r27', self.readme)
+        self.assertIn(f'В GitHub `main` опубликован r28', self.readme)
         self.assertIn('Историческая команда r19', self.readme)
         self.assertIn('20261021-r19-hybrid-worker-permissions', self.readme)
 
