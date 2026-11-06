@@ -120,6 +120,35 @@ class BlockyPolicies(unittest.TestCase):
             adblock.fetched('https://example.org/test',4,opener=lambda *a,**k:FakeResponse())
 
 
+class HostPrerequisitePolicy(unittest.TestCase):
+    def test_real_owner_policy_is_not_broadened_by_offline_fixtures(self):
+        class Stat:
+            def __init__(self,uid):self.st_uid=uid
+        self.assertTrue(adblock.root_owned(Stat(0)))
+        self.assertFalse(adblock.root_owned(Stat(1001)))
+        self.assertFalse(adblock.root_owned(Stat(65534)))
+
+    def test_real_systemctl_preflight_requires_an_executable(self):
+        with mock.patch.object(adblock.shutil,'which',return_value=None):
+            self.assertFalse(adblock.systemctl_available())
+        with mock.patch.object(adblock.shutil,'which',return_value='/usr/bin/systemctl'):
+            self.assertTrue(adblock.systemctl_available())
+
+    def test_unsafe_fixture_owner_symlink_and_mode_are_still_rejected(self):
+        with tempfile.TemporaryDirectory(prefix='node-adblock-guards-') as temp:
+            root=Path(temp)
+            good=root/'valid';good.write_text('test')
+            if os.geteuid() != 0:
+                with self.assertRaisesRegex(adblock.AdblockError,'UNSAFE_FILE'):
+                    adblock.regular_file(good)
+            link=root/'link';link.symlink_to(good)
+            with self.assertRaisesRegex(adblock.AdblockError,'UNSAFE_FILE'):
+                adblock.regular_file(link,owner_root=False)
+            good.chmod(0o666)
+            with self.assertRaisesRegex(adblock.AdblockError,'UNSAFE_FILE'):
+                adblock.regular_file(good,owner_root=False)
+
+
 class FakeHost(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='node-adblock-unit-')
@@ -135,6 +164,17 @@ class FakeHost(unittest.TestCase):
                   adblock.CONFIG_DIR.parent,adblock.DATA_DIR.parent,adblock.INSTALL_DIR.parent):
             d.mkdir(parents=True,exist_ok=True)
         (adblock.NODE_STATE/'INSTALL_COMPLETE').write_text('version=2.5.18\n')
+        # The offline host is isolated in TemporaryDirectory. Its files are
+        # owned by the test runner (uid 1001 on GitHub VMs, uid 0 as root).
+        # Simulate root *ownership* only, while preserving all actual file,
+        # symlink, hardlink, and permission validation in adblock.py.
+        fixture_uid=os.geteuid()
+        for name,stub in (
+            ('root_owned',lambda st: st.st_uid == fixture_uid),
+            ('systemctl_available',lambda:True),
+        ):
+            patch=mock.patch.object(adblock,name,stub)
+            patch.start();self.addCleanup(patch.stop)
         self.blob=synthetic_list()
         self.arch,self.program=fake_archive()
         self.systemd_calls=[]

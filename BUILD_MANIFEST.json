@@ -1,5 +1,5 @@
 {
-  "build_id": "20261106-r37-adblock-blocky-hagezi",
+  "build_id": "20261106-r38-adblock-ci-fixture-compat",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
     "SHA256SUMS"
@@ -26,14 +26,14 @@
     {
       "mode": "0644",
       "path": "CHANGELOG.md",
-      "sha256": "d2c9817b810811158fb3b042c4fb17667f67231d2b150e8ebf32feb6d43a272f",
-      "size": 139461
+      "sha256": "16118d8a646f7d9e8801332a73e1d763e550b9acbe110cceef004cbd5514964d",
+      "size": 140532
     },
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "c2da70f919bbfc9e6edc5dbecfb6d9bfac62c7dfc40e15ed4cab8fa65ae3fdbc",
-      "size": 53267
+      "sha256": "0139d5a3c363d877c011b7ce69c89cf4dd1bb98ee23b39cb4e213b4322a850ee",
+      "size": 53279
     },
     {
       "mode": "0644",
@@ -676,6 +676,12 @@
       "path": "docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md",
       "sha256": "b22467179fc63d763e94bd45706ca12a2cfb4a3d50b6b54629d8c6c7997ba6a0",
       "size": 11632
+    },
+    {
+      "mode": "0644",
+      "path": "docs/RELEASE_2.5.18_R38_ADBLOCK_CI_PORTABILITY.md",
+      "sha256": "897c75de5f1f594c6e4e65c89b17ed21d4f6cb1cc1c184b33bf1ec0923b2c1d1",
+      "size": 3532
     },
     {
       "mode": "0644",
@@ -1652,8 +1658,8 @@
     {
       "mode": "0644",
       "path": "integrations/adblock.py",
-      "sha256": "559dca73849681af7cdd061d3f4bf1494f05ced85c017bcb529f296ffa4758bf",
-      "size": 22639
+      "sha256": "247c371275d371fb7265e5e113a26aca95f93b87bee657b00b9005018bdfec50",
+      "size": 23060
     },
     {
       "mode": "0644",
@@ -2066,8 +2072,8 @@
     {
       "mode": "0644",
       "path": "scripts/build_staging_archive.py",
-      "sha256": "e3b28005d8f554dfb27b3c7e478dffcc6d920f6c4b0dc96a410a6967e4e4b380",
-      "size": 15145
+      "sha256": "d0d8f60825bd7b164f89dde21f9f12bc0e356a0b3a014aa5f71443ab1bac9cf6",
+      "size": 15202
     },
     {
       "mode": "0644",
@@ -2162,8 +2168,8 @@
     {
       "mode": "0644",
       "path": "scripts/verify_release.py",
-      "sha256": "5d68b074ef4022b2e1d1a435120e1ebbcd9d9a5f0891c74b69f929ecfebb91ba",
-      "size": 26322
+      "sha256": "38949a17335ae600f10a9e8c7364ddf063b9e0d8385ec013c71fc9e37ea61a71",
+      "size": 27264
     },
     {
       "mode": "0644",
@@ -8198,7 +8204,7 @@
     {
       "mode": "0644",
       "path": "tests/test_2512_r11_ready_profiles_and_cover.py",
-      "sha256": "9fd20cf5838cb6fc67a216135e436739f0746052cb882b8adaf63f6c9422fccb",
+      "sha256": "5d0e5986f86e576af79412518e1f874a9416ba8db42f5233d64122d3910b5c64",
       "size": 8801
     },
     {
@@ -8222,8 +8228,8 @@
     {
       "mode": "0644",
       "path": "tests/test_2514_r15_release_and_readme.py",
-      "sha256": "b8071c9b59c00d262861da7f062468b140647fb47332c32b9e992e259ad21a18",
-      "size": 4157
+      "sha256": "b6d75e0354b1aa5e3f0388e6a3f50152a23518259fa21ee7068e2b6ad2d4c310",
+      "size": 4161
     },
     {
       "mode": "0644",
@@ -8282,8 +8288,8 @@
     {
       "mode": "0644",
       "path": "tests/test_docs_ui_255.py",
-      "sha256": "bfa27a74b9680c617c3066cfbc50ed07fade77b4499177f2f6f5bd21e0228ab4",
-      "size": 12257
+      "sha256": "fd934ebf044bc44d04c9d9413d761e8e6b6ea1e8a3c1e8694e715a4882128c65",
+      "size": 12261
     },
     {
       "mode": "0644",
@@ -8570,8 +8576,8 @@
     {
       "mode": "0644",
       "path": "tests/test_r37_adblock.py",
-      "sha256": "181e86eb5551d6b8207bd93795d073f1da2f9c75db21d948db16dcfd02b38442",
-      "size": 16331
+      "sha256": "27d66704f44e66e6839af6fd92824ced00e9dab61728bd3df48c48baa5177651",
+      "size": 18397
     },
     {
       "mode": "0644",

@@ -1,3 +1,11 @@
+## 2.5.18 r38 — 2026-11-06 · исправление GitHub Actions Blocky (STAGING ONLY)
+
+- Исправлен только дефект изоляции новых r37-тестов Blocky: тестовый `FakeHost` теперь корректно имитирует root-владение файлов и наличие `systemctl` независимо от ОС/UID CI runner.
+- Настоящие проверки root-владельца и `systemctl` **сохранены** для production. Дополнительные unit-тесты подтверждают запрет чужого владельца, symlink и небезопасных прав.
+- Не меняются Remnawave, Xray, Node API, SSH/UFW, Nginx, Docker, сетевые правила, сайты или маршрутизация клиентского DNS.
+- Подробнее: `docs/RELEASE_2.5.18_R38_ADBLOCK_CI_PORTABILITY.md`.
+- CI и реальная VPS требуют отдельного подтверждения после публикации; `INCOMPLETE_STAGING_ONLY`.
+
 ## 2.5.18 r37 — 2026-11-06 · Blocky / HaGeZi Normal (STAGING ONLY)
 
 - По желанию пользователя: автоматическая установка Blocky v0.35.0 с проверкой SHA-256 и HaGeZi Normal, локальный DNS на `127.0.0.1:15353`, ежедневное обновление списков с откатом подозрительных загрузок, systemd service/timer и проверка DNS.

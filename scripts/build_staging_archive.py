@@ -211,6 +211,7 @@ UNTRACKED_ALLOWED.update({
     'integrations/adblock.py',
     'tests/test_r37_adblock.py',
     'docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md',
+    'docs/RELEASE_2.5.18_R38_ADBLOCK_CI_PORTABILITY.md',
     'docs/RELEASE_2.5.18_R36_TERMINAL_RESUME.md',
 })
 

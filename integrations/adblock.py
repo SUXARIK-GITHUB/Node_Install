@@ -88,6 +88,18 @@ def root_only():
     require(os.geteuid() == 0 and sys.platform.startswith('linux'), 'ROOT_LINUX_REQUIRED')
 
 
+def root_owned(st):
+    # Production always requires uid 0. Offline fixtures substitute their own
+    # expected owner without relaxing the real file/type/mode/link checks.
+    return st.st_uid == 0
+
+
+def systemctl_available():
+    # Keep the production prerequisite; a simulated systemd host can replace
+    # only this probe in offline tests (not the actual service-management code).
+    return shutil.which('systemctl') is not None
+
+
 def regular_file(path: Path, *, owner_root=True):
     try:
         st = path.lstat()
@@ -95,7 +107,7 @@ def regular_file(path: Path, *, owner_root=True):
         return None
     require(stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and
             not (st.st_mode & 0o022) and
-            (not owner_root or st.st_uid == 0), 'UNSAFE_FILE:' + str(path))
+            (not owner_root or root_owned(st)), 'UNSAFE_FILE:' + str(path))
     return st
 
 
@@ -104,7 +116,7 @@ def managed_directory(path: Path):
         raise AdblockError('UNSAFE_DIRECTORY:' + str(path))
     if path.exists():
         st = path.stat()
-        require(stat.S_ISDIR(st.st_mode) and st.st_uid == 0 and not st.st_mode & 0o022,
+        require(stat.S_ISDIR(st.st_mode) and root_owned(st) and not st.st_mode & 0o022,
                 'UNSAFE_DIRECTORY:' + str(path))
     else:
         path.mkdir(mode=0o755, parents=False)
@@ -430,7 +442,7 @@ def locked():
     fd = os.open(LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         st = os.fstat(fd)
-        require(stat.S_ISREG(st.st_mode) and st.st_uid == 0 and st.st_nlink == 1, 'UNSAFE_LOCK')
+        require(stat.S_ISREG(st.st_mode) and root_owned(st) and st.st_nlink == 1, 'UNSAFE_LOCK')
         fcntl.flock(fd, fcntl.LOCK_EX)
         yield
     finally:
@@ -483,7 +495,7 @@ def status():
 def install(enable_filtering=True):
     root_only()
     ensure_node()
-    require(shutil.which('systemctl') is not None, 'SYSTEMD_REQUIRED')
+    require(systemctl_available(), 'SYSTEMD_REQUIRED')
     with locked():
         previous = owned_marker()
         check_existing(previous)
