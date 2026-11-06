@@ -1,298 +1,169 @@
-<div align="center">
-
-**ТЕКУЩАЯ STAGING-СБОРКА r33 (2026-11-06; Git/CI-аудит):** полный тестовый прогон r32, локальный Git commit → bare push → shallow clone → SHA-256 → verify_release, проверка удалённого GitHub Actions (r29) и отрицательных сценариев. Исправлен CI-контроль чистоты checkout: теперь он обнаруживает staged/untracked файлы, не удаляет их и не изменяет репозиторий. Исправлена история публикации GitHub в README. **Не опубликовано в GitHub, на реальной VPS не проверено.** [Отчёт r33](docs/RELEASE_2.5.18_R33_GIT_CI_QA.md).
-
-**ПРЕДЫДУЩАЯ STAGING-СБОРКА r32 (2026-11-06; диагностика VPS):** в первом пункте меню теперь русскоязычный 9-раздельный интерактивный отчёт (IP/ASN/геолокация, DNS, сайты и API, HTTP/TLS, ping, трассировка, CDN, сервер, скорость, щадящие тесты CPU/RAM/диска) с управлением колесом мыши, стрелками, PgUp/PgDn и сохранением TXT/JSON/PNG. Базовый прогон не меняет настройки VPS, не устанавливает сторонние скрипты и не запускает нагрузку; тест iperf3 только до собственного разрешённого адреса по `S`, нагрузка только по `B`. Экспорт в закрытую папку с правами 0700/0600 — только по `E`. **`INCOMPLETE_STAGING_ONLY`**: не испытано на VPS/MobaXterm и не опубликовано в GitHub. [Отчёт r32](docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md).
-
-**ПРЕДЫДУЩАЯ STAGING-СБОРКА r31 (2026-11-06; этап 2 из 2):** выполнены оставшиеся задачи 6–9: единый улучшенный вид SSH-терминала, живой приватный журнал установки в `/root`, экран `/root/reality-keys.txt` с выбором/копированием поля и явная кнопка выхода в обычную SSH-консоль. Физический размер шрифта задаёт MobaXterm, не сам установщик. Из r30 сохранены Esc, лимиты, согласованные подтверждения, IP/FQDN панели и цвета журнала. **`INCOMPLETE_STAGING_ONLY`**, в GitHub не опубликовано и на реальной VPS не испытано. [Отчёт r31](docs/RELEASE_2.5.18_R31_TERMINAL_COMPLETION.md) · [История r30](docs/RELEASE_2.5.18_R30_USER_FEEDBACK.md).
-
-**Текущий полный архив:** `Node_Install_2.5.18-docs-menu_20261106-r33-git-ci-audit-fixes.zip`. В GitHub `main` эта ревизия **не опубликована**. Для новой **staging VPS** сначала проверьте snapshot, консоль хостера и SHA-256 архива по независимому каналу. Затем в дочерней SSH/Bash-сессии выполните:
-
-```bash
-unzip -q Node_Install_2.5.18-docs-menu_20261106-r33-git-ci-audit-fixes.zip
-cd Node_Install
-python3 scripts/verify_release.py --root .
-sha256sum --check SHA256SUMS
-bash -n install.sh
-bash ./install.sh --menu
-```
-
-Это инструкция **только для r33 ZIP**. Исторический GitHub-bootstrap ниже закреплён на r29 и **не запускает r33**.
-
-
-**Текущее дополнение r29 (staging, UX/retry hotfix):** перерисовка чёрно-зелёного меню выполняется только после изменения данных/выбора, полноэкранный интерфейс оформлен рамкой и читаемыми зелёными акцентами; «Проверка VPS» запускает **единую** последовательную read-only диагностику (ОС/ресурсы, сайты/API, HTTPS RTT/jitter, ICMP loss, маршрут и CDN) вместо списка разрозненных проверок. Тест скорости выполняется **только** при явном вводе собственного iperf3 IPv4. Повторная команда установки из GitHub использует существующий проверенный checkout и выполняется в дочерней Bash-оболочке: ошибка проверки не завершает SSH-сеанс. **Повторный запуск меню после ошибки разрешён, но повторная установка поверх незавершённой VPS — запрещена.** Подтверждённый финальный checkpoint можно завершить только отдельным `--finish-install`. См. [инструкцию r29](docs/RELEASE_2.5.18_R29_TERMINAL_RETRY_FULL_VPS.md).
-
-**Текущее дополнение r28 (staging, исправление GitHub Actions):** Python 3.10/3.11 теперь разбирают генератор сайтов; локальные тесты Nginx не требуют записи в системные логи, тестовый Xray использует свой доверенный исполняемый файл вместо системной ссылки. Команда `tests/run.sh` выполняет синтаксические проверки до тестов. Версия r28 опубликована в GitHub `main` отдельным коммитом; до проверки её CI она остаётся staging-кандидатом. См. [отчёт r28](docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md).
-
-**Дополнение r27 (staging):** гибридное чёрно-зелёное меню `sudo bash install.sh --menu`, мастер выбора Ordinary/Entry/Exit, первая тема `00. Авто (Рандом)` из **120** сайтов, необязательные дополнительные параметры, отдельный прокручиваемый журнал. `--vps-check` добавляет проверки HTTPS/сервисов, ICMP, p50/p95/jitter, traceroute, CDN и отдельный ограниченный тест скорости только к своему iperf3-серверу. Для таблиц `--vps-check --format table services`. Режимы отмены/удаления предоставляют только **безопасную инвентаризацию и узкий SSH/UFW rollback**, а НЕ автоматическую очистку ОС. Полное восстановление — через проверенный snapshot VPS. См. [инструкцию r27](docs/RELEASE_2.5.18_R27_HYBRID_MENU_VPS_DIAGNOSTICS.md).
-
-
-
-**Дополнение r26 (staging):** `--finalmask defaults|status|snippet|menu|enable|disable` позволяет отдельно выбрать включение/выключение и параметры `lengths` (байты), `delays` (мс), `maxSplit` (разбиения) для **клиентского исходящего VLESS Xray JSON**. Установка ноды/Panel/клиент не модифицируется, по умолчанию FinalMask выключен. Опционально `--transport-readiness --xray-bin` проверяет конфигурации установленным Xray (`run -test`), а `--measure-compare` сопоставляет уже имеющиеся прямые HTTPS/iperf3 отчёты без утверждений о скорости VPN. [Подробности и примеры чисел](docs/RELEASE_2.5.18_R26_FINALMASK_TRANSPORT_QA.md). Это не подтверждает эффективность маскировки от DPI или законченную установку Hysteria2/AWG2.
-
-**Дополнение r25 (staging):** исправлены повторные откаты после прерывания операций сайта и ограниченного сетевого тюнинга; `--transport-readiness` проверяет приватные шаблоны XHTTP/TLS, Hysteria2 и AmneziaWG2 только на согласованность, **не** устанавливает сервис и всегда требует отдельной runtime-приёмки. Ошибка опциональной темы после INSTALL_COMPLETE имеет код 20 (`CORE=PASS`, `OPTIONAL_SITE=FAILED`). Подробности: `docs/RELEASE_2.5.18_R25_TRANSACTION_AND_TRANSPORT_READINESS.md`.
-
-# 🌌 VKARMANI · NODE INSTALL
-
-**VLESS · REALITY · Vision · IPv4-only · Nginx Selfsteal**
-
-**[⚡ Установка](#install) · [🟦 Обычная нода](#ordinary-map) · [🟪 Каскад](#cascade-map) · [🎛 Remnawave](#panel) · [🧪 Проверки](#verification)**
-
-</div>
-
 <a id="install"></a>
-## ⚡ Установка
+## 🚀 Установка Node Install — два способа
 
-**Новая тестовая VPS, DNS A, резервная консоль и проверенный snapshot.** Установщик изменяет SSH, UFW, Docker, Nginx, systemd и GRUB.
+Обе команды открывают **то же самое терминальное меню**. Никакие системные настройки не меняются, пока вы сами не выберете установку. Выполнять в открытой SSH-сессии под `root` на **новой тестовой VPS**.
 
-**Историческая сборка — 2.5.18 r29 (TUI + VPS diagnostics + safe retry), 2026-11-05, `INCOMPLETE_STAGING_ONLY`.** Полный ZIP на основе r28. В GitHub `main` опубликован r29 (`88854bf09b50a3e629cce7ffd3afc9b4f6da00b2`); GitHub Actions для этого коммита завершился успешно по всем пяти заданиям 2026-11-05. Для r30–r33 удалённого CI нет, потому что они не опубликованы. **120 тематических сайтов:** 12 сохранённых исходных, 96 вариантов общего генератора и 12 дополнительных тематик с **собственными HTML-композициями**. 28 визуальных семейств (16 базовых + 12 отдельных). Внутри каталога находятся 1080 статических файлов, это **НЕ 1080 независимых сайтов**. Оригинальные чужие HTML/ассеты не переносились. См. [отчёт r24](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md) и [историю r23](docs/RELEASE_2.5.18_R23_OPTIONAL_TRANSPORTS_VISUAL_NETWORK.md).
+### 1. 🐙 С GitHub
 
-**Что работает:** локальная галерея 120 сайтов (`preview/site-gallery/index.html`), `site-catalog`, `site-preview`, транзакционные `site-deploy`, `site-change`, `site-rollback`, диагностика selfsteal и сети, **новая проверка Xray JSON** (`integrations/transport_profile_audit.py`) и **сравнение двух сетевых снимков** (`scripts/network_compare.py`) — исключительно чтение. **Новое в r23:** 240 визуальных проверок Chromium и контактные листы; локальный TLS/Unix PROXY v1 selfsteal-пробник, конфигурационные bundles для XHTTP/TLS/H2, Hysteria2 и AWG2, optional атомарная установка/откат Nginx-маршрута XHTTP, измерение HTTPS и TCP iperf3, узкий условный backlog tuning. **НЕ считать готовым:** новые протоколы не активируются автоматически и не подтверждены реальным Xray/AWG runtime; нагрузка удалённого VPN и DPI не измерены. Произвольные sysctl/ядра/маршруты не меняются. Безопасная установка по умолчанию сохраняет RAW/Vision/XHTTP/REALITY, Nginx, Docker и каскад без изменений.
-
-**В r24 (заход 1/2):** `bash install.sh --site-manager menu` объединяет управление всеми 120 сайтами; `--site-theme 111-atlas-docs` позволяет явно выбрать сайт для новой ordinary staging-установки (публикуется **после** `INSTALL_COMPLETE`). `--selfsteal-verify` проверяет локальную цепочку selfsteal и `nginx -t`; `--path-mtu` выполняет read-only диагностику, ICMP — только с `--probe`; `--transport-audit` подключает прежний JSON-аудитор к общему CLI. Парольный SSH сохранён; вход по ключам НЕ внедряется. **Это не полная модернизация протоколов:** их активация и измерения эффективности остаются в заходе 2. [Подробности и rollback](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md).
-
-**Локальная проверка без установки:**
+Клонирует `main` в **новый уникальный каталог**. Старые папки и рабочие конфигурации не удаляются. Перед запуском проверяет SHA-256 установщика, состав релиза и точный идентификатор сборки.
 
 ```bash
-python3 scripts/staging_web_deploy.py site-catalog
-python3 scripts/site_audit.py --rich
-python3 scripts/build_site_gallery.py --check
-bash install.sh --diagnose-network
-bash install.sh --diagnose-selfsteal
-python3 integrations/transport_profile_audit.py examples/inbound-raw-full.example.json --expected-domain node.example.com
-```
-
-**Просмотр сайтов:** распакуйте полный ZIP и откройте `preview/site-gallery/index.html` обычным браузером; новая тема содержит собственные HTML/CSS/SVG и внутренние страницы. Перед production — реальные staging VPS и проверяемый snapshot.
-
-<a id="github-install"></a>
-### 🐙 Исторический GitHub bootstrap · 2.5.18 r29 (НЕ для r33)
-
-**Историческая команда r29. Для r33 не подходит.** В GitHub `main` опубликован r29; команда проверяет строго r29 и не может запустить r33. Не используйте её для установки r33. Использовать только на новой **staging VPS**, после проверенного snapshot и проверки аварийной консоли.
-
-```bash
-# Всё выполняется в ДОЧЕРНЕЙ Bash-оболочке: STOP не завершает root SSH.
-bash <<'NODE_INSTALL_BOOTSTRAP'
+bash <<'NODE_INSTALL_GITHUB'
 set -Eeuo pipefail
-[[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-checkout=/root/Node_Install-2.5.18
-if [[ -d "$checkout/.git" ]]; then
-    echo 'INFO: использую существующий checkout без удаления файлов и git reset'
-    [[ "$(git -C "$checkout" rev-parse --is-inside-work-tree)" == true ]] || exit 1
-elif [[ -e "$checkout" ]]; then
-    echo 'STOP: путь существует, но не является ожидаемым Git checkout' >&2
-    echo 'Сохраните его и используйте другой каталог; ничего не удаляется.' >&2
-    exit 1
-else
-    git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git "$checkout"
-fi
+[[ "$(id -u)" == 0 ]] || { echo 'Нужен root'; exit 1; }
+command -v git >/dev/null || { echo 'Не установлен git'; exit 1; }
+checkout="$(mktemp -d /root/NodeInstall-git-XXXXXXXX)"
+git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git "$checkout"
 cd "$checkout"
-printf '%s  %s\n' '2e64804a1077c3c5843cb65cbc5beccac4de806fa7a29bd9a9d739306f1a46e6' 'install.sh' | sha256sum --check
-sha256sum --check SHA256SUMS
+printf '%s  %s\n' '144d1d5948e492153d9688b00b5ebf7ee1d9598ea3f7e5b634609e0300212e95' 'install.sh' | sha256sum --check
+sha256sum --check --status SHA256SUMS
 python3 scripts/verify_release.py --root .
-python3 - <<'PY_VERIFY_BUILD'
+python3 - <<'PY_BUILD'
 import json
 from pathlib import Path
 m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
 if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-        '2.5.18', '20261105-r29-terminal-retry-full-vps', 'INCOMPLETE_STAGING_ONLY'):
-    raise SystemExit('STOP: GitHub version/build/status mismatch; installer NOT launched')
-PY_VERIFY_BUILD
+    '2.5.18', '20261106-r35-automatic-vps-check', 'INCOMPLETE_STAGING_ONLY'
+):
+    raise SystemExit('STOP: GitHub содержит другую сборку; меню не запускается')
+PY_BUILD
 bash -n install.sh
-[[ "$(bash ./install.sh --version)" == '2.5.18' ]] || { echo 'ERROR: версия установщика не совпадает'; exit 1; }
 bash ./install.sh --menu < /dev/tty
-NODE_INSTALL_BOOTSTRAP
+NODE_INSTALL_GITHUB
 ```
 
-Строгие `SHA256SUMS`/манифест проверяют содержимое клона, но не удостоверяют автора Git-коммита; SHA-256 установщика и коммит нужно сверить по независимому доверенному каналу. **Не запускайте команду на production** до отдельной staging-приёмки. Установка не должна выполняться при незавершённом CI.
+### 2. 📦 Из полного ZIP-архива
 
-
-### Если установка прервалась или меню закрыли
-
-**Не запускайте повторную установку поверх частично изменённой VPS.** Для повторного открытия меню после ошибки не нужно делать `git clone` ещё раз и тем более удалять исходную папку. Из действующей SSH-сессии:
+Сначала передайте **полный** `Node_Install_2.5.18-docs-menu_20261106-r35-automatic-vps-check.zip` в `/root` тестовой VPS. Архив распаковывается в отдельный каталог, без перезаписи прежней версии.
 
 ```bash
-cd /root/Node_Install-2.5.18
-bash ./install.sh --menu
-```
-
-Меню откроется и позволит посмотреть состояние установки / план восстановления. Если сохранён **подтверждённый финальный checkpoint**, можно отдельно выполнить `sudo bash ./install.sh --finish-install` по инструкции в документации. При других неоконченных системных изменениях нужен анализ журнала и восстановление snapshot; удалять `/var/lib/vkarmani-node`, `INSTALL_FAILED`, `.git`, SSH/UFW backup или конфигурации Docker вручную ради обхода запрета нельзя. Ошибка команды внутри вышеописанного блока не завершает интерактивный root-shell и SSH-сеанс. Существующий Git checkout не удаляется и не переписывается принудительно.
-
-Если checkout существует, но контрольные суммы не совпадают с ожидаемым релизом, не используйте `git reset --hard` и не перезаписывайте незакоммиченные изменения: сохраните старый каталог и подготовьте отдельную чистую копию после проверки текущего состояния VPS.
-
-**Важная деталь ввода:** дочерняя Bash-оболочка читает команды из heredoc, поэтому интерактивному меню специально возвращается управляющий терминал через `< /dev/tty`. Без этого Python увидел бы не-tty stdin и отказался бы запускать TUI.
-
-**Экран «Проверка VPS»:** в r29 одно действие выполняет единый анализ. Пример того же действия без UI: `bash install.sh --vps-check --format table full`. Для опционального скорости только до своего сервера: `bash install.sh --vps-check --format table full --speed-server ВАШ_PUBLIC_IPV4`. Отсутствие сервера измерений = явный `SKIPPED`, а не фальшивый ноль Мбит/с. Запросы к сервисам отправляются с IP VPS.
-
-Шрифт в SSH-терминале задаёт **MobaXterm**, не скрипт: выберите читаемый моноширинный шрифт (например Consolas) с размером 12–14 и терминал шириной от 80 столбцов. При `TERM=dumb` интерфейс намеренно использует текстовый fallback.
-
-<details><summary>Историческая команда r19 (НЕ для текущей ветки main)</summary>
-
-### 🐙 Архивная установка с GitHub · 2.5.18 r19
-
-
-**Это архивный пример для r19, а НЕ инструкция для текущей GitHub `main`.** Исторический коммит r19 — `d03259ee31d7692c41b7c4ac222deb3a6c5151b0`, но `main` уже обновлён до r29; старая команда специально не должна запускать иной build. Для r33 используйте только полный проверенный ZIP до отдельной публикации. Автоматических миграций существующих узлов нет.
-
-Только **новая чистая staging VPS**: snapshot диска с проверенным восстановлением, консоль провайдера, DNS A на назначенный публичный IPv4 ноды. Выполнять от `root`:
-
-```bash
+bash <<'NODE_INSTALL_ARCHIVE'
 set -Eeuo pipefail
-[[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-cd /root
-[[ ! -e Node_Install-2.5.18 ]] || { echo 'ERROR: каталог уже существует'; exit 1; }
-git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git Node_Install-2.5.18
-cd /root/Node_Install-2.5.18
-printf '%s  %s\n' '272c7561e2cab7e0a84c55e715ba04781954c2e49aeb6f0c33ab822dd51c5496' 'install.sh' | sha256sum --check
-sha256sum --check SHA256SUMS
+[[ "$(id -u)" == 0 ]] || { echo 'Нужен root'; exit 1; }
+archive="/root/Node_Install_2.5.18-docs-menu_20261106-r35-automatic-vps-check.zip"
+[[ -f "$archive" ]] || { echo "Архив не найден: $archive"; exit 1; }
+checkout="$(mktemp -d /root/NodeInstall-zip-XXXXXXXX)"
+unzip -q "$archive" -d "$checkout"
+cd "$checkout/Node_Install"
+sha256sum --check --status SHA256SUMS
 python3 scripts/verify_release.py --root .
-python3 - <<'PY_VERIFY_BUILD'
-import json
-from pathlib import Path
-m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
-if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-        '2.5.18', '20261021-r19-hybrid-worker-permissions', 'INCOMPLETE_STAGING_ONLY'):
-    raise SystemExit('STOP: GitHub version/build/status mismatch; installer NOT launched')
-PY_VERIFY_BUILD
 bash -n install.sh
-[[ "$(bash ./install.sh --version)" == '2.5.18' ]] || { echo 'ERROR: installer version mismatch'; exit 1; }
-bash ./install.sh
+bash ./install.sh --menu < /dev/tty
+NODE_INSTALL_ARCHIVE
 ```
 
-Последняя команда — обычный `bash ./install.sh` **без нестандартного порта**. Node API TCP/2222 и клиентский TCP/443 остаются настройками по умолчанию. Автоперезагрузка выполняется только по штатному сценарию успешно завершённой новой установки. При неполной установке нельзя обойти `--finish-install`/fail-closed проверки.
-
-**Эта команда относится только к r19.** Она должна отказывать по SHA-256, если содержимое ветки GitHub отличается от проверенной r19. Для текущей r33 используйте ZIP ниже.
-
-
-</details>
-
-<a id="archive-install"></a>
-### 📁 2. Из полного ZIP · 2.5.18 r33 (текущая staging-сборка)
-
-Полный ZIP сначала передаётся на отдельную **чистую VPS**. Проверяйте SHA-256 архива по независимому доверенному каналу. Внутренний `SHA256SUMS` удостоверяет целостность, но не происхождение архива. Перед первым запуском — snapshot целого диска и доступная аварийная консоль хостера.
-
-```bash
-set -Eeuo pipefail
-[[ "$(id -u)" -eq 0 ]] || { echo 'ERROR: требуется root'; exit 1; }
-unzip -q Node_Install_2.5.18-docs-menu_20261106-r33-git-ci-audit-fixes.zip
-cd Node_Install
-python3 scripts/verify_release.py --root .
-sha256sum --check SHA256SUMS
-bash -n install.sh
-bash ./install.sh --version
-# На интерактивной VPS команда откроет новое чёрно-зелёное меню.
-bash ./install.sh
-# Альтернативы: bash ./install.sh --menu ; bash ./install.sh --install-direct
-```
-
-**Только при запуске из уже открытой интерактивной SSH-оболочки** меню «Выйти из установщика» возвращает пользователя в shell. Живой журнал сохраняется в `/root/node-install-*.log` (root:0600) только при установке через `--menu`. В конце можно выбрать REALITY-поле и нажать Enter для запроса OSC 52; если клиент блокирует OSC 52, доступно ручное выделение. Текстовый ввод ключей в обычном shell и запуск по `--install-direct` не создают этот журнал. См. [описание r31](docs/RELEASE_2.5.18_R31_TERMINAL_COMPLETION.md).
-
-**История первого захода r24:** см. [r24 release note](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md). Режимы, начатые в r23, описаны в [r23](docs/RELEASE_2.5.18_R23_OPTIONAL_TRANSPORTS_VISUAL_NETWORK.md). Скрипты новых транспортов требуют полного ZIP, не входят в отдельный `install.sh`. Безопасная установка по умолчанию не запускает их.
-
-**Каталог и предпросмотр без root:** `python3 scripts/staging_web_deploy.py site-catalog`, `python3 scripts/site_audit.py --rich` и галерея `preview/site-gallery/index.html`. Из 120 тем 12 исходных сохранены; 96 сгенерированных и 12 отдельно оформленных находятся в `site-catalog/`.
-
-**Переключение уже установленного сайта после snapshot на staging:**
-
-```bash
-sudo python3 scripts/staging_web_deploy.py site-change --theme 110-blue-harbor --expected-domain node.example.com --confirm-staging
-sudo python3 scripts/staging_web_deploy.py status
-sudo python3 scripts/staging_web_deploy.py site-rollback --confirm-staging
-```
-
-**Новая диагностика:** `bash install.sh --diagnose-selfsteal` читает локальные права доступа и конфигурацию Nginx, не передаёт секреты. `--diagnose-network` теперь показывает TCP buffers, softnet, listen drops и socket counters. Только чтение.
-
-**Новая read-only проверка VPN-профиля:** `python3 integrations/transport_profile_audit.py path/to/profile.json --expected-domain node.example.com` проверяет связку RAW/REALITY/Vision или XHTTP/REALITY, Unix-сокет, `xver`, SNI и правила fail-closed каскада. Печатает только коды ошибок, без ключей и IP клиентов. Это не доказательство реальной работы VPN. Сетевой отчёт по двум снимкам: `python3 scripts/network_compare.py before.json after.json --seconds 60` — сравнивает накопительные счётчики как интервальные изменения, не обещая ускорения.
-
-**Не запускайте установку ZIP на рабочей VPS.** Дополнительные страницы включаются отдельно, только после полной успешной установки на новой staging VPS и проверки snapshot. Пример для уже готовой тестовой ноды (укажите свой реальный FQDN):
-
-```bash
-sudo python3 scripts/staging_web_deploy.py site-deploy --theme 01-atelier --expected-domain node.example.com --rich-pages --confirm-staging
-sudo python3 scripts/staging_web_deploy.py status
-# Если требуется вернуть предыдущую версию сайта:
-sudo python3 scripts/staging_web_deploy.py site-rollback --confirm-staging
-```
-
-Встроенный `install.sh` **не включает rich pages автоматически**, RAW/Vision/XHTTP/REALITY, сертификаты, Panel, Bridge и Nginx Stream не изменены. Команда развёртывания имеет обязательные проверки exact allowlist Nginx, TLS 1.3, HTTP/2 и реального HTTPS-ответа страниц. При ошибке автоматически откатывает собственные файлы, а при неполном откате останавливается с явным требованием ручного восстановления. Это не замена полному VPS snapshot.
-
-
-**Диагностика сети и нескольких IPv4 без изменения настроек:**
-
-```bash
-bash ./install.sh --diagnose-node --domain node.example.com
-bash ./install.sh --diagnose-resources --seconds 15
-bash ./install.sh --diagnose-quality --seconds 15
-```
-
-Первый отчёт показывает все назначенные публичные IPv4, DNS A, адрес, выбранный по домену, исходящий маршрут/адрес-источник, доступность 80/443, conntrack, активные qdisc, статус RemnaNode Docker, действующие значения TCP/BBR и наличие конфигов Netplan/ifupdown. Второй собирает интервальные счётчики нагрузки, TCP/UDP и потери интерфейсов. Диагностика **не меняет** `/etc/network/interfaces`, Netplan, другие IPv4, маршруты, firewall, Nginx или Docker. Наличие файла настроек не доказывает, что именно этот менеджер обслуживает интерфейс. Для автоматического выбора Node IPv4 установщик уже сверяет DNS A с локальными адресами; исходящий адрес по умолчанию может отличаться и не должен переназначаться автоматически. Подробнее: `docs/RELEASE_2.5.16_R17_CI_NETWORK_20261021.md`.
-
-**Новый третий отчёт `--diagnose-quality`:** два обезличенных снимка `ss` по установленным TCP/443: RTT p50/p90/p99, доля соединений с обнаруженной историей retransmits и ориентировочный delivery rate. Ни один IP клиента/UUID/ключ не печатается. Он не измеряет UDP и не доказывает причину блокировки; при отсутствии соединений сообщает, что данных для выводов нет.
-
-**Cascade Exit:** для **новых** профилей `freedom.sockopt.domainStrategy=ForceIPv4`, приватные сети и обе публичные IPv4 пары Entry/Exit заблокированы в пользовательском routing, на Exit — и в `finalRules`. Никакой автоматической миграции уже работающих каскадов. Hybrid Stream теперь содержит заранее разрешённый include для управляемых локальных TCP-фрагментов, без второго публичного 443.
-
-**Важное исправление r19:** в старой r18 при выборе MAX/ya.ru/rutube.ru/mail.ru установка могла остановиться на `SELFSTEAL_CHECK=FAIL SSLEOFError`. Причина — каталог Unix-сокетов `0750 root:root`: worker Nginx `www-data` не имел права входить в него и подключаться к `cover.sock`. В r19 каталог остаётся закрытым `0750`, но его группа `www-data`, в том числе после перезагрузки (`tmpfiles.d`).
-
-**Уже остановленная на этом этапе r18:** порт 2222 не слушает, потому что контейнер RemnaNode ещё не создан. Нельзя использовать `--finish-install` без checkpoint, запускать `--repair-node` или вручную удалять `INSTALL_FAILED`. Восстановите проверенный snapshot исходной чистой VPS, затем установите r19. Если snapshot отсутствует, нужен отдельный ручной разбор состояния, а не автоматическая переустановка поверх.
-
-**Выбор REALITY/Selfsteal при установке новой Ordinary-ноды:**
-
-1. `Обычный` — собственный сайт Nginx; `target=/dev/shm/nginx.sock`, `xver=1`, SNI = FQDN ноды.
-2. `max.ru` — собственный HTTPS Selfsteal **плюс** passthrough TLS для выбранного `max.ru`.
-3. `ya.ru` — собственный HTTPS Selfsteal **плюс** passthrough TLS для выбранного `ya.ru`.
-4. `rutube.ru` — собственный HTTPS Selfsteal **плюс** passthrough TLS для выбранного `rutube.ru`.
-5. `mail.ru` — собственный HTTPS Selfsteal **плюс** passthrough TLS для выбранного `mail.ru`.
-
-Во всех режимах REALITY `target=/dev/shm/nginx.sock`, `xver=1`; у внешних режимов `serverNames` = выбранному внешнему имени. **Это Unix socket в Xray-контейнере**, физически соответствующий `/run/vkarmani-selfsteal/nginx.sock` хоста. Внешний режим устанавливает Nginx stream-модуль и разделяет TLS по разрешённым SNI: **свой FQDN → локальный HTTPS-сайт на `cover.sock`; выбранное внешнее имя → TLS passthrough без подмены сертификата**. Любой другой SNI попадает на HTTPS-default: TLS reject на поддерживаемом Nginx, иначе HTTP/421. Заголовок PROXY протокола не передаётся внешним серверам. Никакого второго публичного `443` listener Nginx не открывается: TCP/443 слушает Xray. HTTP/80 своего FQDN использует 301 → HTTPS, исключая challenge Certbot.
-
-**Надёжность r18 (сохранена диагностика r17 и политика рестартов r16):** на новых Ordinary-нодах ночной перезапуск контейнера **выключен по умолчанию**, потому что сбрасывает активные сессии. Он доступен только после явного `bash ./install.sh --maintenance-enable`. Существующие установленные ноды не меняются; состояние их таймера нужно проверять отдельно. `bash ./install.sh --diagnose-resources --seconds 15` выдаёт локальную диагностику без изменений системы, включая изменения счётчиков TCP/UDP, очередей softnet, интерфейсов, процессов и контейнера. Не публикуйте полные логи с секретами.
-
-**Порты по умолчанию:** RemnaNode Node API слушает TCP/2222 (доступ только для разрешённых IPv4 панели); RAW/XHTTP REALITY использует TCP/443, а HTTP-01 ACME — TCP/80. Отдельный механизм выбора порта новой Ordinary-ноды технически сохранён в коде, но **в этой инструкции используется только стандартная установка, без его параметров**. Для действующих нод автоматическая смена портов не предусмотрена. Изменение клиентского 443 требует отдельной согласованной миграции и проверки у провайдеров.
-
-Внешний SNI **не обеспечивает «невидимость VPN»** и не гарантирует прохождение фильтрации по IP, ASN или TLS. Перед установкой тестируется доступность реального IPv4/TLS 1.3 внешнего ресурса. RAW и XHTTP — *альтернативные* конфиги одного TCP/443 listener, с одинаковыми Reality privateKey/shortIds, но разными транспортами/flow; применять вместе на одном `443` нельзя. Клиентский `Address` = свой реальный адрес ноды; внешний SNI = выбор режима. Каскад Entry/Exit сохраняет прежнюю архитектуру и локальный Selfsteal; новые защитные правила /32 описаны выше. Смена режима или портов действующей ноды установщиком не поддерживается.
-
-[Нагрузочная диагностика и обслуживание r16](docs/RELEASE_2.5.15_R16_STABILITY_20261021.md) · [Изменения r15 и порядок публикации через GitHub](docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md) · [Runbook r14: гибридный Selfsteal и испытания](docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md).
-
-После **успешной Ordinary-установки** доступны приватные файлы `root:0600`:
-
-| Путь | Назначение |
-|:---|:---|
-| `/root/reality-keys.txt` | PrivateKey/PublicKey/ShortID и параметры SNI |
-| `/root/vkarmani-raw-profile.json` | Основной RAW + REALITY + Vision Config Profile |
-| `/root/vkarmani-xhttp-profile.json` | Альтернативный XHTTP + REALITY без Vision (только при успешной проверке ядра) |
-
-RAW и XHTTP — **альтернативы для одного входящего TCP/443**, а не два одновременных сервиса. Возможности клиента зависят от фактической поддержки ядра; универсальную совместимость обещать нельзя. Каскад Entry/Exit использует прежний отдельный процесс установки с приватными role-bundle и не получает третий файл XHTTP. Роли Entry и Exit устанавливаются на разных чистых VPS.
-
-**VPS 1 vCPU / 1 GiB RAM:** минимум 900 MiB фактической RAM и 6 GiB свободного места; до APT требуется 1 GiB активного swap при RAM меньше 1536 MiB. Проверка реальной установки и нагрузки на отдельной 1-гигабайтной VPS остаётся обязательной.
-
-**Релизные документы:** [r16 · стабильность и диагностика](docs/RELEASE_2.5.15_R16_STABILITY_20261021.md) · [r15 · версия и GitHub](docs/RELEASE_2.5.14_R15_GITHUB_INSTALL_20261021.md) · [r14 · hybrid](docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md) · [r12 · 12 тем и 404](docs/RELEASE_2.5.13_R12_SITES.md) · [r11 · RAW/XHTTP](docs/RELEASE_2.5.12_R11_REVIEW.md) · [r10 · память](docs/RELEASE_2.5.11_R10_REVIEW.md). Репозиторий/серверы автоматически не обновляются. Nginx остаётся системным, IPv6 отключён по политике установки.
+> ⚠️ **Перед настоящей установкой:** сохраните snapshot VPS, проверьте его восстановление и откройте аварийную консоль хостера. Установщик меняет SSH, UFW, Docker, Nginx, systemd, IPv6/GRUB и сетевые правила. Это **текущая staging-сборка**, не подтверждённая на вашем production-сервере. GitHub-команда намеренно остановится, если в `main` ещё нет r35. Внутренние SHA-256 проверяют целостность, но не заменяют независимую проверку происхождения релиза.
 
 ---
 
-<a id="roles"></a>
-## 🧩 Два режима — две карты
+<div align="center">
 
-| 🟦 **Обычная нода** | 🟪 **Каскад Entry → Exit** |
-|:---|:---|
-| **Клиент → Node → Интернет** | **Клиент → Entry → Exit → Интернет** |
-| Одна VPS, RAW + REALITY + Vision; XHTTP — отдельная альтернатива | Две VPS, RAW + REALITY + Vision, отдельный мостовой пользователь |
-| `DIRECT` доступен на обычной ноде после фильтрации | На Entry **нет DIRECT**, выход в Интернет только с Exit |
-| [🗺️ Схема](#ordinary-map) · [⚡ RAW](#raw) · [🌐 XHTTP](#xhttp) | [🗺️ Схема](#cascade-map) · [🔗 Entry и Exit JSON](#cascade) |
+# 🌌 VKARMANI · NODE INSTALL
 
-Установка: **режим 1 — Ordinary**, **режим 2 — каскад** с выбором роли `entry` / `exit`. Каждую роль устанавливают отдельно. Не менять роль или ключи поверх действующей ноды.
+**Серверная нода под контролем: от проверки VPS до REALITY и каскада**
+
+`2.5.18 · r35` · `Ubuntu / SSH` · `VLESS · REALITY · Vision` · `IPv4`
+
+[🗺 Карта проекта](#project-map) · [🟦 Обычная нода](#ordinary-map) · [🟪 Каскад](#cascade-map) · [🎛 Remnawave](#panel) · [📚 Документация](#documentation)
+
+</div>
+
+Node Install — инструмент для развёртывания и обслуживания серверной части VKARMANI. Он собирает установку, проверку VPS, работу с маскирующим сайтом и диагностику в одно терминальное меню. Его задача — сделать сложные серверные действия понятными и воспроизводимыми, а не скрывать от администратора, что именно меняется на машине.
+
+**Здесь есть две схемы работы:** одна обычная нода либо каскад из двух независимых VPS. Ниже — путь трафика, состав проекта и то, что потребуется настроить в Remnawave. Подробная история изменений находится в [CHANGELOG.md](CHANGELOG.md), а не в начале README.
 
 <a id="navigation"></a>
-## 🧭 Быстрые переходы
+## 🧭 Где что находится
 
-| Что нужно | Где смотреть |
-|:---|:---|
-| Установить и выбрать роль | [GitHub / ZIP](#install) · [Требования](#requirements) |
-| Настроить объекты в панели | [🎛 Remnawave](#panel) · [Ролевой runbook](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md) |
-| Взять полный профиль Xray | [Ordinary RAW](#raw) · [Ordinary XHTTP](#xhttp) · [Entry / Exit](#cascade) |
-| 🎨 Посмотреть 12 сайтов и генератор | [Темы и Selfsteal](#sites-tcp-probes) · [Тематический каталог r12](docs/RELEASE_2.5.13_R12_SITES.md) |
-| 🗝 Найти три готовых приватных файла | [RAW / XHTTP / REALITY keys](#archive-install) |
-| Проверить маршруты, DNS/UDP и откат | [Диагностика](#verification) · [Эксплуатация](#operations) |
+| Нужно сделать | Открыть |
+|:--|:--|
+| Запустить на новой VPS | [🐙 GitHub или 📦 ZIP](#install) |
+| Понять, из чего состоит проект | [🗺 Карта проекта](#project-map) |
+| Настроить одну ноду | [🟦 Ordinary](#ordinary-map) · [RAW](#raw) · [XHTTP](#xhttp) |
+| Собрать Entry → Exit | [🟪 Каскад](#cascade-map) · [Профили](#cascade) · [Порядок установки](#cascade-setup) |
+| Подключить ноды в панели | [🎛 Remnawave](#panel) |
+| Проверить VPS и экспортировать отчёт | [🔎 Диагностика](#diagnostics) |
+| Выбрать маскирующий сайт | [🎨 120 сайтов](#sites-tcp-probes) |
+| Проверить безопасность и восстановление | [🛡 Границы и откат](#safety) · [🛠 Команды](#operations) |
 
-<a id="requirements"></a>
-### ⚙️ Перед установкой
+<a id="project-map"></a>
+## 🗺 Карта проекта
 
-**Чистая VPS**, глобальный IPv4, DNS A, совместимый Ubuntu/Debian, консоль провайдера и проверенный snapshot. Для Ordinary нужен `SECRET_KEY` Node и исходящий IPv4 backend панели; для каждой каскадной роли — **собственный** приватный `role-bundle.json` (`0600`). Никаких изменений на техничке, панели или работающих нодах.
+```mermaid
+flowchart TB
+    ADMIN["👤 Администратор<br/>SSH / Terminal"] --> MENU["🎛 install.sh --menu<br/>Проверка VPS · Установка · Управление"]
+    MENU --> DIAG["🔎 Диагностика<br/>IP / ASN / DNS / TLS / RTT / ресурсы"]
+    MENU --> WIZARD["🧭 Мастер установки<br/>Ordinary / Entry / Exit"]
+    MENU --> OPS["🛠 Обслуживание<br/>Журнал · Сайт · Backup · Проверки"]
+    WIZARD --> CORE["⚙️ install.sh<br/>Сценарии установки и отката"]
+    CORE --> HOST["🖥 Ubuntu VPS<br/>SSH · UFW · systemd · Docker · Nginx"]
+    CORE --> NODE["🔐 RemnaNode / Xray<br/>REALITY · Vision"]
+    CORE --> WEB["🎨 Сайт-прикрытие<br/>120 тем · Selfsteal"]
+    NODE -.-> PANEL["🎛 Remnawave Panel<br/>Node API · Config Profiles"]
+    OPS --> WEB
+    DIAG --> REPORT["📄 Отчёт<br/>TXT · JSON · PNG"]
+    TESTS["🧪 tests/ · GitHub Actions"] -.-> CORE
+    TESTS -.-> DIAG
+    classDef operator fill:#dbeafe,stroke:#2563eb,color:#1e40af,stroke-width:1.5px;
+    classDef action fill:#e0f2fe,stroke:#0284c7,color:#075985,stroke-width:1.5px;
+    classDef host fill:#dcfce7,stroke:#16a34a,color:#166534,stroke-width:1.5px;
+    classDef control fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
+    class ADMIN operator;
+    class MENU,WIZARD,CORE,DIAG,OPS action;
+    class HOST,NODE,WEB,REPORT host;
+    class PANEL,TESTS control;
+```
+
+<details>
+<summary>📁 Структура репозитория — что за что отвечает</summary>
+
+```text
+Node_Install/
+├── install.sh                  Главный CLI и установщик
+├── scripts/
+│   ├── terminal_ui.py          Терминальное меню и навигация
+│   ├── verify_release.py       Контроль состава, хешей и версии
+│   ├── staging_web_deploy.py   Развёртывание и откат сайта
+│   ├── site_manager.py         Управление каталогом тем
+│   └── ...                     Диагностика, подготовка, аудит
+├── integrations/
+│   ├── vps_dashboard.py        Сбор данных диагностики
+│   ├── vps_report.py           Разделы отчёта и экспорт PNG
+│   ├── traffic_limits.py      Лимиты скорости/объёма
+│   ├── cascade_*.py           Подготовка и проверки каскада
+│   └── ...                     Сетевые и Xray-модули
+├── site-catalog/              108 тем статических сайтов
+├── cover-variants/            12 исходных отдельных тем
+├── preview/                   Локальная галерея и превью
+├── examples/                  Образцы полных Xray JSON
+├── tests/                     Автономные тесты и сценарии отказа
+├── docs/                      Инструкции, исследования, история
+├── .github/workflows/         GitHub Actions (матрица ОС)
+├── BUILD_MANIFEST.json        Состав и SHA-256 релиза
+└── SHA256SUMS                 Контрольные суммы файлов
+```
+
+</details>
+
+### Что уже можно делать
+
+- **🔎 Проверять VPS.** Русскоязычный экран с девятью разделами: ресурсы, IP/ASN, геолокация, сайты/API, DNS/TLS, задержки, CDN и сеть. Отчёт можно сохранить в TXT/JSON/PNG.
+- **🟦 Разворачивать Ordinary.** RAW + REALITY + Vision — основной сценарий; XHTTP — альтернативный профиль, а не второй слушатель на том же порту.
+- **🟪 Готовить каскад.** Отдельные роли Entry и Exit, собственные ключи и закрытый служебный мост; для работы требуются настройки Remnawave.
+- **🎨 Выбирать сайт.** В комплекте **120 тематик**: 12 отдельных исходных и 108 в каталоге, включая 12 дополнительно оформленных композиций. Это не 120 полностью независимых движков.
+- **🧰 Обслуживать установленную ноду.** Просмотр журнала, диагностика, управляемые изменения сайта, ограниченные сценарии rollback и проверка конфигурации.
+
+<a id="roles"></a>
+## 🧩 Два режима работы
+
+| | 🟦 Обычная нода | 🟪 Каскад Entry → Exit |
+|:--|:--|:--|
+| VPS | **1 сервер** | **2 независимых сервера** |
+| Путь | Клиент → Ordinary → Интернет | Клиент → Entry → Exit → Интернет |
+| Роль сервера | Принимает и выпускает трафик | Entry принимает; Exit выпускает |
+| Профили Panel | Один Ordinary | Два разных: Entry и Exit |
+| Публичный Host клиента | На Ordinary | **Только на Entry** |
+| При потере следующего узла | Нет второго узла | На Entry **нет DIRECT fallback** |
 
 <a id="architecture"></a>
 <a id="ordinary-map"></a>
@@ -300,84 +171,115 @@ RAW и XHTTP — **альтернативы для одного входящег
 
 ```mermaid
 flowchart LR
-    C["📱 Клиент"] -->|"VLESS · REALITY :443"| O["🟦 Ordinary Node<br/>Xray / RemnaNode"]
-    O -->|"DIRECT · IPv4"| I["🌍 Интернет"]
-    O -.->|Неавторизованный TLS| W["🪟 Nginx Selfsteal<br/>Unix socket · PROXY v1"]
-    P["🎛 Remnawave Panel"] -.->|mTLS Node API 2222 · IPv4 allowlist| O
-    O -->|RKN / egress rules| F["🛡 UFW / IPv4 rules"]
-    F --> I
-    O -.->|RW profile export| R["📁 /root RAW + XHTTP + REALITY keys"]
-    W -.->|TLS · HTTP 1.1/2| S["🎨 Версионированный статический сайт"]
-    classDef user fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
-    classDef node fill:#cffafe,stroke:#0891b2,color:#164e63,stroke-width:2px;
-    classDef web fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
-    classDef control fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
-    class C user;
-    class O node;
-    class I,W web;
-    class P control;
+    CLIENT["📱 Клиент<br/>VLESS / REALITY"] -->|"TCP 443 · RAW / Vision"| XRAY["🔐 Ordinary VPS<br/>Xray / RemnaNode"]
+    XRAY -->|"Разрешённый IPv4 / DIRECT"| FW["🛡 Фильтрация<br/>UFW / outbound rules"]
+    FW --> NET["🌍 Интернет"]
+    XRAY -.->|"Неавторизованный TLS"| NGX["🪟 Nginx Selfsteal<br/>Unix socket / PROXY v1"]
+    NGX --> SITE["🎨 Выбранная тема<br/>HTTPS-сайт"]
+    PANEL["🎛 Remnawave Panel"] -.->|"Node API TCP 2222<br/>ACL IP/FQDN панели"| XRAY
+    XRAY -.->|"Закрытые файлы 0600"| KEYS["🗝 REALITY-ключи<br/>RAW / XHTTP профили"]
+    classDef client fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
+    classDef core fill:#cffafe,stroke:#0891b2,color:#164e63,stroke-width:2px;
+    classDef net fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
+    classDef ctl fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
+    class CLIENT client;
+    class XRAY core;
+    class FW,NET,NGX,SITE net;
+    class PANEL,KEYS ctl;
 ```
 
-**Remnawave:** один Node, один активный Config Profile, публичный Host на его inbound и пользовательский Internal Squad. Выберите **RAW или XHTTP** для порта 443, не два независимых слушателя одновременно.
+**Как читать карту.** Клиент подключается к публичному домену и TCP/443. Успешно авторизованный VLESS-трафик после правил фильтрации уходит в Интернет с IPv4 ноды. Другой TLS-трафик может попадать в локальную цепочку Nginx Selfsteal, где отображается выбранный сайт. Панель управляет Node API по отдельному порту с ограничением источника — **не открывайте 2222 всему Интернету**.
+
+Для Ordinary нужен один Node, один активный профиль и Host в Remnawave. RAW и XHTTP выбираются **альтернативно**, не одновременно на TCP/443. Полные образцы ниже: [RAW + REALITY + Vision](#raw) и [XHTTP + REALITY](#xhttp).
 
 <a id="cascade-map"></a>
 ### 🟪 Карта 2 · Каскад Entry → Exit
 
 ```mermaid
 flowchart LR
-    C["📱 Клиент"] -->|"VLESS · REALITY :443"| E["🟪 Entry<br/>клиентский inbound"]
-    E -->|"TO_EXIT_VLESS · REALITY :443"| X["🟩 Exit<br/>служебный inbound"]
-    X -->|"DIRECT · IPv4"| I["🌍 Интернет"]
-    E -.->|Exit недоступен| B["⛔ Нет DIRECT fallback"]
-    P["🎛 Remnawave Panel"] -.->|управление| E
-    P -.->|управление| X
-    E -.->|Selfsteal| W1["🖥 Nginx Entry"]
-    X -.->|Selfsteal| W2["🖥 Nginx Exit"]
+    CLIENT["📱 Клиент"] -->|"VLESS / REALITY :443"| ENTRY["🟪 ENTRY VPS<br/>Клиентский inbound"]
+    ENTRY -->|"TO_EXIT_VLESS<br/>служебный UUID / REALITY"| EXIT["🟩 EXIT VPS<br/>Bridge inbound"]
+    EXIT -->|"DIRECT после фильтров"| NET["🌍 Интернет<br/>Внешний IPv4 Exit"]
+    ENTRY -.->|"Exit недоступен"| DENY["⛔ Блокировать<br/>без DIRECT fallback"]
+    PANEL["🎛 Remnawave Panel"] -.->|"Node API · ACL"| ENTRY
+    PANEL -.->|"Node API · ACL"| EXIT
+    ENTRY -.->|"Selfsteal"| SITE1["🖥 Nginx Entry"]
+    EXIT -.->|"Selfsteal"| SITE2["🖥 Nginx Exit"]
     classDef user fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
     classDef entry fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,stroke-width:2px;
     classDef exit fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px;
     classDef ctl fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
     classDef denied fill:#fee2e2,stroke:#dc2626,color:#7f1d1d,stroke-width:1.5px;
-    class C user;
-    class E entry;
-    class X,I,W1,W2 exit;
-    class P ctl;
-    class B denied;
+    class CLIENT user;
+    class ENTRY entry;
+    class EXIT,NET,SITE1,SITE2 exit;
+    class PANEL ctl;
+    class DENY denied;
 ```
 
-**Remnawave:** два отдельных Node и Config Profile. Публичный Host — **только Entry**; Exit разрешён **только service-user** через собственный Internal Squad. При недоступности Exit Entry не должен выпускать клиентский трафик через свой `DIRECT`.
+**Суть каскада:** клиент знает адрес **Entry**; Entry принимает соединение и передаёт разрешённый трафик в **Exit** по отдельному служебному соединению. Внешний IPv4 для сайтов — адрес **Exit**. Если Exit недоступен, Entry не должен переключаться на прямой Интернет. Это обязательное свойство конфигурации, которое нужно проверить живым тестом, а не только наличием правил в JSON.
+
+На каждой VPS своя пара REALITY-ключей, свой профиль, свой сайт и свой Node в Panel. Клиентский Host публикуется **только на Entry**. Bridge-user (service-user) назначается отдельным пользователем и Internal Squad **только Exit**. Правильный порядок развёртывания: **сначала Exit, затем Entry**, на разных чистых VPS. [Практический runbook](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md).
+
+<a id="requirements"></a>
+## ✅ Что подготовить до установки
+
+| Что | Зачем |
+|:--|:--|
+| **Новая VPS с Ubuntu** и root-доступом | Установщик меняет общесистемные службы и доступ |
+| **Публичный IPv4 и домен с DNS A** | Клиентское подключение и сертификат |
+| **IP или домен Remnawave Panel** | Настройка ACL для Node API TCP/2222 |
+| **SECRET_KEY ноды** | Подключение Ordinary к панели; не публикуйте его |
+| **Snapshot и аварийная консоль** | Восстановление SSH/сети при неудачной установке |
+| **Для каскада — два отдельных role-bundle.json** | Не смешивать ключи Entry/Exit; права `0600` |
+
+**Парольный SSH:** текущая политика проекта использует парольный вход вместо SSH-ключей. Это осознанная конфигурация, требующая сильного пароля, защиты от перебора и доступа к консоли провайдера. Не делайте неподготовленную смену SSH/UFW на рабочем сервере.
+
+<a id="diagnostics"></a>
+## 🔎 Проверка VPS перед установкой
+
+Выбери первый пункт и дождись отчёта — никаких IP, адресов или настроек вводить не придётся. Первый пункт меню — не просто «доступен / недоступен». Он помогает понять, какой сервер вы получили: ресурсы, IP и ASN, разные ответы GeoIP, DNS, доступность HTTPS-сервисов, задержки, потери, маршрут и CDN. Результаты разделены по девяти экранам и снабжены русскими пояснениями.
+
+**Управление:** колесо мыши (если SSH-клиент передаёт события), стрелки и `PgUp/PgDn`; `0` — сводка, `1–9` — разделы, `E` — сохранение **TXT / JSON / PNG** в приватную папку. **Ничего вводить не нужно:** при выборе «Проверка VPS» автоматически запускаются все разделы, включая щадящий тест CPU/RAM (0,25 секунды CPU), временную запись диска (8 MiB) и небольшую HTTPS-проверку входящей/исходящей скорости до Cloudflare (не более 2 MiB на направление). Случаи ошибки показываются как «не измерено», а не заменяются выдуманными цифрами. Цветные статусы помогают быстро читать отчёт, но не подменяют измерения: `403` не всегда означает блокировку, а GeoIP не доказывает «чистоту» адреса.
+
+Подробности: [автоматическая проверка](docs/RELEASE_2.5.18_R35_AUTOMATIC_VPS.md) · [диагностика VPS](docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md) · [о качестве сети](docs/EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md).
+
+<a id="panel"></a>
+## 🎛 Remnawave — что создать в панели
+
+Установщик на VPS **не создаёт автоматически** Nodes, Hosts и Internal Squads в панели. Их назначает администратор. В `Config Profiles` используется готовый JSON своей роли, затем профиль связывается с Node, включается inbound и задаются права пользователей.
+
+| Объект | 🟦 Ordinary | 🟪 Entry / Exit |
+|:--|:--|:--|
+| **Nodes** | Один Ordinary | Два разных: Entry и Exit |
+| **Config Profile** | [RAW](#raw) **или** [XHTTP](#xhttp) | [Entry](#cascade-entry-json) **и** [Exit](#cascade-exit-json) |
+| **Активный inbound** | Уникальный `VK_RAW_*` | `VK_CASCADE_ENTRY_*` и `VK_CASCADE_EXIT_*` |
+| **Host в подписке** | На Ordinary TCP/443 | **Только Entry** TCP/443 |
+| **Internal Squad** | Клиенты Ordinary | Клиенты → Entry; service-user → **только Exit** |
+| **Bridge VLESS UUID** | Не требуется | На Entry — **VLESS UUID service-user на Exit** |
+
+**После успешной Ordinary-установки:** приватный полный профиль RAW находится в `/root/vkarmani-raw-profile.json`; альтернативный XHTTP-шаблон — в `/root/vkarmani-xhttp-profile.json` (когда он подготовлен). Их нельзя публиковать: внутри есть чувствительные параметры. Для панели используют только профиль, подходящий фактическому inbound.
+
+Не переносите `REPLACE_WITH_*` из примеров в работающую панель: образцы показывают структуру, а реальные ключи и идентификаторы должны быть сгенерированы на своих нодах. Убедитесь, что `inbound.tag` не повторяет другие активные inbound.
+
+[Официальная документация Config Profiles](https://docs.rw/learn-en/config-profiles/) · [Hosts](https://docs.rw/learn-en/hosts/) · [Internal Squads](https://docs.rw/learn-en/squads/).
 
 <a id="selfsteal"></a>
 <a id="firewall"></a>
-### Нельзя забывать
+<a id="safety"></a>
+## 🛡 Сеть, Selfsteal и безопасность
 
-- Публичный Nginx HTTP/80 необходим для ACME/редиректа; сертификат и TLS нужно проверить **снаружи**, не только `nginx -t`.
-- Node API/2222 разрешён **только IPv4 backend панели**, не всем; UFW, RKN, Fail2ban и SSH тестируют отдельно после reboot.
-- Текущий установщик использует password-only SSH по политике проекта; потребуется сильный пароль и аварийная консоль. Не меняйте доступ вслепую.
-- IPv6 выключен по политике проекта, но его отсутствие в пользовательском маршруте должно подтверждаться live capture.
-- Cover/REALITY **не гарантируют** доступность из любой сети, отсутствие блокировок или обход ограничений провайдера: проверять внешними клиентами и независимыми точками.
-
-<a id="panel"></a>
-## 🎛 Remnawave · что создать в панели
-
-В **Config Profiles** вставляют полный JSON для соответствующей роли. В **Nodes** назначают профиль и его inbound, в **Internal Squads** разрешают доступ пользователям, а в **Hosts** задают клиентский вход. <a href="https://docs.rw/learn-en/config-profiles/">Config Profiles</a> · <a href="https://docs.rw/learn-en/squads/">Internal Squads</a> · <a href="https://docs.rw/learn-en/hosts/">Hosts</a>.
-
-| Объект Remnawave | 🟦 Обычная нода | 🟪 Каскад |
-|:---|:---|:---|
-| **Node** | Один Ordinary | Два: **Entry** и **Exit** |
-| **Config Profile** | [RAW](#raw) либо [XHTTP](#xhttp) | [Entry JSON](#cascade-entry-json) + [Exit JSON](#cascade-exit-json), **разные профили** |
-| **Активный inbound** | Уникальный `VK_RAW_*` | Уникальные `VK_CASCADE_ENTRY_*` и `VK_CASCADE_EXIT_*` |
-| **Host в подписке** | Публичный Ordinary :443 | Публичный **Entry :443**; на Exit **не создавать** клиентский Host |
-| **Internal Squad** | Для клиентов Ordinary | Клиенты → **Entry**; service-user → **только Exit** |
-| **VLESS UUID** | Назначает Panel | На мосту Entry используется именно **VLESS UUID service-user на Exit**, а не ID записи пользователя |
-| **Как подписать Host** | `🌐 VKARMANI · Ordinary` | `🔗 VKARMANI · Cascade` (для Entry) |
-
-**Порядок:** Config Profile → Node → включить inbound → Internal Squad → пользователь / service-user → публичный Host. `clients: []` в шаблонах корректно: список заполняет Panel. Не копируйте примеры с `REPLACE_WITH_*` прямо в действующую панель — используйте профиль, созданный на вашей VPS.
-
-**Контроль:** после назначения проверьте [фактический Xray JSON и роли](docs/R6_CASCADE_OPERATIONS_AND_GATES.md). Инструкция здесь **не подключается к вашей панели и не меняет её настройки**. Нельзя повторять существующий `inbound.tag`.
+- **Публичный HTTP/80** нужен для ACME/редиректа; HTTPS/TLS проверяйте также снаружи VPS.
+- **Node API TCP/2222** должен быть доступен только разрешённым IP панели (или IPv4, полученным из её домена). Не открывайте управляющий порт всему Интернету.
+- **IPv6** выключается в соответствии с текущей политикой проекта; после перезагрузки проверяйте реальную маршрутизацию, а не только настройки файлов.
+- **Selfsteal и REALITY** помогают организовать TLS-цепочку с локальным сайтом. Они не являются гарантией отсутствия блокировок, обнаружения или сетевых ограничений. Cover/REALITY **не гарантируют** доступность из любой сети.
+- **Незавершённая установка** — повод проверить журнал и checkpoint, а не запускать установку поверх повреждённых конфигов. Полное восстановление системы выполняется из проверенного snapshot, а не из кнопки «удалить».
 
 <a id="inbounds"></a>
-## 📋 Готовые образцы профилей для Remnawave
+## 📋 Полные образцы профилей Xray для Remnawave
+
+Код ниже оставлен без сокращений: каждый полный JSON можно сверить с файлами в `examples/`. Он помещён под раскрывающиеся заголовки, чтобы README можно было читать без погружения в Xray-синтаксис.
+
 
 Все примеры **полные Xray JSON**. Они содержат `REPLACE_WITH_*`, зарезервированные IP и демонстрационные FQDN — не реальные ключи. Для практического развертывания используйте **сгенерированный профиль своей VPS**, а примеры — для проверки структуры и правил.
 
@@ -1016,25 +918,24 @@ sudo bash ./install.sh --cascade-role entry \
 Далее назначить объекты тестовой Panel согласно [пошаговому runbook](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md), проверить фактический JSON командой аудитора и только затем — реальных клиентов. Автоматического создания Panel Nodes/Hosts/Squads здесь **нет**.
 
 <a id="sites-tcp-probes"></a>
-## 🌐 12 тематических сайтов · Nginx TCP · сетевые проверки
+## 🎨 Сайты и маскирующие страницы
 
-**В комплекте — 12 тем:** `01-atelier`, `02-archive`, `03-observatory`, `04-fieldnotes`, `05-readingroom`, `06-foundry`, `07-botanica`, `08-nocturne`, `09-kitchen`, `10-atlas`, `11-tides`, `12-cinema`. На одной VPS применяется **одна тема** с доменной вариативностью. Навигация — рабочие якорные разделы, несуществующие пути возвращают настоящий **HTTP 404** с собственной страницей темы. CSS, favicon, 404 и главная страница входят в один журнал восстановления.
+В комплекте **120 тем**: 12 оригинальных вариантов в `cover-variants/` и 108 в `site-catalog/` (из них 12 — дополнительные авторские HTML-композиции). У каждой темы есть основные ресурсы и страница HTTP 404; это не 120 разных веб-движков. Локальную галерею можно открыть в браузере: `preview/site-gallery/index.html`.
 
-Генератор полностью offline и не меняет Nginx. Пример предварительного просмотра: `python3 scripts/cover_variants.py --name 08-nocturne --domain preview.example.test --output /tmp/preview-nocturne-new` (каталог должен отсутствовать). Для живого деплоя на **отдельной staging VPS** используйте `site-deploy`, затем `site-rollback` по runbook — скрипт сам проверит домен, версию, Nginx и локальный Selfsteal. Не запускать на работающей production-ноде без snapshot.
+**Изменить тему на уже установленной тестовой ноде** можно после snapshot, строго с проверкой домена и Nginx:
 
 ```bash
-python3 scripts/cover_variants.py --list
+sudo python3 scripts/staging_web_deploy.py site-change --theme 110-blue-harbor --expected-domain node.example.com --confirm-staging
 sudo python3 scripts/staging_web_deploy.py status
-python3 scripts/staging_web_deploy.py --help
-python3 scripts/cascade_live_probe.py --help
+sudo python3 scripts/staging_web_deploy.py site-rollback --confirm-staging
 ```
 
-`tcp-deploy` разворачивает Nginx stream **только `127.0.0.1:LISTEN → 127.0.0.1:BACKEND`**, не открывает публичный TCP endpoint, не занимает `:443` и требует заранее установленного `nginx stream`-модуля. **На staging** следуйте [точным командам rollout/rollback](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
+Новая тема при обычной установке публикуется лишь после успешной финализации основной ноды. Ошибка публикации сайта может дать код `20` при уже установленном ядре — это **не полный успех**: проверяйте журнал и откат сайта. Подробности: [каталог и безопасность](docs/RELEASE_2.5.18_R21_CATALOG_AND_SAFETY.md) · [управление сайтом](docs/RELEASE_2.5.18_R24_PHASE1_SITES_SELFSTEAL_NETWORK.md).
 
 <a id="rkn"></a>
-## 🛡️ RKN / UFW / доступ панели
+## 🛡 RKN / UFW / доступ панели
 
-RKN обновляет IP/CIDR-список, а **не код** стороннего проекта. На Exit предусмотрено исключение IPv4 Entry для связи между нодами, **без** доступа Entry к Node API. При смене IPv4 панели `--rkn-sync-panel` **не заменяет** обновление основного UFW ACL Node API.
+Отдельные RKN-списки не заменяют основной ACL Node API. При смене IP панели проверяйте реальные разрешённые источники; не используйте слепой сброс UFW на работающей машине.
 
 ```bash
 sudo bash ./install.sh --rkn-status
@@ -1042,57 +943,60 @@ sudo bash ./install.sh --rkn-update
 sudo bash ./install.sh --rkn-sync-panel
 ```
 
-[Подробная политика](docs/RKN_FAILSAFE_2.5.9.md) · [Состояние каскада](docs/R6_CASCADE_OPERATIONS_AND_GATES.md) · [Security](SECURITY.md).
+[Политика RKN](docs/RKN_FAILSAFE_2.5.9.md) · [Security](SECURITY.md).
 
 <a id="operations"></a>
-## 🛠️ CLI · эксплуатация и откат
+## 🛠 Обслуживание и диагностика
 
-Эти команды относятся к **своей завершённой** установке. Не заменяйте бинарники и state на уже работающей ноде другой версией ZIP.
+| Команда | Для чего |
+|:--|:--|
+| `bash ./install.sh --menu` | Открыть главное меню; выход возвращает SSH-оболочку |
+| `sudo bash ./install.sh --check` | Локальная проверка ноды, не замена тесту клиента |
+| `bash ./install.sh --diagnose-network` | Счётчики и сетевое состояние |
+| `bash ./install.sh --diagnose-selfsteal` | Диагностика Nginx / Selfsteal |
+| `bash ./install.sh --diagnose-resources --seconds 15` | Краткая динамика ресурсов |
+| `bash ./install.sh --vps-check --format table full` | Проверка VPS в текстовом виде |
+| `bash ./install.sh --help` | Все доступные опции CLI |
 
-| Команда | Назначение |
-|---|---|
-| `sudo bash ./install.sh --check` | Локальная диагностика; не сквозной клиентский тест |
-| `--backup` | Конфигурационный backup, **не** снимок VPS/панели |
-| `--refresh-image` / `--rollback-image` | Узкое обновление/откат образа |
-| `--update-cover` / `--rollback-cover` | Старый cover-режим, **не смешивать** с r7 site-deploy |
-| `--maintenance-status` / `--maintenance-enable` / `--maintenance-disable` | Ночной таймер для ordinary; каскадный автоматический restart **заблокирован** |
-| `--prepare-xhttp` | Генерация/проверка XHTTP-профиля ordinary; для установленной r12 также экспорт защищённой копии в `/root` |
-| `--xray-versions --offline` | Проверка версии, ничего не обновляет |
-| `--diagnose-resources --seconds 10 --strict` | Проверка ресурсов локального узла |
-| `--finish-install` | Завершение лишь уже начатой и подтверждённой финальной фазы |
+При установке из терминального меню живой журнал пишется в закрытый файл `/root/node-install-*.log` (права `0600`). Доступ к приватным REALITY-ключам также ограничен: отображение `PrivateKey` требует отдельного действия, копирование через OSC 52 зависит от клиента SSH. Нельзя выкладывать такие файлы в Issues, логи CI или общедоступные чаты.
+
+Если установку пришлось прервать, **сначала прочитайте журнал**. Не удаляйте `/var/lib/vkarmani-node`, checkpoint, Docker volumes и резервные копии ради «чистого повтора». Для восстановления системных настроек используйте проверенный snapshot и [документацию оператора](docs/OPERATIONS.md).
 
 <a id="verification"></a>
-## ✅ Проверки и границы готовности
-
-**Статус:** 2.5.18 r29 (улучшенный терминальный UI и единая диагностика VPS) — полный ZIP staging-кандидат поверх опубликованной в GitHub 2.5.18 r27. Новые сайты и сетевая диагностика проверяются автономно; реальные VPS, панель, клиенты и 1 vCPU / 1 GiB под нагрузкой пока не подтверждены.
+## 🧪 Проверки перед реальным использованием
 
 ```bash
-bash -n install.sh
-python3 scripts/verify_release.py --root .
+# Из каталога чисто распакованного исходного релиза
 sha256sum --check SHA256SUMS
+python3 scripts/verify_release.py --root .
+bash -n install.sh
 bash tests/run.sh
-# На СВОЕЙ тестовой VPS ПОСЛЕ установки:
-sudo nginx -t
-sudo ufw status verbose
-sudo ss -lntp
-sudo bash ./install.sh --check
 ```
 
-**Для двухсерверной приёмки** нужны: живой клиент, внешний IPv4 именно Exit, HTTPS через SOCKS, DNS A через UDP ASSOCIATE, отдельный UDP echo, фазы `baseline → outage → recovery`, проверка отсутствия DIRECT/DNS утечек на Entry и восстановления после reboot. Скрипт `scripts/cascade_live_probe.py` **не останавливает Exit** — это делает оператор **только на TEST VPS**, с независимой фиксацией факта. [Live-процедура, параметры и безопасность](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
+Релизный манифест и контрольные суммы проверяют содержимое исходного пакета. GitHub Actions проверяет код на нескольких Linux-окружениях. Эти тесты **не заменяют** установку на отдельной VPS с последующей перезагрузкой и проверкой SSH, DNS/TLS, Docker, Nginx, панели и реального клиента.
 
-| Гейт | Статус r29 |
-|---|---|
-| Исходные профили, генераторы, offline-регрессии | Проверяются на чистой ZIP-распаковке |
-| 120 × desktop/mobile Chromium снимков | **240/240** без автоматических ошибок компоновки; ручные листы включены |
-| Изолированный Nginx, TLS на Unix-сокете, PROXY v1 | Проверено локально с тестовым сертификатом |
-| Новые XHTTP/Hysteria2/AWG2 на реальном Xray/AWG | **НЕ ПРОВЕРЕНО — не активируются автоматически** |
-| Реальный удалённый iperf3/VPN throughput и DPI | **НЕ ИЗМЕРЯЛИСЬ** |
-| Полная проверка Panel и клиентов на VPS | **Исключена из задания владельцем** |
+Для каскада обязательна отдельная проверка фактического выхода через Exit, DNS/UDP и поведения при его отключении. **XHTTP, Hysteria2, AmneziaWG2 и FinalMask нельзя считать автоматически установленными или проверенными на живой сети только по наличию JSON/шаблонов**. Подробнее: [готовность транспортов](docs/RELEASE_2.5.18_R25_TRANSACTION_AND_TRANSPORT_READINESS.md) и [проверки каскада](docs/R7_SITES_TCP_AND_LIVE_PROBES.md).
+
+<a id="documentation"></a>
+## 📚 Документация и история
+
+| Раздел | Ссылка |
+|:--|:--|
+| Все изменения проекта, включая r22–r35 | [CHANGELOG.md](CHANGELOG.md) |
+| Системная безопасность | [SECURITY.md](SECURITY.md) |
+| Повседневная эксплуатация | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
+| Схема и логика каскада | [Каскад r5](docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md) · [r6](docs/R6_CASCADE_OPERATIONS_AND_GATES.md) |
+| Состояние REALITY / Nginx / Selfsteal | [Общий обзор](docs/SELFSTEAL_2.2.0.md) |
+| Версии Xray | [Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) |
+| Архивная документация 2.5.15 | [Исторический README](docs/history/README_2.5.4.md) |
+| Ранние архитектурные решения 2.5.13 и защита сети 2.5.9 | [Темы r12](docs/RELEASE_2.5.13_R12_SITES.md) · [RKN](docs/RKN_FAILSAFE_2.5.9.md) |
 
 ---
 
 <div align="center">
 
-**VKARMANI · 2.5.18 r29** · [⬆️ К установке](#install) · [📜 История](CHANGELOG.md) · [📚 Архив документации](docs/history/README_2.5.4.md) · [🧬 Xray Core](docs/XRAY_CORE_UPDATES_2.5.5.md) · [🔐 Security](SECURITY.md) · [🛠 Operations](docs/OPERATIONS.md)
+**VKARMANI · Node Install 2.5.18**
+
+[⬆️ Две команды установки](#install) · [🗺 Проект](#project-map) · [🟦 Ordinary](#ordinary-map) · [🟪 Каскад](#cascade-map) · [🔐 Security](SECURITY.md)
 
 </div>

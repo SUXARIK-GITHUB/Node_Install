@@ -1054,7 +1054,7 @@ class Terminal:
                 channel=proc.stdout.fileno()
                 os.set_blocking(channel,False)
                 rest=b'';eof=False;dirty=True;last_second=-1
-                progress.append('Проверка выполняется только по запросу пользователя.')
+                progress.append('Автоматическая диагностика: ввод параметров не требуется.')
                 while True:
                     if not eof:
                         ready,_,_=select.select([channel],[],[],0.15)
@@ -1099,7 +1099,7 @@ class Terminal:
                     if elapsed!=last_second:dirty=True;last_second=elapsed
                     if dirty:
                         self.paint('ПРОВЕРКА VPS · ВЫПОЛНЯЕТСЯ',
-                            'Без изменения настроек VPS, пакетов, Docker и firewall',
+                            'Щадящие авто-тесты · без изменения конфигурации VPS, Docker и firewall',
                             footer='ESC отменить диагностику  ·  проверка выполняется поэтапно')
                         h,w=self.win.getmaxyx();left=self.frame_left
                         self.put(8,left+5,'РЕАЛЬНЫЙ ХОД ПРОВЕРКИ',kind=11,bold=True)
@@ -1168,7 +1168,7 @@ class Terminal:
                 label='ВСЕ РАЗДЕЛЫ' if section==0 else named[section-1][0].upper()
                 self.paint('РЕЗУЛЬТАТЫ ПРОВЕРКИ VPS',
                     f'Раздел {section}/{len(named)} · {label}',
-                    footer='↑↓ / колесо · PgUp/PgDn · 0 обзор · 1–9 разделы · E файл/PNG · B CPU · S iperf · ESC назад')
+                    footer='↑↓ / колесо · PgUp/PgDn · 0 обзор · 1–9 разделы · E сохранить · ESC назад')
                 h,w=self.win.getmaxyx();left=self.frame_left
                 width=max(18,self.frame_right-left-12)
                 rows=[]
@@ -1204,22 +1204,6 @@ class Terminal:
                     if index<=len(named):section=index;scroll=0
                 elif key in (ord('e'),ord('E')):
                     self.vps_export(report)
-                elif key in (ord('b'),ord('B')):
-                    update=self.vps_process('bench')
-                    if isinstance(update,dict):
-                        report['benchmark']=update;section=8;scroll=0
-                elif key in (ord('s'),ord('S')):
-                    address=self.field('СЕТЕВОЙ ТЕСТ IPERF3',
-                        'Публичный IPv4 вашего РАЗРЕШЁННОГО iperf3 сервера',maxlen=45)
-                    if address is None:continue
-                    try:validate_panel_ip(address)
-                    except ValueError:
-                        self.message('НЕВЕРНЫЙ IPv4',[
-                            'Нужен публичный IPv4 вашего собственного iperf3 сервера.'],warning=True)
-                        continue
-                    update=self.vps_process('speed',server=address)
-                    if isinstance(update,dict):
-                        report['speed']=update;section=7;scroll=0
         finally:
             try:curses.mousemask(0)
             except curses.error:pass
@@ -1340,7 +1324,7 @@ class Terminal:
                 self.keys_screen()
 
     def run(self):
-        entries=[('ПРОВЕРКА VPS','Русский отчёт: IP/ASN, ресурсы, сервисы, DNS, ping, графики, экспорт PNG'),
+        entries=[('ПРОВЕРКА VPS','Автоматически: IP/ASN, сервисы, DNS, ping, скорость, CPU/RAM/диск, экспорт'),
                  ('УСТАНОВКА NODE','Пошаговый мастер, Авто (Рандом) сайт первым'),
                  ('ОТМЕНИТЬ НЕУДАЧНУЮ УСТАНОВКУ','Диагностика checkpoint и доступный ограниченный rollback'),
                  ('ПОЛНОЕ УДАЛЕНИЕ NODE INSTALL','План + безопасный возврат через проверенный snapshot'),

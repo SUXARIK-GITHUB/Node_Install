@@ -205,6 +205,8 @@ UNTRACKED_ALLOWED.update({
     'docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md',
     'docs/RELEASE_2.5.18_R33_GIT_CI_QA.md',
     'tests/test_r33_git_ci_audit.py',
+    'tests/test_r35_vps_automatic.py',
+    'docs/RELEASE_2.5.18_R35_AUTOMATIC_VPS.md',
 })
 
 

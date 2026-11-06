@@ -19,61 +19,49 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         cls.readme = (ROOT / 'README.md').read_text(encoding='utf-8')
         cls.security = (ROOT / 'SECURITY.md').read_text(encoding='utf-8')
 
-    def test_main_install_command_at_top_is_pinned_verified_and_syntax_valid(self):
-        # The published GitHub commit must be shown before the candidate ZIP.
-        # No redundant staging banners, yet readiness must remain explicit.
-        self.assertTrue(self.readme.startswith('<div align="center">\n'))
-        self.assertIn('## ⚡ Установка', self.readme)
-        self.assertNotIn('## ⚡ УСТАНОВКА VKARMANI NODE INSTALL 2.5.10', self.readme)
-        self.assertNotIn('## ⚠️ Версии и ограничения', self.readme)
-        self.assertIn('текущая staging-сборка', self.readme)
-        self.assertIn('на разных чистых VPS', self.readme)
-        self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
-        build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
-        current_release = build_id.split('-', 2)[1]
-        if current_release in ('r30','r31','r32','r33'):
-            published = '### 🐙 Исторический GitHub bootstrap · 2.5.18 r29 (НЕ для r33)'
-            archive = f'### 📁 2. Из полного ZIP · 2.5.18 {current_release} (текущая staging-сборка)'
-            # r30-r33 are not published on GitHub. The pinned historic
-            # command must not be presented as downloading the current ZIP.
-            pinned_sha = '2e64804a1077c3c5843cb65cbc5beccac4de806fa7a29bd9a9d739306f1a46e6'
-            self.assertIn('не запускает '+current_release, self.readme)
-        else:
-            published = f'### 🐙 1. Установка с GitHub · 2.5.18 {current_release} (после публикации)'
-            archive = f'### 📁 2. Из полного ZIP · 2.5.18 {current_release} (текущая staging-сборка)'
-            pinned_sha = hashlib.sha256((ROOT/'install.sh').read_bytes()).hexdigest()
-        self.assertLess(self.readme.index(published),self.readme.index(archive))
-        github_cmd = self.readme.split(published,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
-        archive_cmd = self.readme.split(archive,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
-        self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git', github_cmd)
-        self.assertIn(pinned_sha, github_cmd)
-        self.assertIn('sha256sum --check', github_cmd)
-        self.assertIn('sha256sum --check SHA256SUMS', github_cmd)
-        self.assertIn("m.get('build_id')", github_cmd)
-        self.assertIn("m.get('release_status')", github_cmd)
-        self.assertIn('Node_Install_2.5.18-docs-menu_' + build_id + '.zip', archive_cmd)
-        self.assertIn('python3 scripts/verify_release.py --root .', archive_cmd)
-        self.assertIn('sha256sum --check SHA256SUMS', archive_cmd)
-        self.assertIn('bash ./install.sh\n', archive_cmd + '\n')
-        for command in (github_cmd, archive_cmd):
-            self.assertEqual(subprocess.run(['bash', '-n'], input=command, text=True,
-                                            capture_output=True).returncode, 0)
-            self.assertNotIn('curl | bash', command)
-            self.assertNotIn('/main/install.sh', command)
-        self.assertIn('Node_Install-2.5.18', github_cmd)
-        self.assertNotIn('--node-port', github_cmd)
-        self.assertNotIn('--node-port', archive_cmd)
-        self.assertNotIn('2.5.10 r7e', self.readme.split('---', 1)[0])
-        self.assertNotIn('--no-reboot', github_cmd)
+    def test_two_current_install_commands_are_first_safe_and_syntax_valid(self):
+        # User-facing instructions take precedence over historical changelog banners.
+        build_id=json.loads((ROOT/'BUILD_MANIFEST.json').read_text())['build_id']
+        self.assertEqual(build_id, '20261106-r35-automatic-vps-check')
+        self.assertTrue(self.readme.startswith('<a id="install"></a>\n## 🚀 Установка Node Install — два способа'))
+        git_heading='### 1. 🐙 С GitHub'
+        archive_heading='### 2. 📦 Из полного ZIP-архива'
+        self.assertEqual(self.readme.count(git_heading),1)
+        self.assertEqual(self.readme.count(archive_heading),1)
+        self.assertLess(self.readme.index(git_heading),self.readme.index(archive_heading))
+        self.assertLess(self.readme.index(archive_heading),self.readme.index('# 🌌 VKARMANI'))
+        git_cmd=self.readme.split(git_heading,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        zip_cmd=self.readme.split(archive_heading,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        for cmd in (git_cmd,zip_cmd):
+            result=subprocess.run(['bash','-n'],input=cmd,text=True,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('mktemp -d',cmd)
+            self.assertIn('sha256sum --check',cmd)
+            self.assertIn('python3 scripts/verify_release.py --root .',cmd)
+            self.assertIn('bash ./install.sh --menu < /dev/tty',cmd)
+            for dangerous in ('curl | bash','rm -rf','git reset --hard','--install-direct','--node-port'):
+                self.assertNotIn(dangerous,cmd)
+        self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git',git_cmd)
+        self.assertIn(hashlib.sha256((ROOT/'install.sh').read_bytes()).hexdigest(),git_cmd)
+        self.assertIn(build_id,git_cmd)
+        self.assertIn('BUILD_MANIFEST.json',git_cmd)
+        self.assertIn('release_status',git_cmd)
+        self.assertIn('Node_Install_2.5.18-docs-menu_'+build_id+'.zip',zip_cmd)
+        for outdated in ('**ТЕКУЩАЯ STAGING-СБОРКА r33','**ПРЕДЫДУЩАЯ STAGING-СБОРКА',
+                         'Исторический GitHub bootstrap','В GitHub `main` опубликован r29'):
+            self.assertNotIn(outdated,self.readme)
+        self.assertIn('текущая staging-сборка',self.readme)
+        self.assertIn('на разных чистых VPS',self.readme)
+        self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md',self.readme)
 
-    def test_two_visual_route_maps_and_remnawave_binding(self):
+    def test_three_visual_maps_and_remnawave_binding(self):
         self.assertIn('### 🟦 Карта 1 · Обычная нода',self.readme)
         self.assertIn('### 🟪 Карта 2 · Каскад Entry → Exit',self.readme)
-        self.assertEqual(self.readme.count('```mermaid\nflowchart'),2)
-        for marker in ('ordinary-map','cascade-map','cascade-entry-json','cascade-exit-json'):
+        self.assertEqual(self.readme.count('```mermaid\nflowchart'),3)
+        for marker in ('project-map','ordinary-map','cascade-map','cascade-entry-json','cascade-exit-json'):
             self.assertEqual(self.readme.count(f'<a id="{marker}"></a>'),1)
         self.assertIn('TO_EXIT_VLESS',self.readme)
-        self.assertIn('Нет DIRECT fallback',self.readme)
+        self.assertIn('без DIRECT fallback',self.readme)
         self.assertIn('**только Exit**',self.readme)
         self.assertIn('VLESS UUID service-user на Exit',self.readme)
         self.assertIn('Host в подписке',self.readme)
@@ -175,7 +163,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
                     anchor = link.split('#',1)[1]
                     linked=(ROOT/target).read_text(encoding='utf-8')
                     self.assertIn(f'<a id="{anchor}"></a>', linked, f'{name}: bad link anchor: {link}')
-        self.assertIn('## 🧭 Быстрые переходы', self.readme)
+        self.assertIn('## 🧭 Где что находится', self.readme)
         self.assertIn('## 🧭 Быстрые карты безопасности',self.security)
 
     def test_security_report_model_and_preserved_originals(self):
@@ -196,7 +184,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
     def test_previous_documentation_is_preserved_on_hotfix(self):
         for path in ('docs/history/README_2.5.5.md', 'docs/history/SECURITY_2.5.5.md'):
             self.assertTrue((ROOT/path).is_file())
-        self.assertIn('## ⚡ Установка', self.readme)
+        self.assertIn('## 🚀 Установка Node Install — два способа', self.readme)
         self.assertIn('2.5.15', self.readme)
         self.assertIn('docs/history/README_2.5.4.md', self.readme)
         self.assertNotIn('## ⚠️ Версии и ограничения', self.readme)

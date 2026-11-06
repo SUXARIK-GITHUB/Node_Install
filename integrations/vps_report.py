@@ -25,7 +25,7 @@ TRANSLATIONS={
  'TLS_ERROR':'Ошибка TLS','TLS_CERT_ERROR':'Недоверенный TLS',
  'TIMEOUT':'Таймаут','TCP_ERROR':'Ошибка TCP','HTTP_INVALID':'Неверный HTTP',
  'MEASURED':'Измерено','PASS':'Успешно','INFO':'Информация','REVIEW':'Проверьте',
- 'SKIPPED':'Не запускали','UNVERIFIED':'Не проверено','TOOL_NOT_INSTALLED':'Утилиты нет',
+ 'SKIPPED':'Не запускали','PARTIAL':'Частично измерено','UNVERIFIED':'Не измерено','TOOL_NOT_INSTALLED':'Утилиты нет',
  'TEMP_FSYNC_COMPLETED':'Временная запись завершена'
 }
 
@@ -188,12 +188,26 @@ def sections(record):
     for hop in route.get('route',[])[:15]:netrows.append((_value(hop,100),'dim'))
     netrows.append(_explanation('Звёздочки в traceroute не доказывают потери у пользователей.'))
     items.append(('Задержки и маршрут',netrows))
-    srows=[_title('ПРОПУСКНАЯ СПОСОБНОСТЬ ДО СВОЕГО IPERF3')]
-    if speed.get('status')=='SKIPPED':
-        srows.extend([('Тест не запускался.','warn'),
-                      _explanation('В разделе результатов нажмите S и укажите свой публичный сервер iperf3.'),
-                      _explanation('Не скачиваем большие файлы со случайных серверов автоматически.'),
-                      _explanation('Результат относится к паре VPS↔сервер, не к клиентскому VPN.')])
+    srows=[_title('АВТОМАТИЧЕСКАЯ ЭКСПРЕСС-ПРОВЕРКА СКОРОСТИ')]
+    if speed.get('kind')=='AUTO_HTTPS_SPEED':
+        srows.extend([_row('Тестовый сервер:',speed.get('server')),
+                      _row('Статус:',_field_status(speed),_kind(speed.get('status'))),
+                      _row('Скачивание / Download:',
+                           str(speed['download_mbps'])+' Мбит/с' if speed.get('download_mbps') is not None else 'Не измерено',
+                           'good' if speed.get('download_mbps') is not None else 'warn'),
+                      _row('Отдача / Upload:',
+                           str(speed['upload_mbps'])+' Мбит/с' if speed.get('upload_mbps') is not None else 'Не измерено',
+                           'good' if speed.get('upload_mbps') is not None else 'warn')])
+        for direction,name in (('download','Скачивание'),('upload','Отдача')):
+            if speed.get(direction+'_reason'):
+                srows.append(_explanation(name+': причина — '+_value(speed[direction+'_reason'])))
+        if speed.get('reason'):srows.append(_explanation('DNS/доступ: '+_value(speed['reason'])))
+        srows.extend([_explanation('До 2 MiB в каждом направлении. Это короткий тест одного HTTPS-соединения.'),
+                      _explanation('Он не показывает гарантированную скорость порта VPS или VPN-клиента.'),
+                      _explanation('Тест полностью автоматический: ничего вводить не требуется.')])
+    elif speed.get('status')=='SKIPPED':
+        srows.extend([('Скорость не измерена.','warn'),
+                      _explanation('Автоматический тест недоступен или используется старый формат отчёта.')])
     else:
         srows.append(_row('Статус:',_field_status(speed),_kind(speed.get('status'))))
         for direction,key in (('Исходящая/Upload','upload_to_peer'),('Входящая/Download','download_from_peer')):
@@ -204,8 +218,8 @@ def sections(record):
     items.append(('Скорость сети',srows))
     brows=[_title('КРАТКИЕ ТЕСТЫ CPU, RAM И ДИСКА')]
     if bench.get('status')=='SKIPPED':
-        brows.extend([('Тест нагрузки не запускался.','warn'),
-                      _explanation('Нажмите B для добровольного теста (около секунды CPU и 8 MiB записи).')])
+        brows.extend([('Тест не выполнен.','warn'),
+                      _explanation('Автоматическое измерение недоступно в этом отчёте.')])
     else:
         brows.extend([_row('CPU PBKDF2 итерац./с:',bench.get('cpu_iterations_per_sec')),
                      _row('RAM copy 8 MiB, мс:',bench.get('memory_copy_8mib_ms')),
@@ -213,7 +227,7 @@ def sections(record):
                      _row('Файл теста:',_state(bench.get('disk_status')))])
     brows.extend([_explanation('В отличие от sysbench/YABS/fio, это лёгкий экспресс-тест.'),
                  _explanation('Результаты разных VPS/версий Python напрямую не сравнивать.'),
-                 _explanation('Временный файл создаётся только по нажатию B и удаляется.')])
+                 _explanation('Тест выполняется автоматически: временный файл 8 MiB удаляется.')])
     items.append(('Производительность',brows))
     notes=[_title('ГРАНИЦЫ И ТОЧНОСТЬ ИЗМЕРЕНИЙ')]
     for value in record.get('limitations',[]):notes.append(_explanation(_value(value)))
@@ -225,6 +239,7 @@ def sections(record):
                   _explanation('E — сохранить TXT/JSON/PNG, владелец файла только текущий пользователь.'),
                   _explanation('Отчёт содержит публичный IP и информацию о VPS: перед публикацией проверьте.'),
                   _explanation('Файлы не создаются без явного действия пользователя.'),
+                  _explanation('Все измерения выполняются без ввода параметров. Результаты могут быть неполными.'),
                   _explanation('Этот отчёт не является актом аудита защищённости или VPN-клиента.')])
     items.append(('Пояснения',notes))
     return items

@@ -3,8 +3,10 @@
 
 No curl|bash, package installations, background daemons or borrowed stress tests.
 HTTP checks are intentionally NOT mislabelled as geoblock or account access.
-Only explicit bench writes a bounded temporary file; only explicit speed contacts
-an operator-owned iperf3 listener. The CLI emits one bounded JSON line per event.
+The FULL command runs bounded, automatic CPU/RAM/disk and Cloudflare HTTPS
+bandwidth samples without prompting for a server. Measurement traffic is
+capped; errors are reported as not measured rather than guessed.
+The CLI emits one bounded JSON line per event.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -41,6 +43,13 @@ ADDITIONAL_SERVICES = (
 GEO_SOURCES = (('ipapi.co','/json/','ipapi'),('ipinfo.io','/json','ipinfo'),
                ('ipwho.is','/','ipwho'))
 MAX_EVENT = 100_000
+
+# The full report does not accept a user-supplied destination. This is a
+# deliberately small single-connection estimate, not a link-speed benchmark.
+# Cloudflare's published speedtest API supports /__down and /__up.
+AUTO_SPEED_HOST = 'speed.cloudflare.com'
+AUTO_SPEED_BYTES = 2 * 1024 * 1024  # 2 MiB each direction, at most 4 MiB total.
+AUTO_SPEED_TIMEOUT = 6
 
 
 def _clean(value, maxlen=110):
@@ -268,6 +277,102 @@ def cpu_disk_benchmark(*,run_seconds=0.6,write_mib=8,temp_dir=None):
     return result
 
 
+def _speed_https_exchange(method, *, ip, byte_count=AUTO_SPEED_BYTES,
+                          connector=socket.create_connection,
+                          monotonic=time.monotonic):
+    """One limited test transaction; strict TLS, fixed host and no redirects.
+
+    Connection and TLS negotiation are excluded from the transfer duration for
+    download, but server response overhead can affect short upload samples.
+    Both metrics are an approximate single-flow path to Cloudflare only.
+    """
+    if method not in ('download','upload') or not 1 <= byte_count <= AUTO_SPEED_BYTES:
+        raise ValueError('INVALID_AUTO_SPEED_REQUEST')
+    address=ipaddress.IPv4Address(ip)
+    if not address.is_global:raise ValueError('AUTO_SPEED_NONPUBLIC_IP')
+    context=ssl.create_default_context()
+    # Do not honor HTTPS_PROXY or trust on-host certificates outside the OS trust store.
+    context.minimum_version=ssl.TLSVersion.TLSv1_2
+    with connector((str(address),443),timeout=AUTO_SPEED_TIMEOUT) as raw:
+        with context.wrap_socket(raw,server_hostname=AUTO_SPEED_HOST) as tls:
+            tls.settimeout(AUTO_SPEED_TIMEOUT)
+            if method=='download':
+                request=(f'GET /__down?bytes={byte_count} HTTP/1.1\r\n'
+                         f'Host: {AUTO_SPEED_HOST}\r\n'
+                         'User-Agent: NodeInstall-VPS-Diagnostics/1\r\n'
+                         'Accept-Encoding: identity\r\nConnection: close\r\n\r\n')
+                tls.sendall(request.encode('ascii'))
+                response=http.client.HTTPResponse(tls)
+                response.begin()
+                if response.status!=200:
+                    raise ValueError('AUTO_SPEED_HTTP_ERROR')
+                declared=response.getheader('Content-Length')
+                if declared is not None and int(declared)!=byte_count:
+                    raise ValueError('AUTO_SPEED_LENGTH_MISMATCH')
+                start=monotonic();received=0
+                while received<byte_count:
+                    chunk=response.read(min(65536,byte_count-received))
+                    if not chunk:raise ValueError('AUTO_SPEED_INCOMPLETE_DOWNLOAD')
+                    received+=len(chunk)
+                # No unbounded reads; content-length and total bytes are capped.
+                elapsed=max(monotonic()-start,0.001)
+                return round((received*8)/(elapsed*1_000_000),2)
+            head=(f'POST /__up HTTP/1.1\r\nHost: {AUTO_SPEED_HOST}\r\n'
+                  f'Content-Length: {byte_count}\r\n'
+                  'Content-Type: application/octet-stream\r\n'
+                  'User-Agent: NodeInstall-VPS-Diagnostics/1\r\n'
+                  'Connection: close\r\n\r\n')
+            tls.sendall(head.encode('ascii'))
+            payload=b'\0'*65536
+            sent=0;start=monotonic()
+            while sent<byte_count:
+                count=min(len(payload),byte_count-sent)
+                tls.sendall(payload[:count]);sent+=count
+            response=http.client.HTTPResponse(tls)
+            response.begin()
+            if not 200<=response.status<300:
+                raise ValueError('AUTO_SPEED_UPLOAD_HTTP_ERROR')
+            elapsed=max(monotonic()-start,0.001)
+            return round((sent*8)/(elapsed*1_000_000),2)
+
+
+def automatic_speed_test(*,resolver=net.global_ipv4s,exchange=_speed_https_exchange):
+    """No input, no iperf listener, max 2 MiB down + 2 MiB up to Cloudflare.
+
+    Failures are per direction. Never invent an upload/download speed when a
+    remote endpoint rejects the request or a TLS/network timeout occurs.
+    """
+    result={'kind':'AUTO_HTTPS_SPEED','status':'UNVERIFIED',
+            'server':AUTO_SPEED_HOST,'max_bytes_per_direction':AUTO_SPEED_BYTES,
+            'download_mbps':None,'upload_mbps':None,
+            'limitations':['Одно HTTPS-соединение до Cloudflare, а не скорость порта VPS.',
+                           'Максимум 2 MiB на загрузку и 2 MiB на отдачу; это грубая оценка.',
+                           'Публичный тестовый сервис видит IP VPS; подписки/авторизация не проверяются.']}
+    try:
+        ip=resolver(AUTO_SPEED_HOST)[0]
+        if not ipaddress.IPv4Address(ip).is_global:raise ValueError('UNSAFE_DNS_RESULT')
+    except (OSError,ValueError,IndexError,TypeError) as exc:
+        result['reason']=type(exc).__name__
+        return result
+    for direction in ('download','upload'):
+        try:
+            rate=exchange(direction,ip=ip,byte_count=AUTO_SPEED_BYTES)
+            if isinstance(rate,bool) or not isinstance(rate,(int,float)) or not 0<rate<1e9:
+                raise ValueError('INVALID_SPEED_MEASUREMENT')
+            result[direction+'_mbps']=rate
+        except (OSError,ValueError,TimeoutError,ssl.SSLError,OverflowError) as exc:
+            result[direction+'_reason']=type(exc).__name__
+    done=sum(result[x+'_mbps'] is not None for x in ('download','upload'))
+    result['status']='MEASURED' if done==2 else 'PARTIAL' if done else 'UNVERIFIED'
+    return result
+
+
+def _auto_benchmark():
+    # Runs once, with a strictly bounded 0.25 s CPU sample, 8 MiB RAM copy,
+    # and 8 MiB temporary disk write (fsync + unlink). All temp paths are
+    # owned by mkstemp and no persistent configuration is changed.
+    return cpu_disk_benchmark(run_seconds=0.25,write_mib=8)
+
 def run_full(*,progress=None,probes=None):
     """Independent sections; partial failure never suppresses other measurements."""
     probes=probes or {}
@@ -278,15 +383,16 @@ def run_full(*,progress=None,probes=None):
            ('ping','ICMP-потери и задержка',ping_matrix),
            ('quality','HTTPS-стабильность GitHub',lambda:net.quality('github.com')),
            ('route','Маршрут до GitHub',lambda:net.trace('github.com')),
-           ('cdn','Cloudflare CDN',net.cloudflare_edge)]
+           ('cdn','Cloudflare CDN',net.cloudflare_edge),
+           ('speed','Скорость до Cloudflare (экспресс)',automatic_speed_test),
+           ('benchmark','CPU, RAM и диск (короткий тест)',_auto_benchmark)]
     report={'schema':2,'kind':'RUSSIAN_VPS_DIAGNOSTICS',
             'created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
-            'status':'INFO','mode':'SAFE_READ_ONLY',
-            'speed':{'status':'SKIPPED','reason':'Свой iperf3 не указан'},
-            'benchmark':{'status':'SKIPPED','reason':'Нужно явно включить из экрана результатов'},
+            'status':'INFO','mode':'BOUNDED_AUTOMATIC',
             'limitations':['Выполнено на VPS, а не из VPN-клиента.',
                            'IP/геолокация могут отличаться по справочникам; это не балл доверия.',
-                           'Скорость, дисковый тест и нагрузка не запускаются автоматически.']}
+                           'Автоматически: короткий тест CPU/RAM, 8 MiB временного диска и до 4 MiB HTTPS-трафика.',
+                           'Скорость Cloudflare не равна скорости VPN или порта хостера.']}
     for key,title,default in tasks:
         if progress:progress('НАЧАТО: '+title)
         try:
@@ -295,7 +401,7 @@ def run_full(*,progress=None,probes=None):
         except (OSError,ValueError,TypeError,subprocess.TimeoutExpired,UnicodeError,RuntimeError) as exc:
             report[key]={'status':_status(exc),'reason':type(exc).__name__}
         if progress:progress('ГОТОВО: '+title)
-    if any(isinstance(report.get(key),dict) and report[key].get('status') in ('REVIEW','UNVERIFIED','STOP','TIMEOUT')
+    if any(isinstance(report.get(key),dict) and report[key].get('status') in ('REVIEW','UNVERIFIED','PARTIAL','STOP','TIMEOUT')
            for key,_,_ in tasks):
         report['status']='REVIEW'
     return report
@@ -309,7 +415,7 @@ def _safe_emit(item):
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode',choices=('full','bench','speed'),help='full read-only; bench opt-in; speed own iperf3 only')
+    parser.add_argument('mode',choices=('full','bench','speed'),help='full automatic bounded check; bench/speed legacy CLI')
     parser.add_argument('--server',help='public IPv4 of authorized operator-owned iperf3 service')
     args=parser.parse_args(argv)
     try:

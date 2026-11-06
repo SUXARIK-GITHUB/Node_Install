@@ -97,15 +97,15 @@ class Collection(unittest.TestCase):
 
     def test_full_report_independent_failures_do_not_hide_any_section(self):
         fake={key:lambda k=key:{'status':'INFO','check':k} for key in
-              ('host','geo','dns','services','ping','quality','route','cdn')}
+              ('host','geo','dns','services','ping','quality','route','cdn','speed','benchmark')}
         fake['dns']=lambda:(_ for _ in ()).throw(OSError('network'))
         logs=[]
         result=vdash.run_full(progress=logs.append,probes=fake)
         self.assertEqual(result['status'],'REVIEW')
         self.assertEqual(result['dns']['status'],'UNVERIFIED')
         self.assertEqual(result['cdn']['status'],'INFO')
-        self.assertEqual(len(logs),16)
-        self.assertEqual(result['benchmark']['status'],'SKIPPED')
+        self.assertEqual(len(logs),20)
+        self.assertEqual(result['benchmark']['status'],'INFO')
 
     def test_cpu_bench_bounded_and_cleans_up_disk_temp(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -211,7 +211,7 @@ class UI(unittest.TestCase):
         with mock.patch.object(tui.curses,'doupdate'),mock.patch.object(tui.curses,'mousemask'),\
              mock.patch.object(tui.curses,'mouseinterval'):
             ui.vps_view(sample())
-        self.assertEqual(stages,['export','bench'])
+        self.assertEqual(stages,['export'])
 
 
 class Protocol(unittest.TestCase):

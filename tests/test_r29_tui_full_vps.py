@@ -84,16 +84,16 @@ class Presentation(unittest.TestCase):
         instance.vps()
         self.assertEqual(calls,['full'])
 
-    def test_owned_speed_requires_explicit_destination_only(self):
-        instance=self.terminal(FakeWindow([ord('s'),27],width=95,height=30))
-        calls=[]
-        instance.field=lambda *a,**k:'8.8.8.8'
-        instance.vps_process=lambda mode,**kwargs:calls.append((mode,kwargs)) or {'kind':'IPERF3_SPEED','status':'INFO'}
-        record={'kind':'RUSSIAN_VPS_DIAGNOSTICS','speed':{'status':'SKIPPED'}}
+    def test_auto_full_report_never_requests_iperf_address(self):
+        instance=self.terminal(FakeWindow([ord('s'),ord('b'),27],width=95,height=30))
+        instance.field=lambda *a,**k:self.fail('No manual speed/CPU fields in VPS results')
+        instance.vps_process=lambda *a,**k:self.fail('No additional actions in results view')
+        record={'kind':'RUSSIAN_VPS_DIAGNOSTICS',
+                'speed':{'kind':'AUTO_HTTPS_SPEED','status':'MEASURED',
+                         'download_mbps':15,'upload_mbps':8},
+                'benchmark':{'status':'INFO'}}
         with mock.patch.object(tui.curses,'doupdate'),mock.patch.object(tui.curses,'mousemask'),             mock.patch.object(tui.curses,'mouseinterval'):
             instance.vps_view(record)
-        self.assertEqual(calls,[('speed',{'server':'8.8.8.8'})])
-        self.assertEqual(record['speed']['kind'],'IPERF3_SPEED')
 
     def test_partial_installation_never_starts_new_install(self):
         instance=self.terminal(FakeWindow())
@@ -162,24 +162,22 @@ class FullVPS(unittest.TestCase):
 
 
 class GithubBootstrap(unittest.TestCase):
-    def test_current_readme_uses_child_shell_and_keeps_existing_checkout(self):
+    def test_current_readme_uses_child_shell_with_new_checkout(self):
         readme=(ROOT/'README.md').read_text()
-        # The historic r29 bootstrap stays pinned, while the current release
-        # label changes on every staging build. Test the contract, not r30 text.
-        marker=re.search(r'^### 🐙 Исторический GitHub bootstrap · 2\.5\.18 r29 \(НЕ для r\d+\)$',
-                         readme, re.M)
-        self.assertIsNotNone(marker, 'Historic r29 bootstrap section missing')
-        snippet=readme.split(marker.group(),1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
-        self.assertEqual(subprocess.run(['bash','-n'],text=True,input=snippet,capture_output=True,timeout=5).returncode,0)
-        self.assertIn("bash <<'NODE_INSTALL_BOOTSTRAP'",snippet)
-        self.assertIn('if [[ -d "$checkout/.git" ]]',snippet)
+        marker='### 1. 🐙 С GitHub'
+        self.assertEqual(readme.count(marker),1)
+        snippet=readme.split(marker,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        self.assertEqual(subprocess.run(['bash','-n'],text=True,input=snippet,
+                                        capture_output=True,timeout=5).returncode,0)
+        self.assertIn("bash <<'NODE_INSTALL_GITHUB'",snippet)
+        self.assertIn('mktemp -d',snippet)
         self.assertIn('git clone --depth 1',snippet)
-        self.assertIn('sha256sum --check SHA256SUMS',snippet)
+        self.assertIn('sha256sum --check',snippet)
         self.assertIn('bash ./install.sh --menu < /dev/tty',snippet)
         self.assertNotIn('rm -rf',snippet)
         self.assertNotIn('git reset --hard',snippet)
-        # A failing child cannot exit an interactive parent Bash shell.
-        cp=subprocess.run(['bash','-c',"bash <<'CHILD'\nset -e\nexit 1\nCHILD\nprintf 'PARENT_STILL_ALIVE\\n'"],
+        # STOP in child does not terminate root's SSH shell.
+        cp=subprocess.run(['bash','-c',"bash <<'CHILD'\nset -e\nexit 1\nCHILD\nprintf 'PARENT_STILL_ALIVE\n'"],
                           capture_output=True,text=True,timeout=5)
         self.assertIn('PARENT_STILL_ALIVE',cp.stdout)
 

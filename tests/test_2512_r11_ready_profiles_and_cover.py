@@ -157,12 +157,14 @@ class ReleaseGates(unittest.TestCase):
     def test_readme_version_one_command_autoreboot_default(self):
         text=(ROOT/'README.md').read_text()
         head=text.split('\n---\n',1)[0]
-        self.assertIn('2.5.18 r19',head)
+        self.assertIn('2.5.18',head)
+        self.assertIn('r35',head)
+        self.assertIn('2.5.18 r19', (ROOT/'CHANGELOG.md').read_text())
         self.assertIn('2.5.13 r12', (ROOT/'CHANGELOG.md').read_text())
         self.assertNotIn('2.5.10 r7e',head)
         self.assertNotIn('локальный непубликованный staging ZIP r10',head)
-        self.assertIn('vkarmani-xhttp-profile.json',head)
-        self.assertIn('bash ./install.sh\n',head)
+        self.assertIn('vkarmani-xhttp-profile.json',text)
+        self.assertIn('bash ./install.sh --menu < /dev/tty',head)
         self.assertNotIn('bash ./install.sh --no-reboot',head)
 
 

@@ -37,33 +37,31 @@ class Release2514Tests(unittest.TestCase):
         self.assertIn('FINISH_ONLY_RECORDED_2_5_18_SUPPORTED', payload('VK_FINALIZER_PY'))
         self.assertIn("'2.5.14','2.5.15','2.5.16','2.5.17','2.5.18'", (ROOT / 'scripts/staging_web_deploy.py').read_text())
 
-    def test_github_command_pinned_to_this_build_and_no_nondefault_port(self):
-        manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
-        release = 'r29'
-        heading = '### 🐙 Исторический GitHub bootstrap · 2.5.18 r29 (НЕ для r33)'
-        self.assertEqual(self.readme.count(heading), 1)
-        command = self.readme.split(heading, 1)[1].split('```bash\n', 1)[1].split('\n```', 1)[0]
-        self.assertEqual(subprocess.run(['bash', '-n'], input=command, text=True,
-                                        capture_output=True).returncode, 0)
-        # Historical r29 bootstrap must NOT accept current unpublished ZIP bytes.
-        installer_sha256 = hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest()
-        self.assertNotIn(installer_sha256, command)
-        self.assertIn('2e64804a1077c3c5843cb65cbc5beccac4de806fa7a29bd9a9d739306f1a46e6', command)
-        self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git', command)
-        self.assertIn('sha256sum --check SHA256SUMS', command)
-        self.assertIn('python3 scripts/verify_release.py --root .', command)
-        self.assertIn("'2.5.18', '20261105-r29-terminal-retry-full-vps'", command)
-        self.assertIn('bash ./install.sh --menu', command)
-        self.assertNotIn('--node-port', command)
-        self.assertNotIn('curl | bash', command)
-        self.assertIn('В GitHub `main` опубликован r29', self.readme)
-        self.assertIn('Историческая команда r19', self.readme)
-        self.assertIn('20261021-r19-hybrid-worker-permissions', self.readme)
+    def test_github_command_checks_current_build_and_no_nondefault_port(self):
+        manifest=json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
+        self.assertEqual(manifest['build_id'], '20261106-r35-automatic-vps-check')
+        heading='### 1. 🐙 С GitHub'
+        self.assertEqual(self.readme.count(heading),1)
+        command=self.readme.split(heading,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        result=subprocess.run(['bash','-n'], input=command, text=True,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn(hashlib.sha256((ROOT/'install.sh').read_bytes()).hexdigest(),command)
+        self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git',command)
+        self.assertIn('sha256sum --check',command)
+        self.assertIn('python3 scripts/verify_release.py --root .',command)
+        self.assertIn(manifest['build_id'],command)
+        self.assertIn('BUILD_MANIFEST.json',command)
+        self.assertIn('bash ./install.sh --menu',command)
+        self.assertNotIn('--node-port',command)
+        self.assertNotIn('curl | bash',command)
+        self.assertNotIn('rm -rf',command)
+        self.assertIn('текущая staging-сборка',self.readme)
 
     def test_archive_command_consistent_with_manifest_build(self):
         manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
         filename=f'Node_Install_2.5.18-docs-menu_{manifest["build_id"]}.zip'
-        self.assertIn('unzip -q ' + filename, self.readme)
+        self.assertIn('archive="/root/' + filename + '"', self.readme)
+        self.assertIn('unzip -q "$archive"', self.readme)
         self.assertNotIn('bash ./install.sh --node-port 32443', self.readme)
         self.assertIn('NODE_PORT_DEFAULT=2222', SCRIPT)
         release = manifest['build_id'].split('-', 2)[1]
@@ -71,7 +69,7 @@ class Release2514Tests(unittest.TestCase):
         self.assertEqual(manifest['version'], '2.5.18')
         # Source/ZIP verifier checks hashes; document the active unpublished
         # staging revision without changing the historical pinned r29 command.
-        self.assertRegex(manifest['build_id'], r'^20261106-r33-[A-Za-z0-9_.-]+$')
+        self.assertRegex(manifest['build_id'], r'^20261106-r35-[A-Za-z0-9_.-]+$')
         self.assertEqual(manifest['release_status'], 'INCOMPLETE_STAGING_ONLY')
 
 
