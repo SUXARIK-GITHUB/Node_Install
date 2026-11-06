@@ -284,6 +284,45 @@ def verify_bytes(files):
         # The user explicitly requires password login on nodes; no new key login.
         if 'PubkeyAuthentication no' not in installer or 'PasswordAuthentication yes' not in installer:
             raise ValueError('R24_PASSWORD_SSH_COMPATIBILITY_BROKEN')
+    if m['build_id'].startswith(('20261106-r30-','20261106-r31-','20261106-r32-','20261106-r33-')):
+        expected={'scripts/terminal_ui.py','integrations/traffic_limits.py',
+                  'tests/test_r30_user_feedback.py','docs/RELEASE_2.5.18_R30_USER_FEEDBACK.md'}
+        if not expected <= files.keys():
+            raise ValueError('R30_PHASE1_SOURCE_MISSING')
+        ui=files['scripts/terminal_ui.py'].decode()
+        helper=files['integrations/traffic_limits.py'].decode()
+        if 'validate_panel_target' not in ui or 'def extra_settings' not in ui or \
+           'def confirm_removal' not in ui or 'def rules' not in helper or \
+           '--traffic-limits' not in installer:
+            raise ValueError('R30_PHASE1_HOOKS_MISSING')
+    if m['build_id'].startswith(('20261106-r31-','20261106-r32-','20261106-r33-')):
+        required={'tests/test_r31_phase2.py','docs/RELEASE_2.5.18_R31_TERMINAL_COMPLETION.md'}
+        if not required <= files.keys():
+            raise ValueError('R31_PHASE2_FILES_MISSING')
+        ui=files['scripts/terminal_ui.py'].decode()
+        if not all(hook in ui for hook in ('def new_install_log','def read_reality_items',
+                    'def copy_to_terminal_clipboard','def keys_screen',
+                    'persist_install=True','ВЫЙТИ ИЗ УСТАНОВЩИКА')):
+            raise ValueError('R31_PHASE2_HOOKS_MISSING')
+    if m['build_id'].startswith(('20261106-r32-','20261106-r33-')):
+        required={'integrations/vps_dashboard.py','integrations/vps_report.py',
+                  'tests/test_r32_vps_dashboard.py','docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md'}
+        if not required <= files.keys():
+            raise ValueError('R32_VPS_DASHBOARD_FILES_MISSING')
+        ui=files['scripts/terminal_ui.py'].decode()
+        report=files['integrations/vps_report.py'].decode()
+        diagnostic=files['integrations/vps_dashboard.py'].decode()
+        if not all(name in ui for name in ('def vps_view','def vps_export','def vps_process','KEY_MOUSE')) or \
+           not all(name in report for name in ('def png_bytes','def export_report','def sections')) or \
+           not all(name in diagnostic for name in ('def run_full','def geo_reputation','def services_matrix')):
+            raise ValueError('R32_DIAGNOSTIC_REQUIRED_HOOKS_MISSING')
+    if m['build_id'].startswith('20261106-r33-'):
+        required={'tests/test_r33_git_ci_audit.py','docs/RELEASE_2.5.18_R33_GIT_CI_QA.md'}
+        if not required <= files.keys():
+            raise ValueError('R33_GIT_AUDIT_FILES_MISSING')
+        ci=files['.github/workflows/check.yml'].decode('utf-8')
+        if ci.count('git status --porcelain=v1 --untracked-files=all') != 3:
+            raise ValueError('R33_CI_CLEAN_WORKTREE_GUARDS_MISSING')
     if m['build_id'].startswith('20261105-r29-'):
         expected={'scripts/terminal_ui.py','integrations/vps_connectivity.py',
                   'tests/test_r29_tui_full_vps.py',

@@ -44,6 +44,13 @@ R4_APPROVED_FILE_SHA256 = {
     '.github/workflows/check.yml': 'd7913822fcf750e8d95e452ff90113a8ebef3ddd6add44b839c85ca5a4f90aea',
 }
 
+# Reviewed r33 exception: GitHub Actions must detect *all* unexpected worktree
+# changes after the tests, including staged-only and untracked files. This
+# hash changes ONLY the CI YAML; r4/r6 historical baselines remain intact.
+R33_APPROVED_FILE_SHA256 = {
+    '.github/workflows/check.yml': '042148a4fff304ff0be2238c7900bc6329ac95a4aaeaa2abb2390bc3af5db75e',
+}
+
 # Reviewed r6 change: on cascade Exit, the immutable Entry peer IPv4 joins
 # the RKN trusted ipset for public 80/443. Ordinary and Entry remain unchanged;
 # Node API management ACL still uses ONLY panel_ipv4. Historical hashes kept.
@@ -77,7 +84,7 @@ class PreservedPolicy256(unittest.TestCase):
     def test_existing_integrations_and_full_profile_examples_unchanged(self):
         for name, expected in FILES.items():
             with self.subTest(name=name):
-                expected_for_this_candidate = R14_APPROVED_FILE_SHA256.get(name, R13_APPROVED_FILE_SHA256.get(name, R6_APPROVED_FILE_SHA256.get(name, R4_APPROVED_FILE_SHA256.get(name, expected))))
+                expected_for_this_candidate = R33_APPROVED_FILE_SHA256.get(name, R14_APPROVED_FILE_SHA256.get(name, R13_APPROVED_FILE_SHA256.get(name, R6_APPROVED_FILE_SHA256.get(name, R4_APPROVED_FILE_SHA256.get(name, expected)))))
                 self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(), expected_for_this_candidate)
 
     def test_reviewed_r4_hash_overrides_are_explicit_and_keep_prior_baselines(self):
@@ -90,6 +97,14 @@ class PreservedPolicy256(unittest.TestCase):
             self.assertNotEqual(new, PAYLOADS[name])
         for name, new in R4_APPROVED_FILE_SHA256.items():
             self.assertNotEqual(new, FILES[name])
+
+
+    def test_r33_ci_change_is_explicit_and_preserves_r4_baseline(self):
+        self.assertEqual(set(R33_APPROVED_FILE_SHA256), {'.github/workflows/check.yml'})
+        path = '.github/workflows/check.yml'
+        self.assertNotEqual(R33_APPROVED_FILE_SHA256[path], R4_APPROVED_FILE_SHA256[path])
+        self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(),
+                         R33_APPROVED_FILE_SHA256[path])
 
     def test_reviewed_r6_has_explicit_new_hash_and_preserves_r4_record(self):
         self.assertEqual(R6_APPROVED_FILE_SHA256['integrations/rkn_guard.py'],

@@ -39,22 +39,24 @@ class Release2514Tests(unittest.TestCase):
 
     def test_github_command_pinned_to_this_build_and_no_nondefault_port(self):
         manifest = json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
-        release = manifest['build_id'].split('-', 2)[1]
-        heading = f'### 🐙 1. Установка с GitHub · 2.5.18 {release} (после публикации)'
+        release = 'r29'
+        heading = '### 🐙 Исторический GitHub bootstrap · 2.5.18 r29 (НЕ для r33)'
         self.assertEqual(self.readme.count(heading), 1)
         command = self.readme.split(heading, 1)[1].split('```bash\n', 1)[1].split('\n```', 1)[0]
         self.assertEqual(subprocess.run(['bash', '-n'], input=command, text=True,
                                         capture_output=True).returncode, 0)
+        # Historical r29 bootstrap must NOT accept current unpublished ZIP bytes.
         installer_sha256 = hashlib.sha256((ROOT / 'install.sh').read_bytes()).hexdigest()
-        self.assertIn(installer_sha256, command)
+        self.assertNotIn(installer_sha256, command)
+        self.assertIn('2e64804a1077c3c5843cb65cbc5beccac4de806fa7a29bd9a9d739306f1a46e6', command)
         self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git', command)
         self.assertIn('sha256sum --check SHA256SUMS', command)
         self.assertIn('python3 scripts/verify_release.py --root .', command)
-        self.assertIn("'2.5.18', '" + manifest['build_id'] + "'", command)
+        self.assertIn("'2.5.18', '20261105-r29-terminal-retry-full-vps'", command)
         self.assertIn('bash ./install.sh --menu', command)
         self.assertNotIn('--node-port', command)
         self.assertNotIn('curl | bash', command)
-        self.assertIn(f'В GitHub `main` опубликован r28', self.readme)
+        self.assertIn('В GitHub `main` опубликован r29', self.readme)
         self.assertIn('Историческая команда r19', self.readme)
         self.assertIn('20261021-r19-hybrid-worker-permissions', self.readme)
 
@@ -67,9 +69,9 @@ class Release2514Tests(unittest.TestCase):
         release = manifest['build_id'].split('-', 2)[1]
         self.assertIn('## 2.5.18 ' + release, (ROOT/'CHANGELOG.md').read_text().splitlines()[0])
         self.assertEqual(manifest['version'], '2.5.18')
-        # The source/ZIP verification checks hashes; the release regex must not reject
-        # the next legitimate r24/r25 staging revision solely due to its number.
-        self.assertRegex(manifest['build_id'], r'^20261105-r[0-9]{2}-[A-Za-z0-9_.-]+$')
+        # Source/ZIP verifier checks hashes; document the active unpublished
+        # staging revision without changing the historical pinned r29 command.
+        self.assertRegex(manifest['build_id'], r'^20261106-r33-[A-Za-z0-9_.-]+$')
         self.assertEqual(manifest['release_status'], 'INCOMPLETE_STAGING_ONLY')
 
 

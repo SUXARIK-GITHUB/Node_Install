@@ -42,7 +42,9 @@ class Presentation(unittest.TestCase):
             return tui.Terminal(win)
 
     def test_header_reports_actual_manifest_revision(self):
-        self.assertEqual(tui.release_label(),'v2.5.18 r29')
+        import json
+        build=json.loads((ROOT/'BUILD_MANIFEST.json').read_text())['build_id']
+        self.assertEqual(tui.release_label(),'v2.5.18 r'+re.search(r'-r(\d+)-',build).group(1))
 
     def test_menu_is_not_timed_or_redrawn_without_input(self):
         win=FakeWindow([ord('0')])
@@ -68,30 +70,30 @@ class Presentation(unittest.TestCase):
     def test_single_full_vps_action_not_a_submenu(self):
         instance=self.terminal(FakeWindow())
         calls=[]
-        instance.message=lambda *a,**k:13
-        instance.field=lambda *a,**k:''
-        instance.action=lambda *args:calls.append(args)
-        instance.menu=lambda *a,**k:self.fail('VPS should not show a submenu')
+        instance.vps_process=lambda mode:calls.append(mode) or {'kind':'RUSSIAN_VPS_DIAGNOSTICS'}
+        instance.vps_view=lambda record:calls.append(record['kind'])
+        instance.menu=lambda *a,**k:self.fail('VPS should not ask before initial read-only check')
         instance.vps()
-        self.assertEqual(calls,[('--vps-check','--format','table','full')])
+        self.assertEqual(calls,['full','RUSSIAN_VPS_DIAGNOSTICS'])
 
-    def test_skip_optional_speed_and_cancel(self):
+    def test_cancelled_full_diagnostic_does_not_open_report(self):
         instance=self.terminal(FakeWindow())
         calls=[]
-        instance.message=lambda *a,**k:27
-        instance.action=lambda *a:calls.append(a)
+        instance.vps_process=lambda mode:calls.append(mode) or None
+        instance.vps_view=lambda record:self.fail('cancelled report must not open')
         instance.vps()
-        self.assertFalse(calls)
+        self.assertEqual(calls,['full'])
 
-    def test_owned_speed_requires_explicit_confirmation(self):
-        instance=self.terminal(FakeWindow())
+    def test_owned_speed_requires_explicit_destination_only(self):
+        instance=self.terminal(FakeWindow([ord('s'),27],width=95,height=30))
         calls=[]
-        instance.message=lambda *a,**k:13
         instance.field=lambda *a,**k:'8.8.8.8'
-        instance.agree=lambda *a,**k:True
-        instance.action=lambda *args:calls.append(args)
-        instance.vps()
-        self.assertEqual(calls[0][-2:],('--speed-server','8.8.8.8'))
+        instance.vps_process=lambda mode,**kwargs:calls.append((mode,kwargs)) or {'kind':'IPERF3_SPEED','status':'INFO'}
+        record={'kind':'RUSSIAN_VPS_DIAGNOSTICS','speed':{'status':'SKIPPED'}}
+        with mock.patch.object(tui.curses,'doupdate'),mock.patch.object(tui.curses,'mousemask'),             mock.patch.object(tui.curses,'mouseinterval'):
+            instance.vps_view(record)
+        self.assertEqual(calls,[('speed',{'server':'8.8.8.8'})])
+        self.assertEqual(record['speed']['kind'],'IPERF3_SPEED')
 
     def test_partial_installation_never_starts_new_install(self):
         instance=self.terminal(FakeWindow())
@@ -162,8 +164,12 @@ class FullVPS(unittest.TestCase):
 class GithubBootstrap(unittest.TestCase):
     def test_current_readme_uses_child_shell_and_keeps_existing_checkout(self):
         readme=(ROOT/'README.md').read_text()
-        marker='### 🐙 1. Установка с GitHub · 2.5.18 r29 (после публикации)'
-        snippet=readme.split(marker,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
+        # The historic r29 bootstrap stays pinned, while the current release
+        # label changes on every staging build. Test the contract, not r30 text.
+        marker=re.search(r'^### 🐙 Исторический GitHub bootstrap · 2\.5\.18 r29 \(НЕ для r\d+\)$',
+                         readme, re.M)
+        self.assertIsNotNone(marker, 'Historic r29 bootstrap section missing')
+        snippet=readme.split(marker.group(),1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         self.assertEqual(subprocess.run(['bash','-n'],text=True,input=snippet,capture_output=True,timeout=5).returncode,0)
         self.assertIn("bash <<'NODE_INSTALL_BOOTSTRAP'",snippet)
         self.assertIn('if [[ -d "$checkout/.git" ]]',snippet)

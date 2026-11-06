@@ -47,6 +47,13 @@ jobs:
         run: |
           git diff --check
           git diff --exit-code
+          # The two diff commands alone miss staged and untracked modifications.
+          # Detect every non-ignored workspace change without deleting anything.
+          status="$(git status --porcelain=v1 --untracked-files=all)"
+          if [[ -n "$status" ]]; then
+            printf 'UNEXPECTED GIT WORKTREE CHANGES:\n%s\n' "$status" >&2
+            exit 1
+          fi
 
   ubuntu-26-userspace:
     # Uses a 24.04 host runner; this job does NOT validate a 26.04 kernel or reboot.
@@ -93,6 +100,13 @@ jobs:
         run: |
           git diff --check
           git diff --exit-code
+          # The two diff commands alone miss staged and untracked modifications.
+          # Detect every non-ignored workspace change without deleting anything.
+          status="$(git status --porcelain=v1 --untracked-files=all)"
+          if [[ -n "$status" ]]; then
+            printf 'UNEXPECTED GIT WORKTREE CHANGES:\n%s\n' "$status" >&2
+            exit 1
+          fi
 
   debian-userspace:
     # Debian 12/13 userspace regression only. Docker/systemd/firewall/kernel reboot NOT tested.
@@ -127,3 +141,10 @@ jobs:
         run: |
           git diff --check
           git diff --exit-code
+          # The two diff commands alone miss staged and untracked modifications.
+          # Detect every non-ignored workspace change without deleting anything.
+          status="$(git status --porcelain=v1 --untracked-files=all)"
+          if [[ -n "$status" ]]; then
+            printf 'UNEXPECTED GIT WORKTREE CHANGES:\n%s\n' "$status" >&2
+            exit 1
+          fi

@@ -194,6 +194,17 @@ UNTRACKED_ALLOWED.update({
     'docs/RELEASE_2.5.18_R28_CI_PORTABILITY.md',
     'tests/test_r29_tui_full_vps.py',
     'docs/RELEASE_2.5.18_R29_TERMINAL_RETRY_FULL_VPS.md',
+    'integrations/traffic_limits.py',
+    'tests/test_r30_user_feedback.py',
+    'docs/RELEASE_2.5.18_R30_USER_FEEDBACK.md',
+    'tests/test_r31_phase2.py',
+    'docs/RELEASE_2.5.18_R31_TERMINAL_COMPLETION.md',
+    'integrations/vps_dashboard.py',
+    'integrations/vps_report.py',
+    'tests/test_r32_vps_dashboard.py',
+    'docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md',
+    'docs/RELEASE_2.5.18_R33_GIT_CI_QA.md',
+    'tests/test_r33_git_ci_audit.py',
 })
 
 

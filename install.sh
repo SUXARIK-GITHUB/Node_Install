@@ -7256,7 +7256,8 @@ LIB=/usr/local/lib/vkarmani-node
 OPT=/opt/vkarmani-node
 LOG=/var/log/vkarmani-node-install.log
 REALITY_KEYS_FILE=/root/reality-keys.txt
-# The panel IPv4 is entered on first run. The node IPv4 is never asked: it is selected from DNS + local interfaces.
+# Panel accepts an IPv4 or a DNS name; DNS A records are pinned to the existing
+# IPv4-only Node management ACL. The node IPv4 is not asked.
 NODE_PORT_DEFAULT=2222
 NODE_PORT_ARG=''  # new ordinary enrollment only; no implicit migration
 NO_REBOOT=0
@@ -7272,6 +7273,10 @@ VK_REALITY_MODE='local'  # saved with initial inputs; ordinary only
 VK_INITIAL_SITE_THEME=''  # optional first-install site, no SSH/network defaults changed
 VK_WIZARD_INPUT_FD=''  # anonymous inherited Linux memfd, never argv/env secret
 VK_DIRECT_REALITY_MODE=''  # explicit only with reviewed wizard channel
+TRAFFIC_IN_MBPS=0
+TRAFFIC_OUT_MBPS=0
+TRAFFIC_IN_GIB=0
+TRAFFIC_OUT_GIB=0
 
 usage() {
     cat <<'HELP'
@@ -7351,7 +7356,7 @@ VKarmani Remnawave Node Installer 2.5.18
 Первая установка: 1 — обычная нода; 2 — каскад (выбор entry/exit и отдельного приватного bundle).
 Каскад: host install + offline RAW template; Node/Profile/Host/Squad/bridge user подключаются вручную в TEST Panel.
 Без реальной Panel/E2E и двух-VPS приёмки каскад не является production-ready; live config не модифицируется.
-Три обязательных значения обычной ноды: SECRET_KEY → домен ноды → исходящий IPv4 технички.
+Три обязательных значения обычной ноды: SECRET_KEY → домен ноды → публичный IPv4 или прямой FQDN панели.
 IP самой ноды выбирается по DNS среди публичных IPv4 её интерфейсов.
 Чистая выделенная Ubuntu 22.04/24.04/26.04 или Debian 12/13; amd64/arm64; systemd + GRUB.
 Минимум: 900 MiB RAM, 6 GiB свободно; при RAM <1536 MiB нужен >=1 GiB активного swap до APT. NAT, LXC/OpenVZ, IPv6 SSH, чужая установка не поддержаны.
@@ -7395,6 +7400,21 @@ while (($#)); do
         --node-port)
             [[ $# -ge 2 && -z "$NODE_PORT_ARG" ]] || { echo '--node-port must be specified once' >&2; exit 2; }
             NODE_PORT_ARG=$2; shift 2 ;;
+        --traffic-in-mbps|--traffic-out-mbps|--traffic-in-gib|--traffic-out-gib)
+            [[ $# -ge 2 && "$2" =~ ^[0-9]{1,6}$ ]] || { echo 'STOP: invalid numeric traffic option' >&2; exit 2; }
+            value=$((10#$2))
+            if [[ "$1" == *-mbps ]]; then
+                (( value >= 1 && value <= 20000 )) || { echo 'STOP: Mbps outside 1–20000' >&2; exit 2; }
+            else
+                (( value >= 1 && value <= 100000 )) || { echo 'STOP: GiB outside 1–100000' >&2; exit 2; }
+            fi
+            case "$1" in
+                --traffic-in-mbps) [[ $TRAFFIC_IN_MBPS == 0 ]] || exit 2; TRAFFIC_IN_MBPS=$value ;;
+                --traffic-out-mbps) [[ $TRAFFIC_OUT_MBPS == 0 ]] || exit 2; TRAFFIC_OUT_MBPS=$value ;;
+                --traffic-in-gib) [[ $TRAFFIC_IN_GIB == 0 ]] || exit 2; TRAFFIC_IN_GIB=$value ;;
+                --traffic-out-gib) [[ $TRAFFIC_OUT_GIB == 0 ]] || exit 2; TRAFFIC_OUT_GIB=$value ;;
+            esac
+            shift 2 ;;
         --allow-net-admin) ALLOW_NET_ADMIN=1; shift ;;
         --image)
             [[ $# -ge 2 ]] || { echo '--image requires an official image reference' >&2; exit 2; }
@@ -7418,6 +7438,11 @@ if [[ -n "$NODE_PORT_ARG" ]]; then
         exit 2
     fi
     NODE_PORT_DEFAULT=$((10#$NODE_PORT_ARG))
+fi
+if (( TRAFFIC_IN_MBPS || TRAFFIC_OUT_MBPS || TRAFFIC_IN_GIB || TRAFFIC_OUT_GIB )); then
+    [[ -z "$VK_CASCADE_ROLE_ARG" && -z "$VK_CASCADE_BUNDLE_ARG" ]] || {
+        echo 'STOP: traffic limits are available for new Ordinary nodes only' >&2; exit 2;
+    }
 fi
 # Three inputs before any APT/network/boot changes. No Python/curl dependency here.
 # This file is embedded in install.sh, not downloaded at run time.
@@ -7456,6 +7481,13 @@ vk_validate_domain() {
         [[ ${#part} -ge 1 && ${#part} -le 63 && "$part" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || return 1
     done
 }
+vk_validate_panel_endpoint() {
+    # Domain and public IPv4 are both supported. Never accept URLs, ports or
+    # CIDR values in the privileged installer input channel.
+    if vk_validate_ipv4 "$1"; then return 0; fi
+    case "$1" in *.local|*.localhost|*.internal|*.invalid|*.test) return 1 ;; esac
+    vk_validate_domain "$1"
+}
 vk_restore_tty() {
     if [[ -n "${VK_TTY_STATE:-}" && -n "${VK_TTY_FD:-}" ]]; then
         stty "$VK_TTY_STATE" <&"$VK_TTY_FD" 2>/dev/null || true
@@ -7484,7 +7516,7 @@ vk_collect_inputs() {
         VK_REALITY_MODE=${saved[3]:-local}
         case "$VK_REALITY_MODE" in local|max.ru|ya.ru|rutube.ru|mail.ru) ;; *) vk_input_error 'Повреждён REALITY mode в inputs.pending.'; return 1 ;; esac
         [[ "$VK_INPUT_SECRET" =~ ^[A-Za-z0-9_+/=-]{64,65536}$ ]] || return 1
-        vk_validate_ipv4 "$VK_INPUT_PANEL_IP" && vk_validate_domain "$VK_INPUT_DOMAIN" || return 1
+        vk_validate_panel_endpoint "$VK_INPUT_PANEL_IP" && vk_validate_domain "$VK_INPUT_DOMAIN" || return 1
         unset saved
         printf 'Продолжение: три значения восстановлены из закрытого inputs.pending; вопросов нет.\n'
         return 0
@@ -7506,7 +7538,7 @@ vk_collect_inputs() {
         unset fd_identity
         IFS= read -r -u "$VK_WIZARD_INPUT_FD" VK_INPUT_SECRET || { vk_input_error 'wizard secret missing'; return 2; }
         IFS= read -r -u "$VK_WIZARD_INPUT_FD" VK_INPUT_DOMAIN || { vk_input_error 'wizard domain missing'; return 2; }
-        IFS= read -r -u "$VK_WIZARD_INPUT_FD" VK_INPUT_PANEL_IP || { vk_input_error 'wizard panel IPv4 missing'; return 2; }
+        IFS= read -r -u "$VK_WIZARD_INPUT_FD" VK_INPUT_PANEL_IP || { vk_input_error 'wizard panel address missing'; return 2; }
         local extra_line=''
         if IFS= read -r -u "$VK_WIZARD_INPUT_FD" extra_line; then
             vk_input_error 'wizard channel contains unexpected extra data'; return 2;
@@ -7519,7 +7551,8 @@ vk_collect_inputs() {
         }
         VK_INPUT_DOMAIN=$(vk_trim "$VK_INPUT_DOMAIN")
         VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN,,}; VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN%.}
-        vk_validate_domain "$VK_INPUT_DOMAIN" && vk_validate_ipv4 "$VK_INPUT_PANEL_IP" || {
+        VK_INPUT_PANEL_IP=${VK_INPUT_PANEL_IP,,}; VK_INPUT_PANEL_IP=${VK_INPUT_PANEL_IP%.}
+        vk_validate_domain "$VK_INPUT_DOMAIN" && vk_validate_panel_endpoint "$VK_INPUT_PANEL_IP" || {
             unset VK_INPUT_SECRET; vk_input_error 'invalid wizard domain or IPv4'; return 2;
         }
         echo 'WIZARD_INPUT=VALIDATED (secret never shown)'
@@ -7532,7 +7565,7 @@ vk_collect_inputs() {
     trap 'vk_restore_tty; exit 130' INT
     trap 'vk_restore_tty; exit 143' TERM
     trap 'vk_restore_tty; exit 129' HUP
-    printf '\nVKarmani: SECRET_KEY → домен ноды → IPv4 технички.\n' >&"$VK_TTY_FD"
+    printf '\nVKarmani: SECRET_KEY → домен ноды → публичный IPv4 или FQDN панели.\n' >&"$VK_TTY_FD"
     printf 'IPv4 самой ноды НЕ спрашивается: он выбирается автоматически по DNS из адресов VPS.\n' >&"$VK_TTY_FD"
     printf 'После трёх значений — автоматическая установка и один auto-reboot после успешных проверок. Для запрета: --no-reboot. Нужны снимок VPS и консоль хостера.\n' >&"$VK_TTY_FD"
     printf 'SSH-ключи для входа будут отключены; нужен проверенный вход по паролю. Будут изменены firewall/загрузка, отключён IPv6; условия Let\047s Encrypt принимаются автоматически.\n' >&"$VK_TTY_FD"
@@ -7559,10 +7592,11 @@ vk_collect_inputs() {
     VK_INPUT_DOMAIN=$(vk_trim "$VK_INPUT_DOMAIN")
     VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN,,}; VK_INPUT_DOMAIN=${VK_INPUT_DOMAIN%.}
     vk_validate_domain "$VK_INPUT_DOMAIN" || { vk_input_error 'Некорректный домен: без https://, порта и пути; IDN в punycode.'; return 1; }
-    printf '[3/3] Публичный исходящий IPv4 технички (backend панели): ' >&"$VK_TTY_FD"
-    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_PANEL_IP || { vk_input_error 'Ввод IPv4 панели прерван.'; return 1; }
+    printf '[3/3] Публичный IPv4 или прямой FQDN панели (без https://): ' >&"$VK_TTY_FD"
+    IFS= read -r -u "$VK_TTY_FD" VK_INPUT_PANEL_IP || { vk_input_error 'Ввод адреса панели прерван.'; return 1; }
     VK_INPUT_PANEL_IP=$(vk_trim "$VK_INPUT_PANEL_IP")
-    vk_validate_ipv4 "$VK_INPUT_PANEL_IP" || { vk_input_error 'Некорректный публичный IPv4 панели.'; return 1; }
+    VK_INPUT_PANEL_IP=${VK_INPUT_PANEL_IP,,}; VK_INPUT_PANEL_IP=${VK_INPUT_PANEL_IP%.}
+    vk_validate_panel_endpoint "$VK_INPUT_PANEL_IP" || { vk_input_error 'Некорректный IPv4 или домен панели.'; return 1; }
     exec {VK_TTY_FD}>&-
     unset VK_TTY_FD
     trap - EXIT INT TERM HUP
@@ -7677,6 +7711,22 @@ if [[ -n "$VK_INITIAL_SITE_THEME" ]]; then
     # This flag is an explicit staging opt-in. It will not weaken node key/SSH policies.
 fi
 
+# Traffic enforcement is optional, but its helper must come from the same
+# complete, integrity-checked archive before installing any new OS packages.
+VK_TRAFFIC_ENABLED=0
+if (( TRAFFIC_IN_MBPS || TRAFFIC_OUT_MBPS || TRAFFIC_IN_GIB || TRAFFIC_OUT_GIB )); then
+    VK_TRAFFIC_ENABLED=1
+    VK_TRAFFIC_SOURCE_ROOT="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    [[ -f "$VK_TRAFFIC_SOURCE_ROOT/integrations/traffic_limits.py" &&
+       ! -L "$VK_TRAFFIC_SOURCE_ROOT/integrations/traffic_limits.py" ]] || {
+        echo 'STOP: optional traffic helper requires the complete source archive' >&2; return 2;
+    }
+    python3 -I -B "$VK_TRAFFIC_SOURCE_ROOT/scripts/verify_release.py" \
+        --root "$VK_TRAFFIC_SOURCE_ROOT" >/dev/null || {
+        echo 'STOP: traffic helper source integrity not verified' >&2; return 2;
+    }
+fi
+
 # No role migration or implicit ordinary downgrade. These tests precede host writes.
 if [[ -n "$VK_CASCADE_ROLE_ARG" || -n "$VK_CASCADE_BUNDLE_ARG" ]]; then
     [[ -n "$VK_CASCADE_ROLE_ARG" && -n "$VK_CASCADE_BUNDLE_ARG" ]] || {
@@ -7711,6 +7761,9 @@ if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$NODE_PORT_ARG" ]]; then
     echo 'STOP: --node-port is reserved for a new Ordinary node; cascade ports must match the reviewed role bundle.' >&2
     return 2
 fi
+if [[ $VK_CASCADE_ACTIVE -eq 1 && ${VK_TRAFFIC_ENABLED:-0} -eq 1 ]]; then
+    echo 'STOP: traffic limits do not support cascade roles; refusing changes.' >&2; return 2
+fi
 if [[ $VK_CASCADE_ACTIVE -eq 1 && $WEEKLY_REBOOT -eq 1 ]]; then
     echo 'STOP: cascade weekly reboot requires peer coordination and is prohibited.' >&2; return 2
 fi
@@ -7721,6 +7774,7 @@ if [[ -n "$VK_WIZARD_INPUT_FD" ]] &&
 fi
 if [[ -s "$STATE/INSTALL_COMPLETE" ]]; then
     [[ -z "$NODE_PORT_ARG" ]] || { echo "STOP: --node-port cannot migrate an installed node; no changes." >&2; return 2; }
+    (( ${VK_TRAFFIC_ENABLED:-0} == 0 )) || { echo 'STOP: traffic controls are not an implicit node migration' >&2; return 2; }
     if [[ -e "$STATE/FINALIZE_FAILED" || -e "$STATE/INSTALL_FAILED" ]]; then
         echo 'STOP: completion marker coexists with failure; inspect state, for 2.5.18 use --finish-install.' >&2; exit 1
     fi
@@ -8175,7 +8229,7 @@ def domain(value):
     if not isinstance(value, str):
         raise Failure('Домен должен быть строкой.')
     value = value.strip().lower().rstrip('.')
-    if len(value) > 253 or '.' not in value:
+    if len(value) > 253 or '.' not in value or re.fullmatch(r'[0-9.]+',value):
         raise Failure('Нужен полный DNS-домен, без https:// и пути.')
     if any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', p)
            for p in value.split('.')):
@@ -8195,6 +8249,26 @@ def public_ipv4(value):
         return str(ip)
     except (ValueError, TypeError) as e:
         raise Failure('Нужен глобальный публичный IPv4-адрес, не CIDR.') from e
+
+
+def panel_addresses(value):
+    """Pin currently resolved public A records, never open Node API to 0/0.
+
+    A proxied/CDN hostname may not be the actual outbound source address of
+    the Panel. Operators must use its direct public DNS name or IPv4.
+    """
+    try:
+        return None, [public_ipv4(value)]
+    except Failure:
+        host=domain(value)
+    records=_dns_query(host,'A',None)
+    if not records or len(records)>16:
+        raise Failure('DNS панели не вернул 1–16 публичных IPv4 A-записей; запрещаю открытую ACL.')
+    try:
+        ips=sorted({public_ipv4(value) for value in records})
+    except Failure as exc:
+        raise Failure('DNS панели содержит непубличный IPv4; ACL не создаётся.') from exc
+    return host,ips
 
 
 def _dns_query(domain_name, kind, server):
@@ -8869,7 +8943,7 @@ def export_xhttp_profile(c):
 def normalize_config(raw):
     if not isinstance(raw, dict) or raw.get('installation_mode') != MODE:
         raise Failure('Нужна конфигурация secret-key-only. API-установка не мигрируется.')
-    allowed = {'installation_mode', 'domain', 'public_ipv4', 'node_port', 'panel_ipv4',
+    allowed = {'installation_mode', 'domain', 'public_ipv4', 'node_port', 'panel_ipv4','panel_hostname',
                'image', 'auto_reboot', 'certbot_dry_run', 'create_swap', 'weekly_reboot',
                'selfsteal_host_socket', 'allow_net_admin', 'reality_mode'}
     if set(raw) - allowed:
@@ -8881,6 +8955,8 @@ def normalize_config(raw):
     if not isinstance(ips, list) or not 1 <= len(ips) <= 16:
         raise Failure('panel_ipv4: от 1 до 16 публичных IPv4 панели, без CIDR.')
     c['panel_ipv4'] = sorted({public_ipv4(x) for x in ips})
+    if 'panel_hostname' in c:
+        c['panel_hostname']=domain(c['panel_hostname'])
     port = c.get('node_port', 2222)
     if type(port) is not int or not 1024 <= port <= 65535 or port == 61001:
         raise Failure('node_port: целое 1024–65535, не конфликтующее с SSH/80/443.')
@@ -8985,11 +9061,11 @@ def check_secret(c, check_dates=True):
 
 
 def init_config(node_port='2222', inputs=None):
-    """No prompts here. Bash collects REALITY mode plus SECRET_KEY, panel IPv4 and domain before dependencies.
+    """No prompts here. Bash collects SECRET_KEY, panel endpoint and node domain.
 
     Node IPv4 is selected automatically by matching the domain's public A record
     against every public IPv4 actually assigned to the VPS. The panel source IPv4
-    is user-entered and is used only for the Node Port firewall allowlist.
+    DNS names are resolved to public A records for a strictly numeric ACL.
     """
     if (ETC / 'config.json').exists():
         c = normalize_config(read_json(ETC / 'config.json'))
@@ -9007,25 +9083,27 @@ def init_config(node_port='2222', inputs=None):
             raise Failure('Слишком большой блок входных данных.')
         inputs = text.splitlines()
     if not isinstance(inputs, (tuple, list)) or len(inputs) not in (3, 4):
-        raise Failure('Нужны SECRET_KEY, IPv4 панели, домен и выбранный REALITY mode.')
+        raise Failure('Нужны SECRET_KEY, адрес панели (публичный IPv4 или FQDN), домен и REALITY mode.')
     reality_mode = inputs[3] if len(inputs) == 4 else 'local'
     if reality_mode not in ('local', 'max.ru', 'ya.ru', 'rutube.ru', 'mail.ru'):
         raise Failure('Недопустимый REALITY mode: отредактированный inputs.pending.')
     secret = normalize_secret(inputs[0])
-    panel_ip = public_ipv4(inputs[1])
+    panel_hostname,panel_ips = panel_addresses(inputs[1])
     name = domain(inputs[2])
     selected = select_public_ipv4_for_domain(name, wait_seconds=300)
-    if panel_ip in detect_local_public_ipv4s():
-        raise Failure('IPv4 панели назначен этой же ноде. Нужен отдельный сервер ноды или введите другой IPv4 панели.')
+    if set(panel_ips) & set(detect_local_public_ipv4s()):
+        raise Failure('IPv4 панели совпадает с IPv4 ноды. Нужен отдельный сервер или исходящий адрес панели.')
     c = normalize_config({'installation_mode': MODE, 'domain': name, 'public_ipv4': selected,
-                          'panel_ipv4': [panel_ip], 'node_port': int(node_port),
+                          'panel_ipv4': panel_ips, **({'panel_hostname':panel_hostname} if panel_hostname else {}),
+                          'node_port': int(node_port),
                           'selfsteal_host_socket': '/run/vkarmani-selfsteal/nginx.sock',
                           'allow_net_admin': True, 'reality_mode': reality_mode})
     # DNS already selected this exact local address; recheck once against config shape.
     dns_check(c)
     atomic_text(ETC / 'remnanode.env', f'NODE_PORT={c["node_port"]}\nSECRET_KEY={secret}\nTZ=Europe/Moscow\n')
     atomic_json(ETC / 'config.json', c)
-    print('Параметры проверены. IPv4 ноды=' + selected + '; SECRET_KEY сохранён с правами 0600.')
+    print('Параметры проверены. IPv4 ноды=' + selected + '; разрешённые IPv4 панели=' + str(len(panel_ips)) +
+          '; SECRET_KEY сохранён с правами 0600.')
 
 def write_panel_guide(c):
     if (ETC / 'cascade-role.json').exists():
@@ -10079,6 +10157,35 @@ fi
 if (( VK_SITE_PARTIAL_FAILURE )); then
     echo 'CORE_NODE=COMMITTED; OPTIONAL_SITE=FAILED; see final INSTALL_RESULT' >&2
 fi
+VK_TRAFFIC_PARTIAL_FAILURE=0
+if (( ${VK_TRAFFIC_ENABLED:-0} )); then
+    stage 'Явно заданные лимиты скорости/объёма сети — отдельная nftables таблица'
+    source_file="$VK_TRAFFIC_SOURCE_ROOT/integrations/traffic_limits.py"
+    if [[ ( -e "$LIB/traffic_limits.py" || -L "$LIB/traffic_limits.py" ) &&
+          ! -f "$LIB/traffic_limits.py" ]]; then
+        echo 'TRAFFIC_LIMITS=STOP unexpected target file type' >&2
+        VK_TRAFFIC_PARTIAL_FAILURE=1
+    elif [[ -e "$LIB/traffic_limits.py" ]] && ! cmp -s -- "$source_file" "$LIB/traffic_limits.py"; then
+        echo 'TRAFFIC_LIMITS=STOP existing helper differs; refusing overwrite' >&2
+        VK_TRAFFIC_PARTIAL_FAILURE=1
+    elif [[ -e "$LIB/traffic_limits.py" ]] || install -o root -g root -m 0700 -- "$source_file" "$LIB/traffic_limits.py"; then
+        if python3 -I -B "$LIB/traffic_limits.py" configure \
+               --in-mbps "$TRAFFIC_IN_MBPS" --out-mbps "$TRAFFIC_OUT_MBPS" \
+               --in-gib "$TRAFFIC_IN_GIB" --out-gib "$TRAFFIC_OUT_GIB"; then
+            echo 'TRAFFIC_LIMITS=PASS; SSH/Node API excluded; counters are cumulative, no automatic reset'
+        else
+            echo 'TRAFFIC_LIMITS=STOP optional controls were not activated; inspect traffic config and nft rules' >&2
+            VK_TRAFFIC_PARTIAL_FAILURE=1
+        fi
+    else
+        echo 'TRAFFIC_LIMITS=STOP installing root-owned helper failed' >&2
+        VK_TRAFFIC_PARTIAL_FAILURE=1
+    fi
+    if (( VK_TRAFFIC_PARTIAL_FAILURE )); then
+        NO_REBOOT=1
+        echo 'AUTO_REBOOT=DISABLED_AFTER_TRAFFIC_LIMITS_FAILURE' >&2
+    fi
+fi
 stage 'Установка завершена; проверки ДО перезагрузки пройдены' 
 printf 'Домен: %s\nIPv4: %s\nУправляющий порт: %s (только IP панели)\n' "$DOMAIN" "$PUBLIC_IP" "$NODE_PORT"
 printf 'Разрешённые IPv4 панели: %s\n' "${PANEL_IPS[*]}"
@@ -10098,9 +10205,14 @@ else
     echo 'WEEKLY_REBOOT=DISABLED; timers Certbot and cleanup were checked separately.'
 fi
 
-# The operator explicitly requested the three REALITY values at the end. Bypass tee so
-# PrivateKey is visible on the interactive terminal but is not duplicated into install.log.
-if [[ -r "$REALITY_KEYS_FILE" && -w /dev/tty ]]; then
+# A curses frontend owns the terminal while the installer is running. Writing
+# directly to /dev/tty from this subprocess corrupts its framebuffer and risks
+# exposing the private key in MobaXterm's terminal scrollback. The operator
+# can read the protected root-only file after the UI exits; a dedicated
+# key picker is deferred to the second implementation phase.
+if [[ "${VK_NODE_TUI:-0}" == 1 ]]; then
+    echo "REALITY_KEYS_DISPLAY=FILE_ONLY; saved at $REALITY_KEYS_FILE (root:0600)."
+elif [[ -r "$REALITY_KEYS_FILE" && -w /dev/tty ]]; then
     {
         printf '\n'
         cat "$REALITY_KEYS_FILE"
@@ -10122,13 +10234,19 @@ if [[ $NO_REBOOT -eq 0 ]]; then
 else
     echo 'AUTO_REBOOT=DISABLED_BY_FLAG. Выполните sudo reboot после проверки второго парольного SSH-входа.'
 fi
-if (( VK_SITE_PARTIAL_FAILURE )); then
+if (( ${VK_SITE_PARTIAL_FAILURE:-0} || ${VK_TRAFFIC_PARTIAL_FAILURE:-0} )); then
     # The finalizer already committed INSTALL_COMPLETE. Do not invoke on_error:
     # it would incorrectly create INSTALL_FAILED and corrupt a healthy node.
-    echo 'INSTALL_RESULT=PARTIAL CORE=PASS OPTIONAL_SITE=FAILED AUTO_REBOOT=DISABLED' >&2
-    echo 'EXIT_CODE=20; inspect site journal and retry only via --site-manager deploy/rollback.' >&2
+    if (( ${VK_SITE_PARTIAL_FAILURE:-0} && ${VK_TRAFFIC_PARTIAL_FAILURE:-0} )); then
+        echo 'INSTALL_RESULT=PARTIAL CORE=PASS OPTIONAL_SITE=FAILED OPTIONAL_TRAFFIC=FAILED AUTO_REBOOT=DISABLED' >&2
+    elif (( ${VK_SITE_PARTIAL_FAILURE:-0} )); then
+        echo 'INSTALL_RESULT=PARTIAL CORE=PASS OPTIONAL_SITE=FAILED AUTO_REBOOT=DISABLED' >&2
+    else
+        echo 'INSTALL_RESULT=PARTIAL CORE=PASS OPTIONAL_SITE=PASS_OR_NOT_REQUESTED OPTIONAL_TRAFFIC=FAILED AUTO_REBOOT=DISABLED' >&2
+    fi
+    echo 'Inspect site journal and optional traffic controls before reboot; do not repeat core installation.' >&2
     trap - ERR INT TERM HUP
-    return 20
+    if (( ${VK_SITE_PARTIAL_FAILURE:-0} )); then return 20; else return 21; fi
 fi
 echo 'INSTALL_RESULT=PASS CORE=PASS OPTIONAL_SITE=PASS_OR_NOT_REQUESTED'
 
@@ -11513,6 +11631,14 @@ vkarmani_r27_connectivity() {
     python3 -I -B "$tool_path" "$@"
 }
 
+vkarmani_traffic_command() {
+    local helper='/usr/local/lib/vkarmani-node/traffic_limits.py'
+    [[ -f "$helper" && ! -L "$helper" ]] || {
+        echo 'TRAFFIC_LIMITS=STOP: traffic controls have not been installed on this VPS' >&2; return 2;
+    }
+    python3 -I -B "$helper" "$@"
+}
+
 # VKARMANI_COMPLETE_PAYLOAD_2_1_1
 # Sourcing definitions is intentionally inert: used by offline regression tests.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -11520,6 +11646,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         --menu) shift; vkarmani_r27_script terminal_ui "$@" ;;
         --install-direct) shift; vkarmani_main "$@" ;;
         --vps-check) shift; vkarmani_r27_connectivity "$@" ;;
+        --traffic-limits) shift; vkarmani_traffic_command "$@" ;;
         --removal-plan) shift; vkarmani_r27_script removal_plan "$@" ;;
         --site-manager) shift; vkarmani_r24_site_manager "$@" ;;
         --selfsteal-verify) shift; vkarmani_r23_bundle_tool selfsteal_chain "$@" ;;

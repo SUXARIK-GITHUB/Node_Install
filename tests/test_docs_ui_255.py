@@ -31,14 +31,22 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
         self.assertIn('docs/CASCADE_R5_ROLE_INSTALL_AND_PANEL.md', self.readme)
         build_id = json.loads((ROOT / 'BUILD_MANIFEST.json').read_text())['build_id']
         current_release = build_id.split('-', 2)[1]
-        published = f'### 🐙 1. Установка с GitHub · 2.5.18 {current_release} (после публикации)'
-        archive = f'### 📁 2. Из полного ZIP · 2.5.18 {current_release} (текущая staging-сборка)'
+        if current_release in ('r30','r31','r32','r33'):
+            published = '### 🐙 Исторический GitHub bootstrap · 2.5.18 r29 (НЕ для r33)'
+            archive = f'### 📁 2. Из полного ZIP · 2.5.18 {current_release} (текущая staging-сборка)'
+            # r30-r33 are not published on GitHub. The pinned historic
+            # command must not be presented as downloading the current ZIP.
+            pinned_sha = '2e64804a1077c3c5843cb65cbc5beccac4de806fa7a29bd9a9d739306f1a46e6'
+            self.assertIn('не запускает '+current_release, self.readme)
+        else:
+            published = f'### 🐙 1. Установка с GitHub · 2.5.18 {current_release} (после публикации)'
+            archive = f'### 📁 2. Из полного ZIP · 2.5.18 {current_release} (текущая staging-сборка)'
+            pinned_sha = hashlib.sha256((ROOT/'install.sh').read_bytes()).hexdigest()
         self.assertLess(self.readme.index(published),self.readme.index(archive))
         github_cmd = self.readme.split(published,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         archive_cmd = self.readme.split(archive,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
         self.assertIn('git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git', github_cmd)
-        # New release cannot run from GitHub main until that exact build is published.
-        self.assertIn(hashlib.sha256((ROOT/'install.sh').read_bytes()).hexdigest(), github_cmd)
+        self.assertIn(pinned_sha, github_cmd)
         self.assertIn('sha256sum --check', github_cmd)
         self.assertIn('sha256sum --check SHA256SUMS', github_cmd)
         self.assertIn("m.get('build_id')", github_cmd)

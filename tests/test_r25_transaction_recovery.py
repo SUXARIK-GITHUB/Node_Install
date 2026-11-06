@@ -172,7 +172,10 @@ class NetworkRecovery(unittest.TestCase):
         text = (ROOT/'install.sh').read_text()
         self.assertIn('INSTALL_RESULT=PARTIAL CORE=PASS OPTIONAL_SITE=FAILED', text)
         self.assertIn('VK_SITE_PARTIAL_FAILURE=1', text)
-        self.assertIn('trap - ERR INT TERM HUP\n    return 20', text)
+        # The optional traffic limiter introduced in r30 has a separate
+        # partial-success exit code (21), while legacy site failures remain 20.
+        self.assertIn('trap - ERR INT TERM HUP', text)
+        self.assertIn('if (( ${VK_SITE_PARTIAL_FAILURE:-0} )); then return 20; else return 21; fi', text)
         self.assertIn('INSTALL_RESULT=PASS CORE=PASS OPTIONAL_SITE=PASS_OR_NOT_REQUESTED', text)
 
 

@@ -34,7 +34,7 @@ vk_initial_install_menu
         result = self.choose(['1', '1'])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Режим: обычная нода', result.stdout)
-        for field in ('SECRET_KEY', 'Домен', 'IPv4 технички'):
+        for field in ('SECRET_KEY', 'Домен', 'IPv4 или прямой FQDN панели'):
             self.assertIn(field, SCRIPT)
 
     def test_cascade_selection_refuses_missing_role_and_bad_path(self):

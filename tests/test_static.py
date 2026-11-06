@@ -48,7 +48,7 @@ class StaticTests(unittest.TestCase):
         self.assertEqual([number for number, _ in prompts], ['1', '2', '3'])
         self.assertIn('SECRET_KEY', prompts[0][1])
         self.assertIn('Домен', prompts[1][1])
-        self.assertIn('IPv4 технички', prompts[2][1])
+        self.assertIn('IPv4 или прямой FQDN панели', prompts[2][1])
 
     def test_no_mass_upgrades_or_docker_prune(self):
         active = '\n'.join(x for x in SCRIPT.splitlines() if not x.lstrip().startswith('#'))
