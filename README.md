@@ -15,7 +15,7 @@ command -v git >/dev/null || { echo 'Не установлен git'; exit 1; }
 checkout="$(mktemp -d /root/NodeInstall-git-XXXXXXXX)"
 git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git "$checkout"
 cd "$checkout"
-printf '%s  %s\n' '144d1d5948e492153d9688b00b5ebf7ee1d9598ea3f7e5b634609e0300212e95' 'install.sh' | sha256sum --check
+printf '%s  %s\n' 'e5d8328ff276f04516781d2ed0a9797147dad62a9656248fde70cdb1cd157a56' 'install.sh' | sha256sum --check
 sha256sum --check --status SHA256SUMS
 python3 scripts/verify_release.py --root .
 python3 - <<'PY_BUILD'
@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
 if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-    '2.5.18', '20261106-r35-automatic-vps-check', 'INCOMPLETE_STAGING_ONLY'
+    '2.5.18', '20261106-r37-adblock-blocky-hagezi', 'INCOMPLETE_STAGING_ONLY'
 ):
     raise SystemExit('STOP: GitHub содержит другую сборку; меню не запускается')
 PY_BUILD
@@ -34,13 +34,13 @@ NODE_INSTALL_GITHUB
 
 ### 2. 📦 Из полного ZIP-архива
 
-Сначала передайте **полный** `Node_Install_2.5.18-docs-menu_20261106-r35-automatic-vps-check.zip` в `/root` тестовой VPS. Архив распаковывается в отдельный каталог, без перезаписи прежней версии.
+Сначала передайте **полный** `Node_Install_2.5.18-docs-menu_20261106-r37-adblock-blocky-hagezi.zip` в `/root` тестовой VPS. Архив распаковывается в отдельный каталог, без перезаписи прежней версии.
 
 ```bash
 bash <<'NODE_INSTALL_ARCHIVE'
 set -Eeuo pipefail
 [[ "$(id -u)" == 0 ]] || { echo 'Нужен root'; exit 1; }
-archive="/root/Node_Install_2.5.18-docs-menu_20261106-r35-automatic-vps-check.zip"
+archive="/root/Node_Install_2.5.18-docs-menu_20261106-r37-adblock-blocky-hagezi.zip"
 [[ -f "$archive" ]] || { echo "Архив не найден: $archive"; exit 1; }
 checkout="$(mktemp -d /root/NodeInstall-zip-XXXXXXXX)"
 unzip -q "$archive" -d "$checkout"
@@ -52,7 +52,7 @@ bash ./install.sh --menu < /dev/tty
 NODE_INSTALL_ARCHIVE
 ```
 
-> ⚠️ **Перед настоящей установкой:** сохраните snapshot VPS, проверьте его восстановление и откройте аварийную консоль хостера. Установщик меняет SSH, UFW, Docker, Nginx, systemd, IPv6/GRUB и сетевые правила. Это **текущая staging-сборка**, не подтверждённая на вашем production-сервере. GitHub-команда намеренно остановится, если в `main` ещё нет r35. Внутренние SHA-256 проверяют целостность, но не заменяют независимую проверку происхождения релиза.
+> ⚠️ **Перед настоящей установкой:** сохраните snapshot VPS, проверьте его восстановление и откройте аварийную консоль хостера. Установщик меняет SSH, UFW, Docker, Nginx, systemd, IPv6/GRUB и сетевые правила. Это **текущая staging-сборка**, не подтверждённая на вашем production-сервере. GitHub-команда намеренно остановится, если в `main` ещё нет r37. Внутренние SHA-256 проверяют целостность, но не заменяют независимую проверку происхождения релиза.
 
 ---
 
@@ -62,11 +62,13 @@ NODE_INSTALL_ARCHIVE
 
 **Серверная нода под контролем: от проверки VPS до REALITY и каскада**
 
-`2.5.18 · r35` · `Ubuntu / SSH` · `VLESS · REALITY · Vision` · `IPv4`
+`2.5.18 · r37` · `Ubuntu / SSH` · `VLESS · REALITY · Vision` · `IPv4`
 
 [🗺 Карта проекта](#project-map) · [🟦 Обычная нода](#ordinary-map) · [🟪 Каскад](#cascade-map) · [🎛 Remnawave](#panel) · [📚 Документация](#documentation)
 
 </div>
+
+**Восстановление экрана SSH:** интерфейс автоматически повторяет полную перерисовку после простоя, включая свёрнутое окно. Если окно PuTTY/MobaXterm по-прежнему чёрное, нажмите `Ctrl+L` — это перерисует текущий экран без перезапуска процесса и установки.
 
 Node Install — инструмент для развёртывания и обслуживания серверной части VKARMANI. Он собирает установку, проверку VPS, работу с маскирующим сайтом и диагностику в одно терминальное меню. Его задача — сделать сложные серверные действия понятными и воспроизводимыми, а не скрывать от администратора, что именно меняется на машине.
 
@@ -83,6 +85,7 @@ Node Install — инструмент для развёртывания и об�
 | Собрать Entry → Exit | [🟪 Каскад](#cascade-map) · [Профили](#cascade) · [Порядок установки](#cascade-setup) |
 | Подключить ноды в панели | [🎛 Remnawave](#panel) |
 | Проверить VPS и экспортировать отчёт | [🔎 Диагностика](#diagnostics) |
+| Включить фильтр рекламы | [🛡 Blocky](#adblock) |
 | Выбрать маскирующий сайт | [🎨 120 сайтов](#sites-tcp-probes) |
 | Проверить безопасность и восстановление | [🛡 Границы и откат](#safety) · [🛠 Команды](#operations) |
 
@@ -95,6 +98,8 @@ flowchart TB
     MENU --> DIAG["🔎 Диагностика<br/>IP / ASN / DNS / TLS / RTT / ресурсы"]
     MENU --> WIZARD["🧭 Мастер установки<br/>Ordinary / Entry / Exit"]
     MENU --> OPS["🛠 Обслуживание<br/>Журнал · Сайт · Backup · Проверки"]
+    OPS --> ADBLOCK["🛡 Blocky · необязательно<br/>HaGeZi Normal · loopback DNS"]
+    NODE -.->|DNS только при маршрутизации из Panel| ADBLOCK
     WIZARD --> CORE["⚙️ install.sh<br/>Сценарии установки и отката"]
     CORE --> HOST["🖥 Ubuntu VPS<br/>SSH · UFW · systemd · Docker · Nginx"]
     CORE --> NODE["🔐 RemnaNode / Xray<br/>REALITY · Vision"]
@@ -111,7 +116,7 @@ flowchart TB
     class ADMIN operator;
     class MENU,WIZARD,CORE,DIAG,OPS action;
     class HOST,NODE,WEB,REPORT host;
-    class PANEL,TESTS control;
+    class PANEL,TESTS,ADBLOCK control;
 ```
 
 <details>
@@ -130,6 +135,7 @@ Node_Install/
 │   ├── vps_dashboard.py        Сбор данных диагностики
 │   ├── vps_report.py           Разделы отчёта и экспорт PNG
 │   ├── traffic_limits.py      Лимиты скорости/объёма
+│   ├── adblock.py             Blocky / HaGeZi Normal, локальный DNS
 │   ├── cascade_*.py           Подготовка и проверки каскада
 │   └── ...                     Сетевые и Xray-модули
 ├── site-catalog/              108 тем статических сайтов
@@ -152,6 +158,7 @@ Node_Install/
 - **🟪 Готовить каскад.** Отдельные роли Entry и Exit, собственные ключи и закрытый служебный мост; для работы требуются настройки Remnawave.
 - **🎨 Выбирать сайт.** В комплекте **120 тематик**: 12 отдельных исходных и 108 в каталоге, включая 12 дополнительно оформленных композиций. Это не 120 полностью независимых движков.
 - **🧰 Обслуживать установленную ноду.** Просмотр журнала, диагностика, управляемые изменения сайта, ограниченные сценарии rollback и проверка конфигурации.
+- **🛡 Включить Blocky (необязательно).** Автоматическая установка DNS-фильтра с HaGeZi Normal, ежедневное обновление списка и безопасное выключение фильтрации. **DNS клиентов Remnawave настраивается в Panel отдельно**, поскольку профиль ноды управляется панелью.
 
 <a id="roles"></a>
 ## 🧩 Два режима работы
@@ -178,6 +185,7 @@ flowchart LR
     NGX --> SITE["🎨 Выбранная тема<br/>HTTPS-сайт"]
     PANEL["🎛 Remnawave Panel"] -.->|"Node API TCP 2222<br/>ACL IP/FQDN панели"| XRAY
     XRAY -.->|"Закрытые файлы 0600"| KEYS["🗝 REALITY-ключи<br/>RAW / XHTTP профили"]
+    XRAY -.->|"DNS только при явной настройке в Panel"| BLOCKY["🛡 Blocky / HaGeZi<br/>127.0.0.1:15353"]
     classDef client fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
     classDef core fill:#cffafe,stroke:#0891b2,color:#164e63,stroke-width:2px;
     classDef net fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
@@ -185,7 +193,7 @@ flowchart LR
     class CLIENT client;
     class XRAY core;
     class FW,NET,NGX,SITE net;
-    class PANEL,KEYS ctl;
+    class PANEL,KEYS,BLOCKY ctl;
 ```
 
 **Как читать карту.** Клиент подключается к публичному домену и TCP/443. Успешно авторизованный VLESS-трафик после правил фильтрации уходит в Интернет с IPv4 ноды. Другой TLS-трафик может попадать в локальную цепочку Nginx Selfsteal, где отображается выбранный сайт. Панель управляет Node API по отдельному порту с ограничением источника — **не открывайте 2222 всему Интернету**.
@@ -205,6 +213,7 @@ flowchart LR
     PANEL -.->|"Node API · ACL"| EXIT
     ENTRY -.->|"Selfsteal"| SITE1["🖥 Nginx Entry"]
     EXIT -.->|"Selfsteal"| SITE2["🖥 Nginx Exit"]
+    EXIT -.->|"DNS при настройке Panel"| BLOCKY["🛡 Blocky<br/>только Exit · необязательно"]
     classDef user fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
     classDef entry fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,stroke-width:2px;
     classDef exit fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px;
@@ -213,7 +222,7 @@ flowchart LR
     class CLIENT user;
     class ENTRY entry;
     class EXIT,NET,SITE1,SITE2 exit;
-    class PANEL ctl;
+    class PANEL,BLOCKY ctl;
     class DENY denied;
 ```
 
@@ -243,6 +252,27 @@ flowchart LR
 **Управление:** колесо мыши (если SSH-клиент передаёт события), стрелки и `PgUp/PgDn`; `0` — сводка, `1–9` — разделы, `E` — сохранение **TXT / JSON / PNG** в приватную папку. **Ничего вводить не нужно:** при выборе «Проверка VPS» автоматически запускаются все разделы, включая щадящий тест CPU/RAM (0,25 секунды CPU), временную запись диска (8 MiB) и небольшую HTTPS-проверку входящей/исходящей скорости до Cloudflare (не более 2 MiB на направление). Случаи ошибки показываются как «не измерено», а не заменяются выдуманными цифрами. Цветные статусы помогают быстро читать отчёт, но не подменяют измерения: `403` не всегда означает блокировку, а GeoIP не доказывает «чистоту» адреса.
 
 Подробности: [автоматическая проверка](docs/RELEASE_2.5.18_R35_AUTOMATIC_VPS.md) · [диагностика VPS](docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md) · [о качестве сети](docs/EXTERNAL_PATH_DIAGNOSTICS_2.5.0.md).
+
+<a id="adblock"></a>
+## 🛡 Блокировка рекламы · Blocky / HaGeZi Normal
+
+В **«Дополнительных настройках»** новой Ordinary/Exit-ноды включи Blocky или используй **«Управление нодой → Блокировка рекламы»** после установки. Blocky v0.35.0 устанавливается только по твоему выбору, автоматически загружает проверенный HaGeZi Normal и обновляет его по расписанию без ручной замены файлов. Отключение фильтрации не выключает DNS-службу, чтобы клиенты не теряли разрешение доменов.
+
+**Главное ограничение:** ноде не передаются учётные данные или права на изменение панели. Blocky слушает только `127.0.0.1:15353`, а рабочий Xray-профиль доставляет Remnawave Panel. Поэтому установка Blocky сама по себе **не означает, что DNS всех VPN-клиентов направлен на него**. Пример DNS для профиля сохраняется локально; перед эксплуатацией требуется отдельная проверка маршрутизации и реальных клиентов. На Cascade Entry Blocky не устанавливается — только на Exit.
+
+<details><summary>Команды управления</summary>
+
+```bash
+sudo bash install.sh --adblock status
+sudo bash install.sh --adblock enable
+sudo bash install.sh --adblock disable
+sudo bash install.sh --adblock update
+sudo bash install.sh --adblock probe
+```
+
+</details>
+
+Подробности безопасности и ограничения: [Интеграция Blocky r37](docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md).
 
 <a id="panel"></a>
 ## 🎛 Remnawave — что создать в панели

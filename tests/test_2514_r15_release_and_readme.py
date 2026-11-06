@@ -39,7 +39,7 @@ class Release2514Tests(unittest.TestCase):
 
     def test_github_command_checks_current_build_and_no_nondefault_port(self):
         manifest=json.loads((ROOT/'BUILD_MANIFEST.json').read_text())
-        self.assertEqual(manifest['build_id'], '20261106-r35-automatic-vps-check')
+        self.assertEqual(manifest['build_id'], '20261106-r37-adblock-blocky-hagezi')
         heading='### 1. 🐙 С GitHub'
         self.assertEqual(self.readme.count(heading),1)
         command=self.readme.split(heading,1)[1].split('```bash\n',1)[1].split('\n```',1)[0]
@@ -69,7 +69,7 @@ class Release2514Tests(unittest.TestCase):
         self.assertEqual(manifest['version'], '2.5.18')
         # Source/ZIP verifier checks hashes; document the active unpublished
         # staging revision without changing the historical pinned r29 command.
-        self.assertRegex(manifest['build_id'], r'^20261106-r35-[A-Za-z0-9_.-]+$')
+        self.assertRegex(manifest['build_id'], r'^20261106-r37-[A-Za-z0-9_.-]+$')
         self.assertEqual(manifest['release_status'], 'INCOMPLETE_STAGING_ONLY')
 
 

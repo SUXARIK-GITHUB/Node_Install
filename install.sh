@@ -11631,6 +11631,18 @@ vkarmani_r27_connectivity() {
     python3 -I -B "$tool_path" "$@"
 }
 
+vkarmani_adblock_command() {
+    local root_dir tool_path
+    root_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    tool_path="$root_dir/integrations/adblock.py"
+    [[ -f "$tool_path" && ! -L "$tool_path" ]] || {
+        echo 'ADBLOCK=STOP: необходим полный ZIP Node Install (integrations/adblock.py)' >&2
+        return 2
+    }
+    command -v python3 >/dev/null 2>&1 || { echo 'ADBLOCK=STOP: нужен Python3' >&2; return 2; }
+    python3 -I -B "$tool_path" "$@"
+}
+
 vkarmani_traffic_command() {
     local helper='/usr/local/lib/vkarmani-node/traffic_limits.py'
     [[ -f "$helper" && ! -L "$helper" ]] || {
@@ -11647,6 +11659,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         --install-direct) shift; vkarmani_main "$@" ;;
         --vps-check) shift; vkarmani_r27_connectivity "$@" ;;
         --traffic-limits) shift; vkarmani_traffic_command "$@" ;;
+        --adblock) shift; vkarmani_adblock_command "$@" ;;
         --removal-plan) shift; vkarmani_r27_script removal_plan "$@" ;;
         --site-manager) shift; vkarmani_r24_site_manager "$@" ;;
         --selfsteal-verify) shift; vkarmani_r23_bundle_tool selfsteal_chain "$@" ;;

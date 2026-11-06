@@ -22,7 +22,7 @@ class DocsVisualAndSecurityContracts(unittest.TestCase):
     def test_two_current_install_commands_are_first_safe_and_syntax_valid(self):
         # User-facing instructions take precedence over historical changelog banners.
         build_id=json.loads((ROOT/'BUILD_MANIFEST.json').read_text())['build_id']
-        self.assertEqual(build_id, '20261106-r35-automatic-vps-check')
+        self.assertEqual(build_id, '20261106-r37-adblock-blocky-hagezi')
         self.assertTrue(self.readme.startswith('<a id="install"></a>\n## 🚀 Установка Node Install — два способа'))
         git_heading='### 1. 🐙 С GitHub'
         archive_heading='### 2. 📦 Из полного ZIP-архива'

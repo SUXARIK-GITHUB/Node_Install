@@ -1,5 +1,5 @@
 {
-  "build_id": "20261106-r35-automatic-vps-check",
+  "build_id": "20261106-r37-adblock-blocky-hagezi",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
     "SHA256SUMS"
@@ -26,14 +26,14 @@
     {
       "mode": "0644",
       "path": "CHANGELOG.md",
-      "sha256": "8de119557078d4f61eeeef9ecc331f314ffac741793386b2ee2dde1266e10c66",
-      "size": 136140
+      "sha256": "d2c9817b810811158fb3b042c4fb17667f67231d2b150e8ebf32feb6d43a272f",
+      "size": 139461
     },
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "d4454c4a0ddbdae0ff451582e4b028cd9cc0450d8b9de4df245de2fd3fb9731d",
-      "size": 49740
+      "sha256": "c2da70f919bbfc9e6edc5dbecfb6d9bfac62c7dfc40e15ed4cab8fa65ae3fdbc",
+      "size": 53267
     },
     {
       "mode": "0644",
@@ -664,6 +664,18 @@
       "path": "docs/RELEASE_2.5.18_R35_AUTOMATIC_VPS.md",
       "sha256": "d18f8000deec02b5700d7b04697bd19564e6a44637a86a566298db3339efdd95",
       "size": 4812
+    },
+    {
+      "mode": "0644",
+      "path": "docs/RELEASE_2.5.18_R36_TERMINAL_RESUME.md",
+      "sha256": "2b385050ac12681e69d230b44f56c49e4c61925b0ade5f0222eb6b26d23097d6",
+      "size": 4393
+    },
+    {
+      "mode": "0644",
+      "path": "docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md",
+      "sha256": "b22467179fc63d763e94bd45706ca12a2cfb4a3d50b6b54629d8c6c7997ba6a0",
+      "size": 11632
     },
     {
       "mode": "0644",
@@ -1634,8 +1646,14 @@
     {
       "mode": "0644",
       "path": "install.sh",
-      "sha256": "144d1d5948e492153d9688b00b5ebf7ee1d9598ea3f7e5b634609e0300212e95",
-      "size": 570660
+      "sha256": "e5d8328ff276f04516781d2ed0a9797147dad62a9656248fde70cdb1cd157a56",
+      "size": 571232
+    },
+    {
+      "mode": "0644",
+      "path": "integrations/adblock.py",
+      "sha256": "559dca73849681af7cdd061d3f4bf1494f05ced85c017bcb529f296ffa4758bf",
+      "size": 22639
     },
     {
       "mode": "0644",
@@ -2048,8 +2066,8 @@
     {
       "mode": "0644",
       "path": "scripts/build_staging_archive.py",
-      "sha256": "5fcef6914c843b3869cf6e8dcab2ca9ed9348dc09ec1bb592d9eefd07dc5b709",
-      "size": 14941
+      "sha256": "e3b28005d8f554dfb27b3c7e478dffcc6d920f6c4b0dc96a410a6967e4e4b380",
+      "size": 15145
     },
     {
       "mode": "0644",
@@ -2138,14 +2156,14 @@
     {
       "mode": "0644",
       "path": "scripts/terminal_ui.py",
-      "sha256": "4e30a69141be028d3edf94004379c95e0681e5b8ab9fb19eed50717e8e28d849",
-      "size": 78184
+      "sha256": "072cc736ed1dcb142d68ac0c736e29e985e5dea0de1c2f40dda60b159fcc24ed",
+      "size": 86637
     },
     {
       "mode": "0644",
       "path": "scripts/verify_release.py",
-      "sha256": "3e428f646d202b0b2b48e458c2ebc8c24e07171bc04b45ab4703f0b6187c60a8",
-      "size": 24638
+      "sha256": "5d68b074ef4022b2e1d1a435120e1ebbcd9d9a5f0891c74b69f929ecfebb91ba",
+      "size": 26322
     },
     {
       "mode": "0644",
@@ -8180,7 +8198,7 @@
     {
       "mode": "0644",
       "path": "tests/test_2512_r11_ready_profiles_and_cover.py",
-      "sha256": "b502631d5f5737152486fe9c05758af6b8129083b06155f8833332c042a450db",
+      "sha256": "9fd20cf5838cb6fc67a216135e436739f0746052cb882b8adaf63f6c9422fccb",
       "size": 8801
     },
     {
@@ -8204,8 +8222,8 @@
     {
       "mode": "0644",
       "path": "tests/test_2514_r15_release_and_readme.py",
-      "sha256": "75ea3f2badc048133290f73502b05ff310bb09354bcc6f83d0ff2faf33fd75e4",
-      "size": 4155
+      "sha256": "b8071c9b59c00d262861da7f062468b140647fb47332c32b9e992e259ad21a18",
+      "size": 4157
     },
     {
       "mode": "0644",
@@ -8264,8 +8282,8 @@
     {
       "mode": "0644",
       "path": "tests/test_docs_ui_255.py",
-      "sha256": "456b937a9b08388b2061c203cafaccb49863140061107811f7358e15ae70d701",
-      "size": 12255
+      "sha256": "bfa27a74b9680c617c3066cfbc50ed07fade77b4499177f2f6f5bd21e0228ab4",
+      "size": 12257
     },
     {
       "mode": "0644",
@@ -8516,8 +8534,8 @@
     {
       "mode": "0644",
       "path": "tests/test_r30_user_feedback.py",
-      "sha256": "e4ca1136af8a8cd90e3a68f80f556607b040b4a85b9537b5f0a7120be7da85b1",
-      "size": 12350
+      "sha256": "eabe39321f071bd013c1a4394144da7775b395e2b0986deb30207bffa34e32ab",
+      "size": 12407
     },
     {
       "mode": "0644",
@@ -8542,6 +8560,18 @@
       "path": "tests/test_r35_vps_automatic.py",
       "sha256": "09072b965d765e0aef184456251bff830ba08e32d5e339027dad6907d4ce17d9",
       "size": 9498
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_r36_terminal_resume.py",
+      "sha256": "5dafd8bd7b387624c31b4767c4078adc11691a1a8c22d1ba3d6c79365b511d72",
+      "size": 8710
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_r37_adblock.py",
+      "sha256": "181e86eb5551d6b8207bd93795d073f1da2f9c75db21d948db16dcfd02b38442",
+      "size": 16331
     },
     {
       "mode": "0644",

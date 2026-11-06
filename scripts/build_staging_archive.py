@@ -207,6 +207,11 @@ UNTRACKED_ALLOWED.update({
     'tests/test_r33_git_ci_audit.py',
     'tests/test_r35_vps_automatic.py',
     'docs/RELEASE_2.5.18_R35_AUTOMATIC_VPS.md',
+    'tests/test_r36_terminal_resume.py',
+    'integrations/adblock.py',
+    'tests/test_r37_adblock.py',
+    'docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md',
+    'docs/RELEASE_2.5.18_R36_TERMINAL_RESUME.md',
 })
 
 

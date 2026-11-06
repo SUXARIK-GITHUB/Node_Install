@@ -103,8 +103,8 @@ class PhaseOneTerminal(unittest.TestCase):
 
     def test_optional_menu_edits_independent_limits_and_can_go_back(self):
         inst=self.terminal()
-        selections=iter([1,2,3,4,5,6,7])
-        # note: index 7 is Continue after toggling index 6
+        selections=iter([1,2,3,4,5,6,8])
+        # note: r37 adds opt-in Blocky at index 7; index 8 is Continue
         inst.menu=lambda *a,**kw:next(selections)
         fields=iter(['10','20','100','110'])
         inst.field=lambda *a,**kw:next(fields)
@@ -115,6 +115,7 @@ class PhaseOneTerminal(unittest.TestCase):
                          [10,20,100,110])
         self.assertTrue(options['weekly_reboot'])
         self.assertFalse(options['no_reboot'])
+        self.assertFalse(options['adblock'])
 
     def test_only_rollback_or_removal_confirmation_uses_two_choices(self):
         inst=self.terminal()

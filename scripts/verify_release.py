@@ -284,7 +284,7 @@ def verify_bytes(files):
         # The user explicitly requires password login on nodes; no new key login.
         if 'PubkeyAuthentication no' not in installer or 'PasswordAuthentication yes' not in installer:
             raise ValueError('R24_PASSWORD_SSH_COMPATIBILITY_BROKEN')
-    if m['build_id'].startswith(('20261106-r30-','20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-')):
+    if m['build_id'].startswith(('20261106-r30-','20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-')):
         expected={'scripts/terminal_ui.py','integrations/traffic_limits.py',
                   'tests/test_r30_user_feedback.py','docs/RELEASE_2.5.18_R30_USER_FEEDBACK.md'}
         if not expected <= files.keys():
@@ -295,7 +295,7 @@ def verify_bytes(files):
            'def confirm_removal' not in ui or 'def rules' not in helper or \
            '--traffic-limits' not in installer:
             raise ValueError('R30_PHASE1_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-')):
+    if m['build_id'].startswith(('20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-')):
         required={'tests/test_r31_phase2.py','docs/RELEASE_2.5.18_R31_TERMINAL_COMPLETION.md'}
         if not required <= files.keys():
             raise ValueError('R31_PHASE2_FILES_MISSING')
@@ -304,7 +304,7 @@ def verify_bytes(files):
                     'def copy_to_terminal_clipboard','def keys_screen',
                     'persist_install=True','ВЫЙТИ ИЗ УСТАНОВЩИКА')):
             raise ValueError('R31_PHASE2_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-')):
+    if m['build_id'].startswith(('20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-')):
         required={'integrations/vps_dashboard.py','integrations/vps_report.py',
                   'tests/test_r32_vps_dashboard.py','docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md'}
         if not required <= files.keys():
@@ -316,14 +316,14 @@ def verify_bytes(files):
            not all(name in report for name in ('def png_bytes','def export_report','def sections')) or \
            not all(name in diagnostic for name in ('def run_full','def geo_reputation','def services_matrix')):
             raise ValueError('R32_DIAGNOSTIC_REQUIRED_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r33-','20261106-r34-','20261106-r35-')):
+    if m['build_id'].startswith(('20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-')):
         required={'tests/test_r33_git_ci_audit.py','docs/RELEASE_2.5.18_R33_GIT_CI_QA.md'}
         if not required <= files.keys():
             raise ValueError('R33_GIT_AUDIT_FILES_MISSING')
         ci=files['.github/workflows/check.yml'].decode('utf-8')
         if ci.count('git status --porcelain=v1 --untracked-files=all') != 3:
             raise ValueError('R33_CI_CLEAN_WORKTREE_GUARDS_MISSING')
-    if m['build_id'].startswith(('20261106-r34-','20261106-r35-')):
+    if m['build_id'].startswith(('20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-')):
         if not readme.startswith('<a id="install"></a>\n## 🚀 Установка Node Install — два способа'):
             raise ValueError('R34_README_INSTALL_NOT_AT_TOP')
         if readme.count('```mermaid\nflowchart') != 3 or '<a id="project-map"></a>' not in readme:
@@ -336,7 +336,7 @@ def verify_bytes(files):
         if any(phrase in readme for phrase in ('**ТЕКУЩАЯ STAGING-СБОРКА r33',
                 '**ПРЕДЫДУЩАЯ STAGING-СБОРКА', 'Исторический GitHub bootstrap')):
             raise ValueError('R34_README_OUTDATED_RELEASE_BANNERS')
-    if m['build_id'].startswith('20261106-r35-'):
+    if m['build_id'].startswith(('20261106-r35-','20261106-r36-','20261106-r37-')):
         required={'docs/RELEASE_2.5.18_R35_AUTOMATIC_VPS.md',
                   'tests/test_r35_vps_automatic.py'}
         if not required <= files.keys():
@@ -349,6 +349,29 @@ def verify_bytes(files):
                 'automatic_speed_test' not in dashboard or
                 "('benchmark','CPU, RAM и диск (короткий тест)'" not in dashboard):
             raise ValueError('R35_VPS_USER_INPUT_OR_AUTO_RUN_MISSING')
+    if m['build_id'].startswith(('20261106-r36-','20261106-r37-')):
+        required={'tests/test_r36_terminal_resume.py',
+                  'docs/RELEASE_2.5.18_R36_TERMINAL_RESUME.md'}
+        if not required <= files.keys():
+            raise ValueError('R36_TERMINAL_RECOVERY_FILES_MISSING')
+        ui=files['scripts/terminal_ui.py'].decode('utf-8')
+        if not all(x in ui for x in ('SCREEN_RESYNC_SECONDS=8.0',
+                'SCREEN_POLL_MS=400','def _resync_screen(',
+                'def _read_key(', 'self.win.redrawwin()',
+                'self.win.clearok(True)', 'def _restore_input_timeout(')):
+            raise ValueError('R36_TERMINAL_RECOVERY_HOOKS_MISSING')
+    if m['build_id'].startswith('20261106-r37-'):
+        required = {'integrations/adblock.py', 'tests/test_r37_adblock.py',
+                    'docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md'}
+        if not required <= files.keys():
+            raise ValueError('R37_ADBLOCK_FILES_MISSING')
+        mod = files['integrations/adblock.py'].decode('utf-8')
+        ui = files['scripts/terminal_ui.py'].decode('utf-8')
+        if not all(x in mod for x in ('ARCHIVES', 'LIST_URL', 'def validate_list',
+                                     'def update_lists', 'def probe(', 'CLIENT_DNS=NOT_VERIFIED',
+                                     'ADBLOCK_ONLY_ON_ORDINARY_OR_EXIT')) or \
+           '--adblock)' not in installer or "options['adblock']" not in ui:
+            raise ValueError('R37_ADBLOCK_HOOKS_MISSING')
     if m['build_id'].startswith('20261105-r29-'):
         expected={'scripts/terminal_ui.py','integrations/vps_connectivity.py',
                   'tests/test_r29_tui_full_vps.py',

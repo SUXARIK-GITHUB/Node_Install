@@ -48,8 +48,12 @@ def theme_meta(theme):
     return (meta['label'],meta['section'],meta['intro'],'ru')
 
 REALITY=('local','max.ru','ya.ru','rutube.ru','mail.ru')
-USAGE_HINT='↑↓/jk выбор · Enter открыть · Esc назад · 0 выход'
+USAGE_HINT='↑↓/jk выбор · Enter открыть · Esc назад · 0 выход · Ctrl+L экран'
 MAX_LOG_LINES=2400
+# Re-send the complete curses framebuffer on idle, even without user input.
+# Some SSH clients discard their visual buffer while minimized/restored.
+SCREEN_RESYNC_SECONDS=8.0
+SCREEN_POLL_MS=400
 INSTALL_LOG_DIR=Path('/root')
 REALITY_KEYS_FILE=Path('/root/reality-keys.txt')
 MAX_INSTALL_LOG_BYTES=64*1024*1024
@@ -160,6 +164,25 @@ def wizard_argv(settings, *, fd):
         # Default is NO REBOOT to preserve console access until operator checks.
         args=[x for x in args if x!='--no-reboot']
     return args
+
+
+def schedule_postinstall_reboot():
+    """Schedule the previously selected reboot only AFTER optional Blocky setup.
+
+    The regular installer schedules reboot 30s after core completion, which is
+    too short for a slow DNS-list download. This function is only called after
+    an opt-in adblock install and never by read-only or failed install paths.
+    """
+    unit='vkarmani-install-reboot-adblock-'+str(int(time.time()))
+    try:
+        p=subprocess.run(['systemd-run','--collect','--unit='+unit,
+                          '--on-active=45s','/usr/bin/systemctl','reboot'],
+                         stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE,timeout=12,check=False,
+                         env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'})
+        return p.returncode == 0
+    except (OSError,subprocess.SubprocessError):
+        return False
 
 
 def secret_fd(secret, panel_ip, domain):
@@ -389,7 +412,7 @@ def copy_to_terminal_clipboard(value):
 
 
 class Terminal:
-    """Stable SSH TUI: one physical screen update per user action, no timed erases."""
+    """SSH TUI with periodic framebuffer recovery and bounded input polling."""
     def __init__(self,win):
         self.save_reports=False
         self.win=win
@@ -398,6 +421,13 @@ class Terminal:
         self.frame_right=win.getmaxyx()[1]-3
         self.install_log_path=None
         self.install_log_error=None
+        self._screen_size=win.getmaxyx()
+        self._last_resync=time.monotonic()
+        # Blocking curses reads otherwise prevent restoration if the SSH client
+        # clears its display while minimized. This does NOT redraw every tick.
+        self._pollable_input=hasattr(win,'timeout')
+        if self._pollable_input:
+            win.timeout(SCREEN_POLL_MS)
         if curses.has_colors() and os.environ.get('NO_COLOR') is None:
             curses.start_color()
             try:curses.use_default_colors()
@@ -455,9 +485,72 @@ class Terminal:
         except curses.error:pass
 
     def present(self):
-        """Let ncurses update only changed cells: prevents SSH blinking/flicker."""
-        self.win.noutrefresh()
-        curses.doupdate()
+        """Update changed cells; a separate watchdog repairs lost terminal pixels."""
+        try:
+            self.win.noutrefresh()
+            curses.doupdate()
+        except curses.error:
+            # A temporarily unavailable/zero-sized terminal is not an
+            # installation failure. The next watchdog tick will retry.
+            pass
+
+    def _resync_screen(self, *, clear=False):
+        """Re-send the current framebuffer without changing any application state.
+
+        redrawwin() marks ncurses cells as physically damaged and redraws the
+        screen even if the virtual buffer is unchanged. It avoids a periodic
+        clear/flicker. Ctrl+L and resizes can also request a harder clear.
+        """
+        try:
+            if clear:
+                self.win.clearok(True)
+            else:
+                self.win.redrawwin()
+            self.present()
+        except (curses.error, AttributeError):
+            # Terminal resizing/minimization may temporarily prevent output.
+            # Retry at the next watchdog interval; never stop installation.
+            return
+        self._last_resync=time.monotonic()
+
+    def _read_key(self, *, wide=False, wait=True):
+        """Poll input and repair a lost SSH screen, including completely idle menus.
+
+        Returning KEY_RESIZE forces the calling view to lay itself out again.
+        In background subprocess views (wait=False), normal reads stay
+        nonblocking so we never interfere with the installer or its pipe.
+        """
+        while True:
+            try:
+                key=self.win.get_wch() if wide else self.win.getch()
+            except curses.error:
+                key=-1  # timed get_wch() raises on normal input timeouts
+            size=self.win.getmaxyx()
+            if key==curses.KEY_RESIZE or size!=self._screen_size:
+                self._screen_size=size
+                # The next view paint will reconstruct all clipped geometry.
+                try:self.win.clearok(True)
+                except (curses.error,AttributeError):pass
+                self._last_resync=time.monotonic()
+                return curses.KEY_RESIZE
+            if key==12 or key=='\x0c':
+                # Manual recovery for terminals that do not honor damage redraw.
+                self._resync_screen(clear=True)
+                if not wait:return -1
+                continue
+            if time.monotonic()-self._last_resync>=SCREEN_RESYNC_SECONDS:
+                self._resync_screen()
+            if key!=-1 and key is not None:
+                return key
+            if not wait:return -1
+            if not self._pollable_input:
+                # Test doubles without timed getch are not real terminals.
+                time.sleep(SCREEN_POLL_MS/1000)
+
+    def _restore_input_timeout(self):
+        self.win.nodelay(False)
+        if self._pollable_input:
+            self.win.timeout(SCREEN_POLL_MS)
 
     def paint(self,title,subtitle='',footer=USAGE_HINT):
         self.win.erase()
@@ -508,7 +601,7 @@ class Terminal:
                 self.put(h-6,left+5,f'Строки {scroll+1}–{min(len(wrapped),scroll+slots)} из {len(wrapped)}',kind=5)
             self.present()
             if not wait:return None
-            key=self.win.getch()
+            key=self._read_key()
             if key in (10,13,27,curses.KEY_ENTER):return key
             if key in (curses.KEY_DOWN,ord('j'),curses.KEY_NPAGE):
                 scroll=min(max(0,len(wrapped)-slots),scroll+(slots if key==curses.KEY_NPAGE else 1))
@@ -546,7 +639,7 @@ class Terminal:
             if len(items)>available:
                 self.put(h-6,left+5,f'{i+1}/{len(items)} · PgUp/PgDn страницы')
             self.present()
-            key=self.win.getch()
+            key=self._read_key()
             if special_keys and key in special_keys:
                 result=special_keys[key]
                 return (result,i) if result=='preview' else result
@@ -578,8 +671,7 @@ class Terminal:
             self.put(9,left+inner+6,'│',kind=8)
             self.put(10,left+5,'╰'+'─'*inner+'╯',kind=8)
             self.present()
-            try:key=self.win.get_wch()
-            except curses.error:continue
+            try:key=self._read_key(wide=True)
             except KeyboardInterrupt:return None
             if key in ('\n','\r',curses.KEY_ENTER):return ''.join(value)
             if key=='\x1b':return None
@@ -666,7 +758,7 @@ class Terminal:
                         add_line(remainder);remainder=b''
                     state=(done,proc.returncode)
                     if state!=previous_state:dirty=True;previous_state=state
-                    key=self.win.getch()
+                    key=self._read_key(wait=False)
                     h,w=self.win.getmaxyx();slots=max(1,h-16)
                     if w!=last_width:dirty=True;last_width=w
                     if dirty:
@@ -708,7 +800,7 @@ class Terminal:
                 sink.close()
                 if sink.error:self.install_log_error=sink.error
                 elif sink.truncated:self.install_log_error='LOG_FILE_SIZE_LIMIT_REACHED'
-            self.win.nodelay(False)
+            self._restore_input_timeout()
             signal.signal(signal.SIGINT,old_sig)
 
     def action(self,*args):
@@ -716,6 +808,8 @@ class Terminal:
 
     def extra_settings(self,mode,options):
         """One editable settings page, not nested mandatory questionnaires."""
+        # Existing callers/fixtures may predate the opt-in adblock preference.
+        options.setdefault('adblock',False)
         while True:
             items=[('ПОРТ УПРАВЛЕНИЯ NODE',str(options['node_port'] or 2222)+' / TCP'),
                    ('ВХОДЯЩАЯ СКОРОСТЬ',str(options['in_mbps'] or 'Без ограничения')+' Мбит/с' if options['in_mbps'] else 'Без ограничения'),
@@ -724,14 +818,22 @@ class Terminal:
                    ('ИСХОДЯЩИЙ ОБЪЁМ',str(options['out_gib'])+' GiB' if options['out_gib'] else 'Без ограничения'),
                    ('ЕЖЕНЕДЕЛЬНЫЙ REBOOT','Включён' if options['weekly_reboot'] else 'Выключен'),
                    ('REBOOT ПОСЛЕ УСТАНОВКИ','Включён' if not options['no_reboot'] else 'Выключен'),
+                   ('БЛОКИРОВКА РЕКЛАМЫ · BLOCKY',
+                    'Включена после установки; только DNS, клиентский маршрут требует проверки' if options['adblock']
+                    else 'Выключена; автоматически обновляемый HaGeZi Normal'),
                    ('ПРОДОЛЖИТЬ','Сохранить настройки этого мастера')]
-            if mode!='ordinary':
-                items=[items[6],items[7]]
+            if mode=='exit':
+                items=[items[6],items[7],items[8]]
+            elif mode=='entry':
+                items=[items[6],items[8]]
             selection=self.menu('ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ',items,
                 'Изменяйте только нужные пункты; 0 = без лимита',
                 footer='↑↓ выбор   ENTER изменить   ESC предыдущий шаг')
             if selection is None:return False
             if selection==len(items)-1:return True
+            if (mode=='ordinary' and selection==7) or (mode=='exit' and selection==1):
+                options['adblock']=not options['adblock']
+                continue
             field_names=('node_port','in_mbps','out_mbps','in_gib','out_gib')
             if mode=='ordinary' and selection<5:
                 key=field_names[selection]
@@ -751,7 +853,7 @@ class Terminal:
                 except ValueError:
                     self.message('НЕВЕРНОЕ ЗНАЧЕНИЕ',['Укажите целое число в допустимых пределах.'],warning=True)
             else:
-                key=('weekly_reboot','no_reboot')[(selection-5) if mode=='ordinary' else selection+1]
+                key=('weekly_reboot','no_reboot')[(selection-5) if mode=='ordinary' else 1]
                 options[key]=not options[key]
 
     def themes(self):
@@ -818,7 +920,8 @@ class Terminal:
         data={'mode':'ordinary','site':None,'bundle':None,'secret':'','domain':'',
               'panel_ip':'','reality':'local'}
         options={'node_port':None,'in_mbps':None,'out_mbps':None,
-                 'in_gib':None,'out_gib':None,'weekly_reboot':False,'no_reboot':True}
+                 'in_gib':None,'out_gib':None,'weekly_reboot':False,'no_reboot':True,
+                 'adblock':False}
         step=0
         # Each ESC decrements precisely one step. Previously entered data and
         # the chosen random theme remain intact; nothing starts before review.
@@ -900,6 +1003,8 @@ class Terminal:
                         'Скорость вход/выход: '+str(options['in_mbps'] or '∞')+' / '+str(options['out_mbps'] or '∞')+' Mbps',
                         'Объём вход/выход: '+str(options['in_gib'] or '∞')+' / '+str(options['out_gib'] or '∞')+' GiB',
                         'Авто reboot: '+('нет' if options['no_reboot'] else 'да'),
+                        'Blocky: '+('установить после завершения ноды (DNS только)' if options['adblock'] else 'не устанавливать'),
+                        'VPN-профиль управляется панелью: автоматическая фильтрация клиентов не гарантирована.',
                         'Изменяются SSH, UFW, Docker, Nginx, GRUB и сеть.',
                         'До установки сохраните snapshot и проверьте консоль хостера.',
                         'ENTER — установить; ESC — изменить настройки.']
@@ -924,7 +1029,14 @@ class Terminal:
         secret=data['secret']
         try:
             fd=secret_fd(secret,data['panel_ip'],data['domain'])
-            cmd=wizard_argv({**data,**options},fd=fd)
+            # The core install normally arms a reboot in 30 seconds. With
+            # Blocky selected, defer that reboot until the DNS service and its
+            # downloaded rules have passed verification; otherwise a slow
+            # download can be interrupted and leave half-installed files.
+            run_settings={**data,**options}
+            if options['adblock']:
+                run_settings['no_reboot']=True
+            cmd=wizard_argv(run_settings,fd=fd)
             data['secret']=''
             rc=self.logs('УСТАНОВКА NODE / ЖИВОЙ ЖУРНАЛ',cmd,pass_fd=fd,
                          redact=(secret,),persist_install=True)
@@ -939,6 +1051,24 @@ class Terminal:
             data['secret']=''
             secret=''
             if fd is not None:os.close(fd)
+        # Install Blocky only after a completely successful core installation.
+        # Do not mutate a partial/failed node (codes 20/21); operator may later
+        # enable the separately managed DNS filter from the Installed menu.
+        adblock_note=None
+        if options['adblock']:
+            if rc==0:
+                blocky_rc=self.logs('BLOCKY / УСТАНОВКА DNS-ФИЛЬТРА',
+                    ['bash',str(INSTALLER),'--adblock','enable'])
+                adblock_note=('Blocky: DNS установлен; DNS клиентов Remnawave не подтверждён.'
+                              if blocky_rc==0 else
+                              'Blocky: не активирован; см. журнал и проверку сети (основная нода не изменена).')
+                if not options['no_reboot']:
+                    if blocky_rc==0 and schedule_postinstall_reboot():
+                        adblock_note+=' Auto reboot назначен через 45 сек.'
+                    else:
+                        adblock_note+=' Auto reboot не назначен; проверьте DNS и перезагрузите VPS самостоятельно.'
+            else:
+                adblock_note='Blocky: пропущен, поскольку установка ноды не завершена полностью. Auto reboot не назначен.'
         result=[
             f'Код возврата: {rc}',
             '0 — этапы установки завершены; проверка клиентов отдельная.',
@@ -947,6 +1077,7 @@ class Terminal:
             'Проверьте итог, backup и журнал до перезагрузки.',
             'Ключи доступны только root в /root/reality-keys.txt.',
             'Не публикуйте приватный REALITY-ключ.']
+        if adblock_note:result.append(adblock_note)
         if self.install_log_path is not None:
             result.append('Живой журнал сохранён: '+str(self.install_log_path))
         if self.install_log_error:
@@ -1005,7 +1136,7 @@ class Terminal:
             elif len(items)>slots:
                 self.put(h-6,left+4,f'{selected+1}/{len(items)} полей · PgUp/PgDn',kind=5)
             self.present()
-            key=self.win.getch()
+            key=self._read_key()
             if key in (27,ord('q'),ord('0')):
                 self.note=''
                 return
@@ -1088,7 +1219,7 @@ class Terminal:
                             if event.get('type')=='result':report=event.get('report')
                         except (ValueError,TypeError,AttributeError):pass
                         rest=b''
-                    key=self.win.getch()
+                    key=self._read_key(wait=False)
                     if key==27 and proc.poll() is None and not cancelled:
                         cancelled=True;progress.append('ОТМЕНЕНО: пользователь нажал Esc')
                         try:os.killpg(proc.pid,signal.SIGTERM)
@@ -1115,7 +1246,7 @@ class Terminal:
         except (OSError,ValueError,subprocess.SubprocessError) as exc:
             error=type(exc).__name__
         finally:
-            self.win.nodelay(False)
+            self._restore_input_timeout()
             signal.signal(signal.SIGINT,old_sig)
         if cancelled:return None
         if error:
@@ -1183,7 +1314,7 @@ class Terminal:
                     self.put(y,left+5,line,kind=kind,bold=kind==11)
                 self.put(h-6,left+5,f'Строки {scroll+1}–{min(len(rows),scroll+slots)} из {len(rows)}',kind=5)
                 self.present()
-                key=self.win.getch()
+                key=self._read_key()
                 if key in (27,ord('q')):return
                 if key==curses.KEY_MOUSE:
                     try:
@@ -1246,7 +1377,8 @@ class Terminal:
                ('Backup','Создать backup ноды (не snapshot VPS)'),
                    ('Дополнительные транспорты','Генераторы и проверки, не активация служб'),
                    ('Сетевые лимиты','Состояние, активация и новый расчётный период'),
-                   ('REALITY — ключи','Приватный просмотр и выборочное копирование полей')]
+                   ('REALITY — ключи','Приватный просмотр и выборочное копирование полей'),
+                   ('Блокировка рекламы · Blocky','Включить/выключить DNS-фильтр, проверить и обновить списки')]
         while True:
             idx=self.menu('УПРАВЛЕНИЕ NODE',items)
             if idx is None:return
@@ -1322,6 +1454,16 @@ class Terminal:
                     self.action('--traffic-limits','reset','--confirm-new-period')
             elif idx==14:
                 self.keys_screen()
+            elif idx==15:
+                task=self.menu('БЛОКИРОВКА РЕКЛАМЫ · BLOCKY',[
+                    ('Состояние','DNS-фильтр и важные ограничения Remnawave'),
+                    ('Включить','Автоматически установить Blocky и HaGeZi Normal'),
+                    ('Выключить фильтрацию','Оставить DNS доступным, но пропускать рекламные домены'),
+                    ('Обновить списки','Проверенная автоматическая загрузка HaGeZi Normal'),
+                    ('Проверить DNS','Локальный ответ блокировки и рабочий upstream')],
+                    'Режим Ordinary/Exit; Panel DNS не переписывается автоматически')
+                if task is not None:
+                    self.action('--adblock',('status','enable','disable','update','probe')[task])
 
     def run(self):
         entries=[('ПРОВЕРКА VPS','Автоматически: IP/ASN, сервисы, DNS, ping, скорость, CPU/RAM/диск, экспорт'),
