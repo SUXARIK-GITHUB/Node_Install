@@ -212,6 +212,8 @@ UNTRACKED_ALLOWED.update({
     'tests/test_r37_adblock.py',
     'docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md',
     'docs/RELEASE_2.5.18_R38_ADBLOCK_CI_PORTABILITY.md',
+    'docs/RELEASE_2.5.18_R39_NTP_RESTART_RECOVERY.md',
+    'tests/test_r39_ntp_restart_recovery.py',
     'docs/RELEASE_2.5.18_R36_TERMINAL_RESUME.md',
 })
 

@@ -2704,6 +2704,7 @@ No external Python dependencies; no control of the system clock in this helper.
 import argparse
 import ipaddress
 import os
+import pwd
 from pathlib import Path
 import re
 import stat
@@ -2861,8 +2862,45 @@ def valid_ntp_message(raw):
     leap = int(field('Leap', r'[0-9]+'))
     mode = int(field('Mode', r'[0-9]+'))
     stratum = int(field('Stratum', r'[0-9]+'))
-    if count < 1 or ignored != 'no' or leap not in (0, 1, 2) or mode != 4 or not 1 <= stratum <= 15:
+    if count < 1 or leap not in (0, 1, 2) or mode != 4 or not 1 <= stratum <= 15:
         raise Failure('TIMESYNCD_NO_ACCEPTED_NTP_REPLY')
+    # `Ignored=yes` describes the LATEST packet (an outlier/spike), not the
+    # validity of all previously accepted NTP packets in this service run.
+    return ignored == 'yes'
+
+
+def accepted_sync_marker_this_invocation(marker_stat, deadline):
+    """Prove that timesyncd accepted an earlier packet in its CURRENT run.
+
+    /run/systemd/timesync/synchronized is touched only on accepted NTP syncs,
+    but survives daemon restarts. Compare its mtime with systemd's current
+    process start (monotonic microseconds). A stale marker from a previous
+    invocation can NEVER justify accepting an ignored latest packet.
+    Fail closed on clock jumps, unavailable properties or old evidence.
+    """
+    # The upstream service runs as systemd-timesync. Its RuntimeDirectory
+    # and successful sync marker can be owned by that dedicated account.
+    trusted_owner = marker_stat.st_uid == 0
+    if not trusted_owner:
+        try:
+            trusted_owner = marker_stat.st_uid == pwd.getpwnam('systemd-timesync').pw_uid
+        except KeyError:
+            trusted_owner = False
+    if not trusted_owner or marker_stat.st_mode & 0o022:
+        raise Failure('TIMESYNCD_SYNC_MARKER_UNTRUSTED')
+    raw = run(['systemctl', 'show', 'systemd-timesyncd.service',
+               '--property=ExecMainStartTimestampMonotonic', '--value'], deadline)
+    if not re.fullmatch(r'[1-9][0-9]{0,19}', raw):
+        raise Failure('TIMESYNCD_SERVICE_START_UNVERIFIED')
+    started = int(raw) / 1_000_000
+    now_mono, now_wall = time.monotonic(), time.time()
+    age = now_wall - marker_stat.st_mtime
+    running = now_mono - started
+    # A sync may occur shortly after service startup; require >1 second
+    # separation to avoid clock rounding or restart races, and a bounded
+    # recent sync rather than an arbitrarily old accepted packet.
+    if not (0 <= age <= 7200 and age + 1 < running and started > 0):
+        raise Failure('TIMESYNCD_NO_CURRENT_INVOCATION_SYNC')
 
 
 def probe(provider, deadline, sync_marker=SYNC_MARKER):
@@ -2892,7 +2930,10 @@ def probe(provider, deadline, sync_marker=SYNC_MARKER):
             raise Failure('TIMESYNCD_NO_SUCCESSFUL_SYNC_MARKER') from exc
         if not stat.S_ISREG(st.st_mode):
             raise Failure('TIMESYNCD_INVALID_SYNC_MARKER')
-        valid_ntp_message(run(['timedatectl', 'show-timesync', '--property=NTPMessage', '--value'], deadline))
+        ignored = valid_ntp_message(run(
+            ['timedatectl', 'show-timesync', '--property=NTPMessage', '--value'], deadline))
+        if ignored:
+            accepted_sync_marker_this_invocation(st, deadline)
     if invocation != service_identity(provider, deadline):
         raise Failure('TIME_SERVICE_CHANGED_DURING_PROBE')
     # Same source and same invocation are required across stabilization samples.

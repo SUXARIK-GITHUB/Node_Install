@@ -25,6 +25,8 @@ class Ntp256Tests(unittest.TestCase):
         states = iter(states) if states else None
         def run(args, deadline):
             if args[:2] == ['systemctl', 'show']:
+                if '--property=ExecMainStartTimestampMonotonic' in args:
+                    return '0'  # No trusted start evidence in this historical fixture.
                 return next(states) if states else STATE_A
             if '--property=NTPSynchronized' in args:
                 return synced
@@ -46,13 +48,18 @@ class Ntp256Tests(unittest.TestCase):
 
     def test_old_marker_and_synced_flag_without_new_reply_do_not_pass(self):
         for bad in (REPLY.replace('PacketCount=3', 'PacketCount=0'),
-                    REPLY.replace('Ignored=no', 'Ignored=yes'),
                     REPLY.replace('Leap=0', 'Leap=3'),
                     REPLY.replace('Mode=4', 'Mode=3'),
                     REPLY.replace('Stratum=2', 'Stratum=0'),
                     REPLY.replace('Stratum=2', 'Stratum=16')):
             with self.subTest(bad=bad), self.assertRaisesRegex(self.m.Failure, 'NO_ACCEPTED'):
                 self.probe(reply=bad)
+
+    def test_ignored_latest_packet_requires_fresh_same_invocation_marker(self):
+        # A spike is not an accepted packet, but it may follow an accepted
+        # clock sync. With no independently proven fresh marker, fail closed.
+        with self.assertRaisesRegex(self.m.Failure, 'SERVICE_START_UNVERIFIED|SYNC_MARKER_UNTRUSTED'):
+            self.probe(reply=REPLY.replace('Ignored=no', 'Ignored=yes'))
 
     def test_missing_or_duplicate_reply_fields_refused(self):
         for bad in ('', '{}', REPLY.replace('PacketCount=3', ''),

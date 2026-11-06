@@ -15,7 +15,7 @@ command -v git >/dev/null || { echo 'Не установлен git'; exit 1; }
 checkout="$(mktemp -d /root/NodeInstall-git-XXXXXXXX)"
 git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git "$checkout"
 cd "$checkout"
-printf '%s  %s\n' 'e5d8328ff276f04516781d2ed0a9797147dad62a9656248fde70cdb1cd157a56' 'install.sh' | sha256sum --check
+printf '%s  %s\n' 'b50206e297f30e87210357d36b29824f5f4174fcb24bded4979216b7f6c97766' 'install.sh' | sha256sum --check
 sha256sum --check --status SHA256SUMS
 python3 scripts/verify_release.py --root .
 python3 - <<'PY_BUILD'
@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
 if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-    '2.5.18', '20261106-r38-adblock-ci-fixture-compat', 'INCOMPLETE_STAGING_ONLY'
+    '2.5.18', '20261106-r39-ntp-accepted-sync-recovery', 'INCOMPLETE_STAGING_ONLY'
 ):
     raise SystemExit('STOP: GitHub содержит другую сборку; меню не запускается')
 PY_BUILD
@@ -34,13 +34,13 @@ NODE_INSTALL_GITHUB
 
 ### 2. 📦 Из полного ZIP-архива
 
-Сначала передайте **полный** `Node_Install_2.5.18-docs-menu_20261106-r38-adblock-ci-fixture-compat.zip` в `/root` тестовой VPS. Архив распаковывается в отдельный каталог, без перезаписи прежней версии.
+Сначала передайте **полный** `Node_Install_2.5.18-docs-menu_20261106-r39-ntp-accepted-sync-recovery.zip` в `/root` тестовой VPS. Архив распаковывается в отдельный каталог, без перезаписи прежней версии.
 
 ```bash
 bash <<'NODE_INSTALL_ARCHIVE'
 set -Eeuo pipefail
 [[ "$(id -u)" == 0 ]] || { echo 'Нужен root'; exit 1; }
-archive="/root/Node_Install_2.5.18-docs-menu_20261106-r38-adblock-ci-fixture-compat.zip"
+archive="/root/Node_Install_2.5.18-docs-menu_20261106-r39-ntp-accepted-sync-recovery.zip"
 [[ -f "$archive" ]] || { echo "Архив не найден: $archive"; exit 1; }
 checkout="$(mktemp -d /root/NodeInstall-zip-XXXXXXXX)"
 unzip -q "$archive" -d "$checkout"
@@ -52,7 +52,7 @@ bash ./install.sh --menu < /dev/tty
 NODE_INSTALL_ARCHIVE
 ```
 
-> ⚠️ **Перед настоящей установкой:** сохраните snapshot VPS, проверьте его восстановление и откройте аварийную консоль хостера. Установщик меняет SSH, UFW, Docker, Nginx, systemd, IPv6/GRUB и сетевые правила. Это **текущая staging-сборка**, не подтверждённая на вашем production-сервере. GitHub-команда намеренно остановится, если в `main` ещё нет r38. Внутренние SHA-256 проверяют целостность, но не заменяют независимую проверку происхождения релиза.
+> ⚠️ **Перед настоящей установкой:** сохраните snapshot VPS, проверьте его восстановление и откройте аварийную консоль хостера. Установщик меняет SSH, UFW, Docker, Nginx, systemd, IPv6/GRUB и сетевые правила. Это **текущая staging-сборка**, не подтверждённая на вашем production-сервере. GitHub-команда намеренно остановится, если в `main` ещё нет r39. Внутренние SHA-256 проверяют целостность, но не заменяют независимую проверку происхождения релиза.
 
 ---
 
@@ -62,7 +62,7 @@ NODE_INSTALL_ARCHIVE
 
 **Серверная нода под контролем: от проверки VPS до REALITY и каскада**
 
-`2.5.18 · r38` · `Ubuntu / SSH` · `VLESS · REALITY · Vision` · `IPv4`
+`2.5.18 · r39` · `Ubuntu / SSH` · `VLESS · REALITY · Vision` · `IPv4`
 
 [🗺 Карта проекта](#project-map) · [🟦 Обычная нода](#ordinary-map) · [🟪 Каскад](#cascade-map) · [🎛 Remnawave](#panel) · [📚 Документация](#documentation)
 

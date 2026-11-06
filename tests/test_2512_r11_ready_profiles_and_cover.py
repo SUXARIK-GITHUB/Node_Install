@@ -158,7 +158,7 @@ class ReleaseGates(unittest.TestCase):
         text=(ROOT/'README.md').read_text()
         head=text.split('\n---\n',1)[0]
         self.assertIn('2.5.18',head)
-        self.assertIn('r38',head)
+        self.assertIn('r39',head)
         self.assertIn('2.5.18 r19', (ROOT/'CHANGELOG.md').read_text())
         self.assertIn('2.5.13 r12', (ROOT/'CHANGELOG.md').read_text())
         self.assertNotIn('2.5.10 r7e',head)
