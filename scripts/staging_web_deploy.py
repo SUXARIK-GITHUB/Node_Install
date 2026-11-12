@@ -162,13 +162,25 @@ class NodeWeb:
         CA verification. Fail the deploy transaction on any wrong/partial page.
         """
         domain, ip = config['domain'], config['public_ipv4']
-        for path in (*PAGES, 'robots.txt', 'sitemap.xml'):
+        for path in (*PAGES, 'robots.txt', 'sitemap.xml', 'favicon.svg'):
             cmd = ['curl', '-q', '--noproxy', '*', '-4', '--fail',
                    '--silent', '--show-error', '--http2', '--tlsv1.3',
                    '--tls-max', '1.3', '--connect-timeout', '5', '--max-time', '15',
                    '--max-filesize', str(128 * 1024),
                    '--resolve', f'{domain}:443:{ip}', f'https://{domain}/{path}']
             must(self.run(cmd) == content[path], 'RICH_LIVE_ROUTE_NOT_VERIFIED_' + path)
+        # A missing path must deliver our own HTML 404 (and retain status 404),
+        # not a generic Nginx page, a 200 SPA fallback or a redirect. The
+        # response is compared AFTER deployment has rewritten its CSS href.
+        missing_path = 'node-install-nonexistent.html'
+        cmd = ['curl', '-q', '--noproxy', '*', '-4',
+               '--silent', '--show-error', '--http2', '--tlsv1.3',
+               '--tls-max', '1.3', '--connect-timeout', '5', '--max-time', '15',
+               '--max-filesize', str(128 * 1024),
+               '--write-out', '\nNODE_SITE_STATUS:%{http_code}',
+               '--resolve', f'{domain}:443:{ip}', f'https://{domain}/{missing_path}']
+        expected = content['404.html'] + b'\nNODE_SITE_STATUS:404'
+        must(self.run(cmd) == expected, 'RICH_LIVE_404_BODY_OR_STATUS_MISMATCH')
 
     def _activate(self, css=None, config=None, css_name='style.css'):
         # Staging changes must be activated, not only syntactically validated.
@@ -508,6 +520,7 @@ class NodeWeb:
                                             ('about','about.html'), ('questions','questions.html'),
                                             ('robots','robots.txt'), ('sitemap','sitemap.xml')):
                         live[filename] = targets[label]
+                    live['404.html'] = targets['error']
                     self._check_rich_live(config, live)
                 if switch:
                     # Do not leave the previous CSS publicly accessible after success;

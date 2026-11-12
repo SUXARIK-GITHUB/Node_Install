@@ -30,7 +30,11 @@ class CIPortability(unittest.TestCase):
 
     def test_nginx_fixtures_isolate_logs_not_production(self):
         fixture = (ROOT/'tests/test_r23_transport_network_visual.py').read_text()
-        self.assertEqual(fixture.count('http { access_log off; server { '), 2)
+        self.assertEqual(fixture.count('http { '), 2)
+        for directive in ('client_body_temp_path', 'proxy_temp_path',
+                          'fastcgi_temp_path', 'uwsgi_temp_path', 'scgi_temp_path'):
+            self.assertEqual(fixture.count(directive + " '+str(root/"), 2)
+        self.assertNotIn('/var/lib/nginx/body', fixture)
         self.assertIn('test_actual_nginx_unix_tls_with_proxy_v1', fixture)
         self.assertIn('test_real_nginx_fragment_syntax_in_isolated_config', fixture)
 

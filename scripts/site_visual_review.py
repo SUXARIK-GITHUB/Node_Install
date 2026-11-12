@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Chromium visual-layout QA of every generated cover, at desktop/mobile sizes.
+"""Offline Chromium visual-layout QA of every generated cover, at four desktop/tablet/mobile sizes.
 
 The temporary in-browser document has its local CSS inlined and CSP meta removed
 ONLY for screenshot rendering from about:blank; source files, deployed CSP and
@@ -25,7 +25,7 @@ except ImportError:
     from scripts.site_audit import audit_bundle
 
 ALL = tuple(OLD) + tuple(NEW)
-SIZES = {'desktop': (1280, 800), 'mobile': (390, 844)}
+SIZES = {'desktop': (1280, 800), 'tablet': (768, 1024), 'mobile': (390, 844), 'narrow': (320, 720)}
 
 
 def offline_html(bundle, page='index.html'):
@@ -44,14 +44,14 @@ def offline_html(bundle, page='index.html'):
     return html
 
 
-def capture(output, domain, names, browser_executable, screenshots=True):
+def capture(output, domain, names, browser_executable, screenshots=True, page_name='index.html'):
     from playwright.sync_api import sync_playwright
     from PIL import Image, ImageDraw, ImageFont
     output = Path(output)
     if output.exists() or output.is_symlink():
         raise ValueError('OUTPUT_DIRECTORY_MUST_NOT_EXIST')
     output.mkdir(mode=0o755)
-    rows, shots, failures = [], {'desktop': [], 'mobile': []}, []
+    rows, shots, failures = [], {mode: [] for mode in SIZES}, []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=browser_executable, headless=True,
                      args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
@@ -60,7 +60,7 @@ def capture(output, domain, names, browser_executable, screenshots=True):
             for name in names:
                 bundle = render_rich(name, domain)
                 audit_bundle(bundle, domain, rich=True)
-                html = offline_html(bundle)
+                html = offline_html(bundle, page=page_name)
                 for mode, (w, h) in SIZES.items():
                     page = browser.new_page(viewport={'width': w, 'height': h}, device_scale_factor=1,
                                              java_script_enabled=False)
@@ -81,6 +81,13 @@ def capture(output, domain, names, browser_executable, screenshots=True):
                               css_color:getComputedStyle(body).color,
                               main_present:!!document.querySelector('main'),
                               text_length:body.innerText.trim().length,
+                              clipped_text: [...document.querySelectorAll('h1,h2,h3,nav a,.cta,.brand,summary')]
+                                .filter(el => {
+                                  const style=getComputedStyle(el);
+                                  if(style.display==='none' || style.visibility==='hidden') return false;
+                                  const rect=el.getBoundingClientRect();
+                                  return rect.width > 0 && (rect.left < -3 || rect.right > root.clientWidth+3);
+                                }).slice(0,5).map(el=>el.tagName.toLowerCase()+':'+el.textContent.trim().slice(0,42)),
                             }
                         }''')
                         errors=[]
@@ -90,12 +97,18 @@ def capture(output, domain, names, browser_executable, screenshots=True):
                             if not metrics[field]: errors.append('MISSING_'+field.upper())
                         if metrics['text_length'] < 180:
                             errors.append('INSUFFICIENT_VISIBLE_CONTENT')
+                        if metrics['clipped_text']:
+                            errors.append('CLIPPED_TEXT')
                         record={'theme':name,'viewport':mode,'width':w,'height':h,
                                 'document_width':metrics['document_width'],
-                                'text_length':metrics['text_length'], 'issues':errors}
+                                'text_length':metrics['text_length'],
+                                'clipped_text':metrics['clipped_text'], 'issues':errors}
                         rows.append(record)
                         if errors: failures.append(record)
                         if screenshots:
+                            if page_name == 'journal.html':
+                                # Show the actual article text, not just the header.
+                                page.locator('article').first.scroll_into_view_if_needed(timeout=3000)
                             png=page.screenshot(type='jpeg',quality=60,animations='disabled',
                                                 full_page=False, timeout=12000)
                             from io import BytesIO
@@ -118,7 +131,7 @@ def capture(output, domain, names, browser_executable, screenshots=True):
                 montage.paste(photo,(x+3,y+2))
                 draw.text((x+5,y+thumb_h+3),name,fill='#13202a')
             montage.save(output/('contact-'+mode+'.jpg'),quality=82,optimize=True)
-    result={'schema':1,'sites':len(names),'viewports':len(SIZES),'checks':len(rows),
+    result={'schema':2,'page':page_name,'sites':len(names),'viewports':len(SIZES),'checks':len(rows),
             'failed':len(failures),'failures':failures,'checks_detail':rows,
             'limitations':['Offline about:blank rendering, not HTTPS or browser live-server probe',
                            'Visual screenshot review is necessary; metrics alone are not a design-quality proof',
@@ -133,6 +146,7 @@ def main(argv=None):
     ap.add_argument('--domain',default='preview.example.test')
     ap.add_argument('--browser',default='/usr/bin/chromium')
     ap.add_argument('--theme', choices=ALL)
+    ap.add_argument('--page', choices=('index.html','journal.html','about.html','questions.html'),default='index.html')
     ap.add_argument('--no-screenshots',action='store_true')
     ap.add_argument('--start',type=int,default=0,help='zero-based first site to review')
     ap.add_argument('--count',type=int,default=None,help='limit the reviewed site batch')
@@ -142,7 +156,7 @@ def main(argv=None):
             raise ValueError('INVALID_BATCH_RANGE')
         names=(args.theme,) if args.theme else ALL[args.start:args.start+args.count if args.count is not None else None]
         if not names:raise ValueError('EMPTY_SITE_BATCH')
-        result=capture(args.output,args.domain,names,args.browser, not args.no_screenshots)
+        result=capture(args.output,args.domain,names,args.browser, not args.no_screenshots, args.page)
     except (ImportError,OSError,ValueError,TypeError) as exc:
         print('VISUAL_REVIEW=FAIL '+type(exc).__name__,file=sys.stderr)
         return 1

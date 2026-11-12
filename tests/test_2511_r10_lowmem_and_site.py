@@ -120,7 +120,13 @@ class SiteAndSelfstealSecurityContracts(unittest.TestCase):
                 self.assertIn('href="style.css"',html)
                 self.assertIn("default-src 'none'",html)
                 self.assertIn("style-src 'self'",html)
-                self.assertNotRegex(html.replace('xmlns="http://www.w3.org/2000/svg"',''),r'(?i)<script|https?://|src="//')
+                # Owned-domain SEO metadata is not a browser resource request.
+                pure = html.replace('xmlns="http://www.w3.org/2000/svg"', '')
+                for meta in ('<link rel="canonical" href="https://preview.example.test/">',
+                             '<meta property="og:url" content="https://preview.example.test/">'):
+                    self.assertIn(meta, pure)
+                    pure = pure.replace(meta, '')
+                self.assertNotRegex(pure, r'(?i)<script|https?://|src="//')
                 self.assertNotRegex(css,r'(?i)@import|url\(\s*["\']?https?://')
                 self.assertIn('<meta name="viewport"',html)
                 self.assertTrue(css.strip())

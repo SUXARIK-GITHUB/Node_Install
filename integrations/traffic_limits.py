@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Optional, host-interface IPv4 traffic policing and cumulative byte quotas.
+"""Optional, host-interface IPv4/IPv6 traffic policing and byte quotas.
 
 No change to qdisc, default firewall, Docker, SSH or routing. Opt-in rules live
 in a separate, dedicated nftables table; management/SSH ports are exempt so a
 quota can never intentionally lock out the administrator. The limit is for
-host input/output on the selected default-route NIC, not traffic forwarded by
-an unrelated bridge, or provider billing adjustments.
+host input/output on the selected default-route NIC, not forwarded packets,
+policy-routed traffic on other NICs, or exact provider billing measurements.
 
 Rate limits use nft byte-rate *policing* (drop over the rate), not smooth tc
-shaping. Counters are snapshotted periodically; a sudden unclean power loss
-may under-count the bytes since the last snapshot. Quotas do not auto-reset.
+shaping. Counters and quotas are evaluated before rate drops, so totals include
+attempted traffic (including some packets ultimately dropped by this table).
+Snapshots occur periodically; abrupt power loss can lose recent usage. Quotas
+do not auto-reset. A different IPv6 default-route interface is refused.
 """
 import argparse
 import json
@@ -94,6 +96,14 @@ def network_identity():
     if len(devices)!=1:raise SafeStop('AMBIGUOUS_DEFAULT_ROUTE')
     interface=next(iter(devices))
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}',interface):raise SafeStop('INVALID_INTERFACE')
+    # The installed table is inet (both families), but only one interface is
+    # controlled.  A second IPv6 egress device would silently escape caps.
+    routes_v6=json.loads(run(['ip','-j','-6','route','show','default']))
+    if not isinstance(routes_v6,list):raise SafeStop('BAD_IPV6_DEFAULT_ROUTE')
+    devices_v6={row.get('dev') for row in routes_v6
+                if isinstance(row,dict) and row.get('dev')}
+    if devices_v6 and devices_v6!={interface}:
+        raise SafeStop('UNSUPPORTED_DIFFERENT_IPV6_EGRESS_INTERFACE')
     ports=[]
     for raw in read_private(SSH_PORTS,4096).splitlines():
         if raw.strip():
@@ -109,6 +119,13 @@ def network_identity():
     return interface,sorted(set(ports+[api_port]))
 
 
+def require_network_identity(config):
+    """Refuse a success/ACTIVE signal if management ports or NIC drift."""
+    interface,ports=network_identity()
+    if interface!=config['interface'] or ports!=sorted(config['exempt_ports']):
+        raise SafeStop('NETWORK_OR_SSH_PORTS_CHANGED_REFUSE')
+
+
 def validate_config(config):
     if not isinstance(config,dict) or set(config)!={'schema','interface','exempt_ports','limits'} or config['schema']!=1:
         raise SafeStop('BAD_TRAFFIC_CONFIG')
@@ -116,7 +133,9 @@ def validate_config(config):
     if not isinstance(interface,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}',interface):
         raise SafeStop('BAD_INTERFACE')
     ports=config['exempt_ports']
-    if not isinstance(ports,list) or not ports or len(ports)>20 or any(type(p) is not int or not 1<=p<=65535 for p in ports):
+    if not isinstance(ports,list) or not ports or len(ports)>20 or \
+       any(type(p) is not int or not 1<=p<=65535 for p in ports) or \
+       ports!=sorted(set(ports)):
         raise SafeStop('BAD_EXEMPT_PORTS')
     limits=config['limits']
     if not isinstance(limits,dict) or set(limits)!={'in_mbps','out_mbps','in_gib','out_gib'}:
@@ -127,28 +146,171 @@ def validate_config(config):
 
 
 def nft_objects():
-    """Return named counters/quotas of *our table*; None means not installed."""
-    process=subprocess.run(['nft','-j','list','table','inet',TABLE],capture_output=True,text=True,timeout=10)
+    """Read this table without altering it; do not infer enforcement from names.
+
+    Keys are (kind, name). Rule entries preserve order within each base chain.
+    A caller with a configuration MUST call verify_nft() before acting on it.
+    """
+    try:
+        process=subprocess.run(['nft','-j','-n','list','table','inet',TABLE],
+                               capture_output=True,text=True,timeout=10,check=False)
+    except (OSError,subprocess.TimeoutExpired) as exc:
+        raise SafeStop('NFT_TABLE_QUERY_FAILED') from exc
     if process.returncode:
         if 'No such file' in process.stderr or 'No such file' in process.stdout:
             return None
         raise SafeStop('NFT_TABLE_QUERY_FAILED')
     try:
         records=json.loads(process.stdout)['nftables']
-    except (ValueError,KeyError,TypeError) as exc:raise SafeStop('BAD_NFT_JSON') from exc
-    objects={}
+    except (ValueError,KeyError,TypeError) as exc:
+        raise SafeStop('BAD_NFT_JSON') from exc
+    if not isinstance(records,list):raise SafeStop('BAD_NFT_JSON')
+    objects={('rule','incoming'):[],('rule','outgoing'):[]}
     for row in records:
-        if isinstance(row,dict):
-            for key in ('counter','quota','chain'):
-                value=row.get(key)
-                if isinstance(value,dict) and value.get('table')==TABLE:
-                    objects[(key,value.get('name'))]=value
+        if not isinstance(row,dict) or len(row)!=1:
+            raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+        kind,value=next(iter(row.items()))
+        if kind=='metainfo':
+            continue
+        if kind not in ('table','counter','quota','chain','rule') or not isinstance(value,dict) or \
+           value.get('family')!='inet' or (value.get('name') if kind=='table' else value.get('table'))!=TABLE:
+            raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+        if kind=='rule':
+            chain=value.get('chain')
+            if chain not in ('incoming','outgoing'):
+                raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+            objects[('rule',chain)].append(value)
+        else:
+            name=value.get('name')
+            if kind=='table':name=TABLE
+            key=(kind,name)
+            if not isinstance(name,str) or key in objects:
+                raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+            objects[key]=value
     marker=objects.get(('counter','incoming_count'))
-    if not marker or marker.get('comment')!=MARKER or not objects.get(('counter','outgoing_count')) or \
-       not objects.get(('chain','incoming')) or not objects.get(('chain','outgoing')):
+    if not marker or marker.get('comment')!=MARKER:
         raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
     return objects
 
+
+def _ports_match(expr, direction, ports):
+    if not isinstance(expr,dict) or set(expr)!={'match'}:
+        return False
+    value=expr['match']
+    if not isinstance(value,dict) or set(value)!={'left','op','right'} or \
+       value['op'] not in ('==','in') or \
+       value['left']!={'payload':{'protocol':'tcp','field':direction}}:
+        return False
+    right=value['right']
+    if isinstance(right,dict) and set(right)=={'set'}:
+        right=right['set']
+    if type(right) is int:right=[right]
+    return isinstance(right,list) and len(right)==len(ports) and \
+           all(type(p) is int for p in right) and sorted(right)==sorted(ports)
+
+
+def _rate_matches(expr, mbps):
+    if not isinstance(expr,dict) or set(expr)!={'limit'} or not isinstance(expr['limit'],dict):
+        return False
+    item=expr['limit']
+    # nft versions describe byte limits with either 'rate_unit' or 'unit'.
+    if set(item)-{'rate','rate_unit','unit','per','burst','burst_unit','inv'}:
+        return False
+    if item.get('inv') is not True or type(item.get('rate')) is not int or \
+       item.get('per') not in ('second','seconds') or \
+       type(item.get('burst',0)) is not int or item.get('burst',0)!=0:
+        return False
+    unit=item.get('rate_unit',item.get('unit','packets'))
+    if 'unit' in item and 'rate_unit' in item and item['unit']!=item['rate_unit']:
+        return False
+    multiplier={'bytes':1,'kbytes':1024,'mbytes':1024**2}.get(unit)
+    if multiplier is None:return False
+    if item.get('burst_unit','bytes') not in ('bytes',unit):return False
+    return item['rate']*multiplier==mbps*125000
+
+
+def verify_nft(config, objects):
+    """Fail closed unless all installed rules exactly implement this config.
+
+    Checks the base-chain hooks, interface, exemption, ordered counter/quota/
+    rate/drop actions and the named quota thresholds. Unexpected rules or
+    objects are treated as foreign modifications, never auto-repaired.
+    """
+    validate_config(config)
+    if objects is None:raise SafeStop('LIMIT_RULESET_NOT_RUNNING')
+    expected={('table',TABLE),('chain','incoming'),('chain','outgoing'),
+              ('counter','incoming_count'),('counter','outgoing_count'),
+              ('rule','incoming'),('rule','outgoing')}
+    for side in ('in','out'):
+        if config['limits'][side+'_gib']:
+            expected.add(('quota','incoming_quota' if side=='in' else 'outgoing_quota'))
+    if set(objects)!=expected:raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+    if objects[('table',TABLE)].get('name')!=TABLE:
+        raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+    for side in ('in','out'):
+        incoming=side=='in'
+        chain='incoming' if incoming else 'outgoing'
+        selector='iifname' if incoming else 'oifname'
+        ports='dport' if incoming else 'sport'
+        chain_obj=objects[('chain',chain)]
+        if any((chain_obj.get('type')!='filter',
+                chain_obj.get('hook')!=('input' if incoming else 'output'),
+                type(chain_obj.get('prio')) is not int or chain_obj['prio']!=10,
+                chain_obj.get('policy')!='accept')):
+            raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+        counter=objects[('counter',chain+'_count')]
+        if type(counter.get('bytes')) is not int or counter['bytes']<0 or \
+           type(counter.get('packets')) is not int or counter['packets']<0:
+            raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+        iface={'match':{'op':'==','left':{'meta':{'key':selector}},
+                        'right':config['interface']}}
+        # The canonical rules() output contains exactly one exemption, one
+        # named counter, and one drop for each enabled limit on this interface.
+        rows=objects[('rule',chain)]
+        expected_count=2+bool(config['limits'][side+'_gib'])+bool(config['limits'][side+'_mbps'])
+        if len(rows)!=expected_count:raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+        if not _rule_prefix(rows[0],iface,ports,config['exempt_ports']):
+            raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+        if not _rule_expr(rows[1],[iface,{'counter':chain+'_count'}]):
+            raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+        index=2
+        quota_gib=config['limits'][side+'_gib']
+        if quota_gib:
+            name=chain+'_quota'
+            quota=objects[('quota',name)]
+            if type(quota.get('bytes')) is not int or quota['bytes']!=quota_gib*1024**3 or \
+               type(quota.get('used')) is not int or quota['used']<0 or quota.get('inv') is not True:
+                raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+            if not _rule_expr(rows[index],[iface,{'quota':name},{'drop':None}]):
+                raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+            index+=1
+        rate=config['limits'][side+'_mbps']
+        if rate:
+            if not _rule_limit(rows[index],iface,rate):
+                raise SafeStop('FOREIGN_OR_MODIFIED_NFT_TABLE')
+    return objects
+
+
+def _rule_expr(row, expr):
+    return isinstance(row,dict) and \
+           not (set(row)-{'family','table','chain','expr','handle','index','comment'}) and \
+           row.get('expr')==expr
+
+
+def _rule_prefix(row,iface,ports,expected_ports):
+    if not isinstance(row,dict) or set(row)-{'family','table','chain','expr','handle','index','comment'}:
+        return False
+    expr=row.get('expr')
+    return isinstance(expr,list) and len(expr)==3 and expr[0]==iface and \
+           _ports_match(expr[1],ports,expected_ports) and expr[2]=={'accept':None}
+
+
+def _rule_limit(row,iface,rate):
+    if not isinstance(row,dict) or set(row)-{'family','table','chain','expr','handle','index','comment'}:
+        return False
+    expr=row.get('expr')
+    return isinstance(expr,list) and len(expr)==3 and expr[0]==iface and \
+           _rate_matches(expr[1],rate) and expr[2]=={'drop':None}
 
 def restore_counts():
     if not USAGE.exists() and not USAGE.is_symlink():return {'in':0,'out':0}
@@ -160,8 +322,9 @@ def restore_counts():
 
 
 def snapshot():
-    obj=nft_objects()
-    if obj is None:raise SafeStop('LIMIT_RULESET_NOT_RUNNING')
+    config=validate_config(json.loads(read_private(CONFIG)))
+    require_network_identity(config)
+    obj=verify_nft(config,nft_objects())
     previous=restore_counts()
     used={}
     for side in ('in','out'):
@@ -210,27 +373,28 @@ def rules(config,used):
 
 
 def nft_apply(config):
-    network_iface,ports=network_identity()
-    if network_iface!=config['interface'] or sorted(ports)!=sorted(config['exempt_ports']):
-        raise SafeStop('NETWORK_OR_SSH_PORTS_CHANGED_REFUSE')
+    validate_config(config)
+    require_network_identity(config)
     previous=nft_objects()
     if previous is not None:
-        # Do not reset the running quota/counters on repeated service restarts.
+        # Never assert ACTIVE on a partial or foreign ruleset. Do not reset usage.
+        verify_nft(config,previous)
         return 'ALREADY_ACTIVE'
     used=restore_counts()
     payload=rules(config,used)
     run(['nft','-c','-f','-'],input_data=payload)
     run(['nft','-f','-'],input_data=payload)
-    if nft_objects() is None:raise SafeStop('NFT_RULES_NOT_INSTALLED')
+    installed=nft_objects()
+    if installed is None:raise SafeStop('NFT_RULES_NOT_INSTALLED')
+    verify_nft(config,installed)
     return 'ACTIVE'
 
 
 def reset_quotas(config):
     """Operator-confirmed start of a new billing period, one nft transaction."""
-    if nft_objects() is None:raise SafeStop('LIMIT_RULESET_NOT_RUNNING')
-    iface,ports=network_identity()
-    if iface!=config['interface'] or sorted(ports)!=sorted(config['exempt_ports']):
-        raise SafeStop('NETWORK_OR_SSH_PORTS_CHANGED_REFUSE')
+    validate_config(config)
+    verify_nft(config,nft_objects())
+    require_network_identity(config)
     payload=f'delete table inet {TABLE}\n'+rules(config,{'in':0,'out':0})
     run(['nft','-c','-f','-'],input_data=payload)
     run(['nft','-f','-'],input_data=payload)
@@ -321,6 +485,9 @@ def main(argv=None):
         print('TRAFFIC_USAGE_SNAPSHOT='+json.dumps(snapshot(),sort_keys=True))
     else:
         obj=nft_objects()
+        if obj is not None:
+            verify_nft(config,obj)
+            require_network_identity(config)
         print('TRAFFIC_LIMITS='+('ACTIVE' if obj else 'NOT_ACTIVE'))
         print('TRAFFIC_CONFIG='+json.dumps(config,sort_keys=True))
         print('TRAFFIC_USAGE_SAVED='+json.dumps(restore_counts(),sort_keys=True))

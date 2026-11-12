@@ -3648,8 +3648,8 @@ def render(domain, seed=None):
     # Long hostnames and intermediate viewports must not stretch grid tracks.
     css += '.hero>*{min-width:0}.copy,.brand,.domain{overflow-wrap:anywhere}.sculpture{overflow:hidden}.quiet-link{max-width:100%}.header>a{min-width:0}.header>.status{flex-shrink:0}'
     css += '.section-tabs{display:flex;flex-wrap:wrap;gap:12px;border-bottom:1px solid #ffffff26;padding:16px 0 20px}.section-tabs a{font-size:11px;letter-spacing:.075em;padding:10px 13px;border-radius:20px;border:1px solid currentColor;opacity:.8}.section-tabs a:hover{opacity:1}.module{padding:72px 0;border-top:1px solid #ffffff20;scroll-margin-top:30px}.module h2{font-size:clamp(27px,4vw,47px);line-height:1.18;font-weight:500;letter-spacing:-.035em;margin:8px 0 12px}.module .lead{max-width:680px;font-size:14px;line-height:1.9;margin:0 0 26px;color:inherit;opacity:.75}.mini-articles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.mini-articles article{min-width:0;border:1px solid currentColor;border-radius:10px;padding:26px;opacity:.92;transition:transform .25s}.mini-articles article:hover{transform:translateY(-4px)}.mini-articles small{letter-spacing:.15em;opacity:.6;font-size:10px}.mini-articles h3{font-size:21px;line-height:1.25;font-weight:500;margin:27px 0 13px}.mini-articles p{font-size:13px;line-height:1.8;margin:0;opacity:.72}.module details{padding:17px 0;border-bottom:1px solid #ffffff28}.module summary{cursor:pointer;font-size:15px;font-weight:500;line-height:1.5}.module details p{font-size:13px;line-height:1.8;max-width:620px;opacity:.76}@media(max-width:780px){.mini-articles{grid-template-columns:1fr}.module{padding:40px 0}.section-tabs{gap:7px}}@media(prefers-reduced-motion:reduce){.mini-articles article{transition:none}.mini-articles article:hover{transform:none}}'
-    headings = (('Новая глава.', 'Скоро здесь.'), ('Место для идей.', 'Скоро откроемся.'),
-                ('Всё начинается', 'с первого шага.'), ('Новый взгляд.', 'Скоро на сайте.'))
+    headings = (('Форма и смысл.', 'Заметки об идеях.'), ('Место для идей.', 'Детали и истории.'),
+                ('Всё начинается', 'с наблюдения.'), ('Новый взгляд.', 'На привычные вещи.'))
     heading, subheading = headings[variant]
     theme_color = ('#101211', '#efece5', '#121923', '#171923')[variant]
     icon = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#101211"/><g fill="none" stroke="hsl({hue} 29% 69%)" stroke-width="1.6"><path d="M32 11 53 32 32 53 11 32Z"/><path d="m32 22 10 10-10 10-10-10Z"/></g></svg>'''
@@ -3657,8 +3657,8 @@ def render(domain, seed=None):
     css_name = 'assets/style-' + sha(css_bytes)[:20] + '.css'
     icon_name = 'assets/icon-' + sha(icon_bytes)[:20] + '.svg'
     index = f'''<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="{theme_color}"><meta name="description" content="Сайт в разработке. Мы создаём новое пространство и скоро откроем его для вас."><title>{safe_domain} — скоро открытие</title><link rel="icon" type="image/svg+xml" href="{icon_name}"><link rel="stylesheet" href="{css_name}"></head>
-<body><div class="shell"><header class="header"><a class="brand" href="#" aria-label="На главную"><span class="emblem" aria-hidden="true"></span>{label}</a><span class="status">СКОРО ОТКРЫТИЕ</span></header><nav class="section-tabs" aria-label="Разделы сайта"><a href="#about">О проекте</a><a href="#materials">Материалы</a><a href="#questions">Вопросы</a></nav><main><section class="hero" aria-labelledby="title"><div class="copy"><p class="eyebrow">НОВОЕ ПРОСТРАНСТВО</p><h1 id="title">{heading}<em>{subheading}</em></h1><p class="description"><strong>Сайт в разработке.</strong><br>Мы продумываем каждую деталь, чтобы создать нечто особенное. Совсем скоро здесь появится наш новый проект.</p><a class="quiet-link" href="#about">Всё начинается с идеи <span aria-hidden="true">↗</span></a></div><div class="sculpture" aria-hidden="true"><div class="halo"></div><div class="orb"></div><div class="ring"></div><div class="point"></div><div class="art-caption">ФОРМА. СМЫСЛ. ДЕТАЛИ.</div></div></section><section class="detail" id="about" aria-labelledby="about-title"><h2 id="about-title">Хорошие вещи требуют внимания.</h2><p>Сейчас мы работаем над новым сайтом.<br>Спасибо за интерес и до скорой встречи.</p></section><section class="module" id="materials" aria-labelledby="materials-title"><p class="eyebrow">РЕДАКЦИОННЫЙ ОБЗОР</p><h2 id="materials-title">Несколько идей для знакомства</h2><p class="lead">Демонстрационная коллекция коротких материалов о творчестве и процессе. Здесь нет обещаний услуг и ссылок на внешние ресурсы.</p><div class="mini-articles"><article><small>ЗАМЕТКА / 01</small><h3>Идея и направление</h3><p>Как наблюдения превращаются в темы, которые хочется рассмотреть внимательнее.</p></article><article><small>ИСТОРИЯ / 02</small><h3>Материалы и формы</h3><p>Цвет, ритм и текстура в проектировании спокойных цифровых пространств.</p></article><article><small>КАТАЛОГ / 03</small><h3>Процесс и детали</h3><p>Небольшая подборка вопросов, подходов и визуальных набросков.</p></article></div></section><section class="module" id="questions" aria-labelledby="questions-title"><p class="eyebrow">СПРАВОЧНЫЙ РАЗДЕЛ</p><h2 id="questions-title">Вопросы и ответы</h2><details><summary>Что это за страница?</summary><p>Независимый демонстрационный макет будущего сайта. Материалы — примеры редакционного наполнения.</p></details><details><summary>Как работают вкладки?</summary><p>Ссылки переходят к тематическим разделам, а ответы раскрываются без JavaScript.</p></details></section></main><footer class="footer"><span class="domain">© {safe_domain}</span><span>СОЗДАЁМ НОВОЕ</span></footer></div></body></html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="{theme_color}"><meta name="description" content="Независимые редакционные заметки о форме, цвете и творческом процессе."><title>{safe_domain} — редакционные заметки</title><link rel="icon" type="image/svg+xml" href="{icon_name}"><link rel="stylesheet" href="{css_name}"></head>
+<body><div class="shell"><header class="header"><a class="brand" href="#" aria-label="На главную"><span class="emblem" aria-hidden="true"></span>{label}</a><span class="status">РЕДАКЦИОННЫЕ ЗАМЕТКИ</span></header><nav class="section-tabs" aria-label="Разделы сайта"><a href="#about">О проекте</a><a href="#materials">Материалы</a><a href="#questions">Вопросы</a></nav><main><section class="hero" aria-labelledby="title"><div class="copy"><p class="eyebrow">ВЗГЛЯД НА ДЕТАЛИ</p><h1 id="title">{heading}<em>{subheading}</em></h1><p class="description"><strong>Форма, цвет и композиция.</strong><br>Небольшой журнал о том, как повседневные наблюдения становятся заметками, идеями и визуальными историями.</p><a class="quiet-link" href="#about">Читать редакционные заметки <span aria-hidden="true">↗</span></a></div><div class="sculpture" aria-hidden="true"><div class="halo"></div><div class="orb"></div><div class="ring"></div><div class="point"></div><div class="art-caption">ФОРМА. СМЫСЛ. ДЕТАЛИ.</div></div></section><section class="detail" id="about" aria-labelledby="about-title"><h2 id="about-title">Внимание к деталям.</h2><p>Тексты посвящены композиции, материалам и спокойному наблюдению.<br>Страницы доступны без регистрации и внешних сценариев.</p></section><section class="module" id="materials" aria-labelledby="materials-title"><p class="eyebrow">РЕДАКЦИОННЫЙ ОБЗОР</p><h2 id="materials-title">Несколько идей для знакомства</h2><p class="lead">Подборка независимых коротких материалов о творчестве, визуальном восприятии и повседневном процессе.</p><div class="mini-articles"><article><small>ЗАМЕТКА / 01</small><h3>Идея и направление</h3><p>Как наблюдения превращаются в темы, которые хочется рассмотреть внимательнее.</p></article><article><small>ИСТОРИЯ / 02</small><h3>Материалы и формы</h3><p>Цвет, ритм и текстура в проектировании спокойных цифровых пространств.</p></article><article><small>КАТАЛОГ / 03</small><h3>Процесс и детали</h3><p>Небольшая подборка вопросов, подходов и визуальных набросков.</p></article></div></section><section class="module" id="questions" aria-labelledby="questions-title"><p class="eyebrow">СПРАВОЧНЫЙ РАЗДЕЛ</p><h2 id="questions-title">Вопросы и ответы</h2><details><summary>Что это за страница?</summary><p>Небольшая редакционная подборка о форме, цвете и творческом наблюдении.</p></details><details><summary>Как работают вкладки?</summary><p>Ссылки переходят к тематическим разделам, а ответы раскрываются без JavaScript.</p></details></section></main><footer class="footer"><span class="domain">© {safe_domain}</span><span>ФОРМА И ДЕТАЛИ</span></footer></div></body></html>
 '''.encode()
     assert len(index) < MAX_INDEX
     return index, {css_name: css_bytes, icon_name: icon_bytes}
@@ -7311,7 +7311,8 @@ VK_CASCADE_ACTIVE=0
 VK_CASCADE_BUNDLE_SHA=''
 VK_CASCADE_HELPER=''
 VK_REALITY_MODE='local'  # saved with initial inputs; ordinary only
-VK_INITIAL_SITE_THEME=''  # optional first-install site, no SSH/network defaults changed
+VK_INITIAL_SITE_THEME=''  # explicit override, or domain-derived reviewed default for full source ZIP
+VK_AUTO_SITE_THEME=0  # never auto-publish for cascade, resume, or standalone script
 VK_WIZARD_INPUT_FD=''  # anonymous inherited Linux memfd, never argv/env secret
 VK_DIRECT_REALITY_MODE=''  # explicit only with reviewed wizard channel
 TRAFFIC_IN_MBPS=0
@@ -7335,7 +7336,7 @@ VKarmani Remnawave Node Installer 2.5.18
   bash install.sh --removal-plan plan           # безопасный обзор состояния и checkpoint
   sudo bash install.sh --removal-plan recover-network --confirm-network-only # только вооруженный SSH/UFW rollback
   sudo bash install.sh --no-reboot             # явно запретить одноразовый reboot
-  sudo bash install.sh --site-theme 111-atlas-docs --no-reboot # выбрать сайт при новой staging-установке
+  sudo bash install.sh --site-theme 111-atlas-docs --no-reboot # явная тема; иначе стабильный выбор из 120 по домену при полном ZIP
   bash install.sh --site-manager list             # каталог 120 тем, только чтение
   bash install.sh --site-manager menu             # интерактивное управление сайтом на завершённой staging-ноде
   bash install.sh --site-manager preview --theme 111-atlas-docs --output /tmp/site-preview
@@ -7794,6 +7795,41 @@ if [[ ! -e "$STATE/owned-installation" && ! -e "$STATE/INSTALL_COMPLETE" && ! -e
     fi
 fi
 if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then VK_CASCADE_ACTIVE=1; fi
+# Fresh Ordinary only: install an audited multi-page theme from the complete,
+# verified source ZIP by default. Do not silently alter installed/resuming nodes,
+# cascade roles, or the standalone install.sh distribution. The legacy embedded
+# editorial site remains an offline-safe fallback when no catalog was supplied.
+if [[ $VK_CASCADE_ACTIVE -eq 0 && -z "$VK_INITIAL_SITE_THEME" &&
+      ! -e "$STATE/INSTALL_COMPLETE" && ! -e "$STATE/finalization" &&
+      ! -e "$STATE/role.json" && ! -e "$STATE/owned-installation" &&
+      ! -e "$ETC/config.json" ]]; then
+    VK_AUTO_SOURCE_ROOT="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 2
+    # If a manifest claims this is a complete bundle, missing r42 components
+    # are a STOP, not a silent downgrade to the standalone fallback site.
+    if [[ -e "$VK_AUTO_SOURCE_ROOT/BUILD_MANIFEST.json" &&
+          ( ! -f "$VK_AUTO_SOURCE_ROOT/scripts/site_default.py" ||
+            ! -f "$VK_AUTO_SOURCE_ROOT/scripts/verify_release.py" ||
+            ! -f "$VK_AUTO_SOURCE_ROOT/scripts/staging_web_deploy.py" ) ]]; then
+        echo 'STOP: incomplete source ZIP: catalog selection component missing; host unchanged' >&2
+        return 2
+    fi
+    if [[ -f "$VK_AUTO_SOURCE_ROOT/BUILD_MANIFEST.json" &&
+          -f "$VK_AUTO_SOURCE_ROOT/site-catalog/111-atlas-docs/index.html" &&
+          -f "$VK_AUTO_SOURCE_ROOT/scripts/staging_web_deploy.py" &&
+          -f "$VK_AUTO_SOURCE_ROOT/scripts/site_default.py" &&
+          -f "$VK_AUTO_SOURCE_ROOT/scripts/verify_release.py" ]]; then
+        command -v python3 >/dev/null || { echo 'STOP: catalog default requires Python3; host unchanged' >&2; return 2; }
+        if ! python3 -I -B "$VK_AUTO_SOURCE_ROOT/scripts/verify_release.py" \
+                --root "$VK_AUTO_SOURCE_ROOT" >/dev/null; then
+            echo 'STOP: default catalog source/manifest validation failed; host unchanged' >&2
+            return 2
+        fi
+        VK_INITIAL_SITE_THEME='111-atlas-docs'
+        VK_SITE_SOURCE_ROOT="$VK_AUTO_SOURCE_ROOT"
+        VK_AUTO_SITE_THEME=1
+        echo 'SITE_DEFAULT=VERIFIED_CATALOG; theme=DOMAIN_DERIVED_AFTER_COMMIT; publishing only after node commit'
+    fi
+fi
 if [[ $VK_CASCADE_ACTIVE -eq 1 && -n "$VK_INITIAL_SITE_THEME" ]]; then
     echo 'STOP: --site-theme is reserved for a new ordinary node; cascade role must not publish an unreviewed cover.' >&2
     return 2
@@ -8088,38 +8124,9 @@ fi
 # Package maintainer scripts must not read answers from the operator's terminal.
 # All installer questions have been answered; unexpected package prompts fail safely.
 exec </dev/null
-install -d -m 0700 "$ETC" "$STATE" "$LIB" "$OPT"
-[[ ! -L "$STATE/installer-$INSTALLER_VERSION.sh" ]] || { echo 'STOP: unsafe saved installer.' >&2; exit 1; }
-install -m 0700 -- "$VK_SOURCE_PATH" "$STATE/installer-$INSTALLER_VERSION.sh"
-printf '%s  %s\n' "$VK_SOURCE_SHA256" "$STATE/installer-$INSTALLER_VERSION.sh" | sha256sum --check --status || {
-    echo 'STOP: installer source changed during preflight.' >&2; exit 1;
-}
-if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
-    if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then
-        # Self-contained ordinary install.sh is unchanged; cascade needs two
-        # trusted local Python modules from the same reviewed ZIP.
-        for module in cascade_profiles.py cascade_deployment.py; do
-            source_file="$(dirname -- "$VK_CASCADE_HELPER")/$module"
-            [[ -f "$source_file" && ! -L "$source_file" ]] || { echo "STOP: missing cascade module: $module" >&2; exit 1; }
-            install -o root -g root -m 0700 -- "$source_file" "$LIB/$module"
-            cmp -s -- "$source_file" "$LIB/$module" || { echo "STOP: cascade module changed during staging: $module" >&2; exit 1; }
-        done
-        python3 "$LIB/cascade_deployment.py" enroll --bundle "$VK_CASCADE_BUNDLE_ARG" \
-            --role "$VK_CASCADE_ROLE_ARG" --sha256 "$VK_CASCADE_BUNDLE_SHA" \
-            --etc "$ETC" --state "$STATE" || { echo 'STOP: CASCADE_ENROLLMENT_FAILED' >&2; exit 1; }
-    else
-        python3 "$LIB/cascade_deployment.py" check-installed --etc "$ETC" --state "$STATE" \
-            || { echo 'STOP: CASCADE_ENROLLMENT_DRIFT' >&2; exit 1; }
-    fi
-fi
-if [[ ! -s "$ETC/config.json" ]]; then
-    printf '%s\n%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" "$VK_REALITY_MODE" > "$ETC/inputs.pending.tmp"
-    chmod 0600 "$ETC/inputs.pending.tmp"
-    mv -f "$ETC/inputs.pending.tmp" "$ETC/inputs.pending"
-fi
-# Do not overwrite the old version until its state has been backed up and verified.
-if [[ -z "$RESUME_FROM" ]]; then printf '%s\n' "$INSTALLER_VERSION" > "$STATE/install-version"; fi
-touch "$STATE/owned-installation"
+# Only the protected state/log/backup directories may be created before the
+# pristine host backup has passed its manifest SHA-256 verification.
+install -d -m 0700 "$STATE"
 touch "$LOG"; chmod 0600 "$LOG"
 # No xtrace, no printing of SECRET_KEY, private keys or Docker environment.
 exec > >(exec 9>&-; tee -a "$LOG") 2>&1
@@ -8169,16 +8176,47 @@ for p in etc/ssh etc/ufw etc/default/ufw etc/default/grub etc/default/grub.d etc
 done
 (cd "$BK"; find . -type f ! -name MANIFEST.sha256 -print0 | sort -z | xargs -0 -r sha256sum > MANIFEST.sha256
     sha256sum --check --quiet MANIFEST.sha256)
+# Verified backup: first preserve the original snapshot location, then publish
+# the version atomically and finally the installation ownership marker.
 printf '%s\n' "$BK" > "$STATE/latest-backup-path"
-# Mark ownership only after all destructive-operation preconditions pass.
-touch "$STATE/owned-installation"
 [[ -e "$STATE/first-backup-path" ]] || printf '%s\n' "$BK" > "$STATE/first-backup-path"
+printf '%s\n' "$INSTALLER_VERSION" > "$STATE/install-version.tmp"
+chmod 0600 "$STATE/install-version.tmp"
+mv -f -- "$STATE/install-version.tmp" "$STATE/install-version"
+touch "$STATE/owned-installation"
 if [[ -n "$RESUME_FROM" ]]; then
-    # Previous version/failure, helper and key files are now in the verified backup.
-    printf '%s\n' "$INSTALLER_VERSION" > "$STATE/install-version.tmp"
-    chmod 0600 "$STATE/install-version.tmp"
-    mv -f -- "$STATE/install-version.tmp" "$STATE/install-version"
     printf 'RESUME_FROM=%s BACKUP=%s\n' "$RESUME_FROM" "$BK"
+fi
+# Stage the installer, private inputs, helper scripts and cascade registration
+# only after the backup and durable ownership receipt exist.
+install -d -m 0700 "$ETC" "$LIB" "$OPT"
+[[ ! -L "$STATE/installer-$INSTALLER_VERSION.sh" ]] || { echo 'STOP: unsafe saved installer.' >&2; exit 1; }
+install -m 0700 -- "$VK_SOURCE_PATH" "$STATE/installer-$INSTALLER_VERSION.sh"
+printf '%s  %s\n' "$VK_SOURCE_SHA256" "$STATE/installer-$INSTALLER_VERSION.sh" | sha256sum --check --status || {
+    echo 'STOP: installer source changed during preflight.' >&2; exit 1;
+}
+if [[ $VK_CASCADE_ACTIVE -eq 1 ]]; then
+    if [[ -n "$VK_CASCADE_ROLE_ARG" ]]; then
+        # Self-contained ordinary install.sh is unchanged; cascade needs two
+        # trusted local Python modules from the same reviewed ZIP.
+        for module in cascade_profiles.py cascade_deployment.py; do
+            source_file="$(dirname -- "$VK_CASCADE_HELPER")/$module"
+            [[ -f "$source_file" && ! -L "$source_file" ]] || { echo "STOP: missing cascade module: $module" >&2; exit 1; }
+            install -o root -g root -m 0700 -- "$source_file" "$LIB/$module"
+            cmp -s -- "$source_file" "$LIB/$module" || { echo "STOP: cascade module changed during staging: $module" >&2; exit 1; }
+        done
+        python3 "$LIB/cascade_deployment.py" enroll --bundle "$VK_CASCADE_BUNDLE_ARG" \
+            --role "$VK_CASCADE_ROLE_ARG" --sha256 "$VK_CASCADE_BUNDLE_SHA" \
+            --etc "$ETC" --state "$STATE" || { echo 'STOP: CASCADE_ENROLLMENT_FAILED' >&2; exit 1; }
+    else
+        python3 "$LIB/cascade_deployment.py" check-installed --etc "$ETC" --state "$STATE" \
+            || { echo 'STOP: CASCADE_ENROLLMENT_DRIFT' >&2; exit 1; }
+    fi
+fi
+if [[ ! -s "$ETC/config.json" ]]; then
+    printf '%s\n%s\n%s\n%s\n' "$VK_INPUT_SECRET" "$VK_INPUT_PANEL_IP" "$VK_INPUT_DOMAIN" "$VK_REALITY_MODE" > "$ETC/inputs.pending.tmp"
+    chmod 0600 "$ETC/inputs.pending.tmp"
+    mv -f "$ETC/inputs.pending.tmp" "$ETC/inputs.pending"
 fi
 
 stage 'Подготовка проверенного swap ДО APT для VPS с 1 GiB RAM'
@@ -10181,16 +10219,29 @@ python3 -I -B "$LIB/finalize_install.py" finish
 # machine-readable partial result and return a distinct code after reporting.
 VK_SITE_PARTIAL_FAILURE=0
 if [[ -n "${VK_INITIAL_SITE_THEME:-}" ]]; then
-    stage 'Явно выбранный сайт: атомарная публикация после успешного INSTALL_COMPLETE'
+    if (( VK_AUTO_SITE_THEME )); then
+        stage 'Проверенный сайт из каталога: стабильный выбор по домену после INSTALL_COMPLETE'
+        # Select only after core commit, when the actual validated domain is
+        # available. Explicit --site-theme, cascade and resume are untouched.
+        # Failure is an optional-site failure, never a reason to re-run core.
+        if VK_SELECTED_THEME="$(python3 -I -B "$VK_SITE_SOURCE_ROOT/scripts/site_default.py" --domain "$DOMAIN")"; then
+            VK_INITIAL_SITE_THEME="$VK_SELECTED_THEME"
+        else
+            echo 'SITE_THEME=STOP; domain-derived catalog selection failed after core commit.' >&2
+            VK_SITE_PARTIAL_FAILURE=1
+        fi
+    else
+        stage 'Явно выбранный сайт: атомарная публикация после успешного INSTALL_COMPLETE'
+    fi
     # The existing staging engine has its own locked receipt, ownership checks,
     # Nginx/HTTPS probes and exact-file rollback. Never reconfigure SSH/Docker.
-    if python3 -B "$VK_SITE_SOURCE_ROOT/scripts/staging_web_deploy.py" site-deploy \
+    if (( ! VK_SITE_PARTIAL_FAILURE )) && python3 -B "$VK_SITE_SOURCE_ROOT/scripts/staging_web_deploy.py" site-deploy \
            --theme "$VK_INITIAL_SITE_THEME" --expected-domain "$DOMAIN" \
            --rich-pages --confirm-staging; then
         echo "SITE_THEME=PASS theme=$VK_INITIAL_SITE_THEME"
     else
-        echo 'SITE_THEME=STOP; core node committed; original site rollback attempted; check journal for pending recovery.' >&2
-        echo 'AUTO_REBOOT=DISABLED_AFTER_OPTIONAL_SITE_FAILURE; review site journal and provider snapshot.' >&2
+        echo 'SITE_THEME=STOP; core node committed; existing site preserved or rollback attempted; review site journal.' >&2
+        echo 'AUTO_REBOOT=DISABLED_AFTER_OPTIONAL_SITE_FAILURE; review provider snapshot.' >&2
         NO_REBOOT=1
         VK_SITE_PARTIAL_FAILURE=1
     fi

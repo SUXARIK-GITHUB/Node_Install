@@ -152,6 +152,190 @@ def verify_bytes(files):
     readme = files['README.md'].decode('utf-8')
     if '2.5.18' not in readme or 'текущая staging-сборка' not in readme:
         raise ValueError('README release state/version inconsistent')
+    if m['build_id'].startswith(('20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        expected = {'scripts/site_field_guides.py', 'tests/test_r46_site_content_quality.py',
+                    'docs/RELEASE_2.5.18_R46_SITE_TOPIC_GUIDES.md'}
+        if not expected <= set(files):
+            raise ValueError('R46_EDITORIAL_GUIDES_MISSING')
+    if m['build_id'].startswith(('20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_metadata.py', 'tests/test_r47_site_metadata_faq.py',
+                    'docs/RELEASE_2.5.18_R47_SITE_IDENTITY_FAQ.md'}
+        if not required <= set(files):
+            raise ValueError('R47_SITE_IDENTITY_AND_TESTS_MISSING')
+        for filename in ('scripts/cover_variants.py', 'scripts/cover_rich.py',
+                         'scripts/site_catalog.py', 'scripts/signature_sites.py'):
+            if b'public_head(' not in files[filename]:
+                raise ValueError('R47_METADATA_GENERATOR_NOT_WIRED_' + filename)
+        auditor = files['scripts/site_audit.py']
+        if (b'CANONICAL_URL_MISMATCH' not in auditor or
+                b'OG_URL_MISMATCH' not in auditor or
+                b'ERROR_PAGE_INDEXING_METADATA' not in auditor):
+            raise ValueError('R47_SITE_IDENTITY_AUDIT_MISSING')
+    if m['build_id'].startswith(('20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'docs/RELEASE_2.5.18_R48_SITE_READING_INDEX_AND_404.md',
+                    'tests/test_r48_site_navigation_live_404.py'}
+        if not required <= set(files):
+            raise ValueError('R48_SITE_NAVIGATION_LIVE_404_TESTS_MISSING')
+        if (b'class="reading-index"' not in files['scripts/site_catalog.py'] or
+                b'RICH_LIVE_404_BODY_OR_STATUS_MISMATCH' not in files['scripts/staging_web_deploy.py'] or
+                b'NODE_SITE_STATUS:%{http_code}' not in files['scripts/staging_web_deploy.py'] or
+                b'node-install-nonexistent.html' not in files['scripts/staging_web_deploy.py']):
+            raise ValueError('R48_SITE_NAVIGATION_OR_LIVE_404_VERIFICATION_MISSING')
+
+    if m['build_id'].startswith(('20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'docs/RELEASE_2.5.18_R49_PUBLIC_SITE_SURFACE.md',
+                    'tests/test_r49_public_site_surface.py'}
+        if not required <= set(files):
+            raise ValueError('R49_PUBLIC_SURFACE_TESTS_MISSING')
+        auditor = files['scripts/site_audit.py']
+        if not all(needle in auditor for needle in
+                   (b'PUBLIC_TECHNICAL_REFERENCE', b'PUBLIC_SOURCE_COMMENT',
+                    b'PUBLIC_TECH', b'HTML_COMMENT', b'CSS_COMMENT')):
+            raise ValueError('R49_PUBLIC_SURFACE_AUDIT_MISSING')
+        if (b'back-to-index' not in files['scripts/site_catalog.py'] or
+                b'id=\"reading-top\"' not in files['scripts/site_catalog.py']):
+            raise ValueError('R49_READING_NAVIGATION_MISSING')
+        for source in ('scripts/site_catalog.py','scripts/signature_sites.py',
+                       'scripts/cover_rich.py'):
+            if b'@media print' not in files[source]:
+                raise ValueError('R49_PRINT_STYLES_MISSING_' + source)
+        for path, data in files.items():
+            if path.startswith(('site-catalog/', 'cover-variants/')) and path.endswith('.css'):
+                if b'/*' in data:
+                    raise ValueError('R49_PUBLIC_CSS_COMMENT_' + path)
+
+    if m['build_id'].startswith(('20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_practice.py', 'scripts/cover_rich_details.py',
+                    'tests/test_r50_editorial_distinction.py',
+                    'docs/RELEASE_2.5.18_R50_EDITORIAL_IDENTITY.md'}
+        if not required <= files.keys():
+            raise ValueError('R50_EDITORIAL_IDENTITY_FILES_MISSING')
+        catalog = files['scripts/site_catalog.py']
+        classics = files['scripts/cover_rich.py']
+        if not all(token in catalog for token in
+                   (b'from site_practice import SITE_PRACTICE, SITE_QUESTIONS',
+                    b'SITE_PRACTICE[', b'SITE_QUESTIONS[',
+                    b'.inner-body .article')):
+            raise ValueError('R50_CATALOG_EDITORIAL_WIRING_MISSING')
+        if not all(token in classics for token in
+                   (b'from cover_rich_details import RICH_DETAILS',
+                    b'RICH_DETAILS[', b'id="rich-index"')):
+            raise ValueError('R50_CLASSIC_EDITORIAL_WIRING_MISSING')
+        if b'test_all_120_public_bundles_keep_file_contract_and_inert_resources' not in files['tests/test_r50_editorial_distinction.py']:
+            raise ValueError('R50_EDITORIAL_TESTS_INCOMPLETE')
+
+    if m['build_id'].startswith(('20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_identity.py', 'scripts/site_quality_review.py',
+                    'tests/test_r51_content_architecture.py',
+                    'docs/RELEASE_2.5.18_R51_CONTENT_GAP_AND_ARCHITECTURES.md'}
+        if not required <= files.keys():
+            raise ValueError('R51_CONTENT_ARCHITECTURE_FILES_MISSING')
+        source = files['scripts/site_catalog.py']
+        if (b'homepage_resource(spec' not in source or
+                b'about_practice(spec' not in source or
+                b'hero_outline(spec' not in source or
+                b'exhibit(spec)' not in source):
+            raise ValueError('R51_EDITIONS_NOT_WIRED')
+        if b'sites_requiring_independent_editorial_review' not in files['scripts/site_quality_review.py']:
+            raise ValueError('R51_EDITORIAL_QUALITY_GAP_NOT_REPORTED')
+
+    if m['build_id'].startswith(('20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_workbooks.py',
+                    'tests/test_r52_practical_workbooks.py',
+                    'docs/RELEASE_2.5.18_R52_PRACTICAL_WORKBOOKS.md'}
+        if not required <= set(files):
+            raise ValueError('R52_PRACTICAL_WORKBOOK_SOURCES_MISSING')
+        if any(b'render_workbook' not in files[source] for source in (
+                'scripts/site_catalog.py', 'scripts/cover_rich.py',
+                'scripts/signature_sites.py')):
+            raise ValueError('R52_PRACTICAL_WORKBOOKS_NOT_WIRED')
+        if b'r52_practical_workbook' not in files['scripts/site_quality_review.py']:
+            raise ValueError('R52_EDITORIAL_INVENTORY_MISSING')
+
+    if m['build_id'].startswith(('20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_workbooks_r53.py', 'tests/test_r53_site_guides.py',
+                    'docs/RELEASE_2.5.18_R53_ALL_TOPIC_GUIDES.md'}
+        if not required <= set(files):
+            raise ValueError('R53_CURATED_GUIDE_FILES_MISSING')
+        if (b'register_r53(add)' not in files['scripts/site_workbooks.py'] or
+                b'R53_NAMES' not in files['scripts/site_quality_review.py']):
+            raise ValueError('R53_GUIDES_NOT_WIRED')
+    if m['build_id'].startswith(('20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_editorial.py', 'scripts/site_catalog.py',
+                    'tests/test_r45_site_editorial_layout.py',
+                    'docs/RELEASE_2.5.18_R45_SITE_EDITORIAL_LAYOUT.md',
+                    'preview/site-gallery/visual-review-r45.json',
+                    'preview/site-gallery/visual-review-desktop-r45.jpg',
+                    'preview/site-gallery/visual-review-mobile-r45.jpg'}
+        if not required <= files.keys():
+            raise ValueError('R45_SITE_EDITORIAL_OR_VISUAL_QA_MISSING')
+        if b'def article_anchor(' not in files['scripts/site_catalog.py'] or b'EDITORIAL_NOTES' not in files['scripts/site_catalog.py']:
+            raise ValueError('R45_EDITORIAL_LINKS_MISSING')
+        from collections import Counter
+        try:
+            report = json.loads(files['preview/site-gallery/visual-review-r45.json'])
+            if report['sites'] != 120 or report['checks'] != 240 or report['failed'] != 0:
+                raise ValueError('R45_VISUAL_QA_INCOMPLETE')
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError('R45_VISUAL_QA_INVALID') from exc
+    if m['build_id'].startswith(('20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required={'integrations/traffic_limits.py',
+                  'tests/test_r44_traffic_ruleset_integrity.py',
+                  'docs/RELEASE_2.5.18_R44_TRAFFIC_RULESET_INTEGRITY.md'}
+        if not required <= files.keys():
+            raise ValueError('R44_NFT_INTEGRITY_TEST_OR_DOC_MISSING')
+        helper=files['integrations/traffic_limits.py'].decode('utf-8')
+        if not all(x in helper for x in (
+                'def verify_nft(', 'FOREIGN_OR_MODIFIED_NFT_TABLE',
+                'verify_nft(config,previous)', 'verify_nft(config,installed)',
+                'verify_nft(config,nft_objects())',
+                'verify_nft(config,obj)')):
+            raise ValueError('R44_FAIL_CLOSED_NFT_INTEGRITY_MISSING')
+    if m['build_id'].startswith(('20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/network_path_review.py', 'scripts/reality_client_matrix.py',
+                    'integrations/client_route_audit.py',
+                    'tests/test_r43_stealth_path_clients.py',
+                    'docs/RELEASE_2.5.18_R43_STEALTH_PATH_EVIDENCE.md'}
+        if not required <= files.keys():
+            raise ValueError('R43_PATH_OR_CLIENT_EVIDENCE_TOOLS_MISSING')
+        external = files['scripts/stealth_external_audit.py'].decode('utf-8')
+        comparator = files['scripts/stealth_report_compare.py'].decode('utf-8')
+        path_review = files['scripts/network_path_review.py'].decode('utf-8')
+        matrix = files['scripts/reality_client_matrix.py'].decode('utf-8')
+        route = files['integrations/client_route_audit.py'].decode('utf-8')
+        if (not all(x in external for x in ('--tcp443', '--large-static-path',
+                 'MAX_STATIC_BYTES', 'PUBLIC_IPV4_REQUIRED')) or
+            not all(x in comparator for x in ('tcp443', 'large_http2_asset')) or
+            not all(x in path_review for x in ('--confirm-same-owned-endpoint',
+                 'NETWORK_PATH_DIFFERENCE_NOT_PROOF_OF_CENSORSHIP')) or
+            not all(x in matrix for x in ('SERVER_REQUIRES_VERIFIED_HYBRID_KEY_SHARE_COMPATIBILITY',
+                 'DIRECT_EGRESS_REPORTED_BLOCK_RELEASE')) or
+            not all(x in route for x in ('DEFAULT_OUTBOUND_IS_DIRECT',
+                 'DNS_RESOLVER_ROUTE_NOT_MEASURED'))):
+            raise ValueError('R43_STATIC_DIAGNOSTIC_SAFETY_GATES_MISSING')
+    if m['build_id'].startswith(('20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_default.py', 'tests/test_r42_stealth_staging.py',
+                    'docs/RELEASE_2.5.18_R42_OWNED_H2_STAGING.md'}
+        if not required <= files.keys():
+            raise ValueError('R42_STAGING_PROBE_OR_THEME_MISSING')
+        selectors = files['scripts/site_default.py'].decode('utf-8')
+        probe = files['scripts/stealth_external_audit.py'].decode('utf-8')
+        comparator = files['scripts/stealth_report_compare.py'].decode('utf-8')
+        if not all(part in installer for part in ('site_default.py', 'VK_AUTO_SITE_THEME',
+                                                  'VK_SITE_PARTIAL_FAILURE=1')) or \
+           not all(part in selectors for part in ('def choose(', 'node-install-reviewed-cover-v1')) or \
+           not all(part in probe for part in ('--http2-actual', '--node-api-port',
+                                               '--client-socks5-port', 'CURL_TIMEOUT')) or \
+           'client_socks_https' not in comparator:
+            raise ValueError('R42_OWNED_ENDPOINT_AND_SITE_GATES_MISSING')
+    if m['build_id'].startswith(('20261106-r41-', '20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        expected = {'docs/RELEASE_2.5.18_R41_STEALTH_COVER_COMPATIBILITY.md',
+                    'integrations/xhttp_subscription_audit.py',
+                    'scripts/stealth_report_compare.py',
+                    'tests/test_r41_stealth_compatibility.py',
+                    'tests/test_r41_stealth_compare.py'}
+        if not expected.issubset(files):
+            raise ValueError('missing r41 cover/compatibility tools or tests')
     if m['build_id'].startswith('20261021-r14-'):
         expected = {'docs/RELEASE_2.5.13_R14_HYBRID_SELFSTEAL_20261021.md',
                     'tests/test_2513_r14_hybrid_selfsteal.py'}
@@ -284,7 +468,7 @@ def verify_bytes(files):
         # The user explicitly requires password login on nodes; no new key login.
         if 'PubkeyAuthentication no' not in installer or 'PasswordAuthentication yes' not in installer:
             raise ValueError('R24_PASSWORD_SSH_COMPATIBILITY_BROKEN')
-    if m['build_id'].startswith(('20261106-r30-','20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r30-','20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         expected={'scripts/terminal_ui.py','integrations/traffic_limits.py',
                   'tests/test_r30_user_feedback.py','docs/RELEASE_2.5.18_R30_USER_FEEDBACK.md'}
         if not expected <= files.keys():
@@ -295,7 +479,7 @@ def verify_bytes(files):
            'def confirm_removal' not in ui or 'def rules' not in helper or \
            '--traffic-limits' not in installer:
             raise ValueError('R30_PHASE1_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r31-','20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required={'tests/test_r31_phase2.py','docs/RELEASE_2.5.18_R31_TERMINAL_COMPLETION.md'}
         if not required <= files.keys():
             raise ValueError('R31_PHASE2_FILES_MISSING')
@@ -304,7 +488,7 @@ def verify_bytes(files):
                     'def copy_to_terminal_clipboard','def keys_screen',
                     'persist_install=True','ВЫЙТИ ИЗ УСТАНОВЩИКА')):
             raise ValueError('R31_PHASE2_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r32-','20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required={'integrations/vps_dashboard.py','integrations/vps_report.py',
                   'tests/test_r32_vps_dashboard.py','docs/RELEASE_2.5.18_R32_VPS_DASHBOARD.md'}
         if not required <= files.keys():
@@ -316,14 +500,14 @@ def verify_bytes(files):
            not all(name in report for name in ('def png_bytes','def export_report','def sections')) or \
            not all(name in diagnostic for name in ('def run_full','def geo_reputation','def services_matrix')):
             raise ValueError('R32_DIAGNOSTIC_REQUIRED_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r33-','20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required={'tests/test_r33_git_ci_audit.py','docs/RELEASE_2.5.18_R33_GIT_CI_QA.md'}
         if not required <= files.keys():
             raise ValueError('R33_GIT_AUDIT_FILES_MISSING')
         ci=files['.github/workflows/check.yml'].decode('utf-8')
         if ci.count('git status --porcelain=v1 --untracked-files=all') != 3:
             raise ValueError('R33_CI_CLEAN_WORKTREE_GUARDS_MISSING')
-    if m['build_id'].startswith(('20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r34-','20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         if not readme.startswith('<a id="install"></a>\n## 🚀 Установка Node Install — два способа'):
             raise ValueError('R34_README_INSTALL_NOT_AT_TOP')
         if readme.count('```mermaid\nflowchart') != 3 or '<a id="project-map"></a>' not in readme:
@@ -336,7 +520,7 @@ def verify_bytes(files):
         if any(phrase in readme for phrase in ('**ТЕКУЩАЯ STAGING-СБОРКА r33',
                 '**ПРЕДЫДУЩАЯ STAGING-СБОРКА', 'Исторический GitHub bootstrap')):
             raise ValueError('R34_README_OUTDATED_RELEASE_BANNERS')
-    if m['build_id'].startswith(('20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r35-','20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required={'docs/RELEASE_2.5.18_R35_AUTOMATIC_VPS.md',
                   'tests/test_r35_vps_automatic.py'}
         if not required <= files.keys():
@@ -349,7 +533,7 @@ def verify_bytes(files):
                 'automatic_speed_test' not in dashboard or
                 "('benchmark','CPU, RAM и диск (короткий тест)'" not in dashboard):
             raise ValueError('R35_VPS_USER_INPUT_OR_AUTO_RUN_MISSING')
-    if m['build_id'].startswith(('20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r36-','20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required={'tests/test_r36_terminal_resume.py',
                   'docs/RELEASE_2.5.18_R36_TERMINAL_RESUME.md'}
         if not required <= files.keys():
@@ -360,7 +544,7 @@ def verify_bytes(files):
                 'def _read_key(', 'self.win.redrawwin()',
                 'self.win.clearok(True)', 'def _restore_input_timeout(')):
             raise ValueError('R36_TERMINAL_RECOVERY_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r37-','20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r37-','20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required = {'integrations/adblock.py', 'tests/test_r37_adblock.py',
                     'docs/RELEASE_2.5.18_R37_ADBLOCK_BLOCKY.md'}
         if not required <= files.keys():
@@ -372,7 +556,7 @@ def verify_bytes(files):
                                      'ADBLOCK_ONLY_ON_ORDINARY_OR_EXIT')) or \
            '--adblock)' not in installer or "options['adblock']" not in ui:
             raise ValueError('R37_ADBLOCK_HOOKS_MISSING')
-    if m['build_id'].startswith(('20261106-r38-','20261106-r39-')):
+    if m['build_id'].startswith(('20261106-r38-','20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required = {'docs/RELEASE_2.5.18_R38_ADBLOCK_CI_PORTABILITY.md'}
         if not required <= files.keys():
             raise ValueError('R38_CI_REGRESSION_DOC_MISSING')
@@ -384,7 +568,7 @@ def verify_bytes(files):
                 "('root_owned',lambda st: st.st_uid == fixture_uid)",
                 "('systemctl_available',lambda:True)")):
             raise ValueError('R38_ADBLOCK_CI_SIMULATED_ROOT_GATES_MISSING')
-    if m['build_id'].startswith('20261106-r39-'):
+    if m['build_id'].startswith(('20261106-r39-','20261106-r40-','20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
         required = {'docs/RELEASE_2.5.18_R39_NTP_RESTART_RECOVERY.md',
                     'tests/test_r39_ntp_restart_recovery.py'}
         if not required <= files.keys():
@@ -394,6 +578,17 @@ def verify_bytes(files):
                     'ExecMainStartTimestampMonotonic',
                     'accepted_sync_marker_this_invocation(st, deadline)')):
             raise ValueError('R39_CURRENT_INVOCATION_NTP_PROOF_MISSING')
+    if m['build_id'].startswith(('20261106-r40-', '20261106-r41-','20261107-r42-', '20261107-r43-', '20261107-r44-', '20261107-r45-', '20261107-r46-', '20261107-r47-', '20261107-r48-', '20261107-r49-', '20261107-r50-', '20261108-r51-', '20261108-r52-', '20261110-r53-', '20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/stealth_external_audit.py',
+                    'docs/RELEASE_2.5.18_R40_STEALTH_COVER_AUDIT.md',
+                    'tests/test_r40_stealth_cover_and_probe.py'}
+        if not required <= files.keys():
+            raise ValueError('R40_STEALTH_AUDIT_TEST_OR_DOC_MISSING')
+        if b'--confirm-owned-endpoint' not in files['scripts/stealth_external_audit.py'] or \
+           b'client_or_dpi_stealth_proven' not in files['scripts/stealth_external_audit.py'] or \
+           b'PUBLIC_PLACEHOLDER_COPY' not in files['scripts/site_audit.py'] or \
+           b'extended_checks' not in files['integrations/selfsteal_runtime_probe.py']:
+            raise ValueError('R40_READ_ONLY_AND_COVER_GATES_MISSING')
     if m['build_id'].startswith('20261105-r29-'):
         expected={'scripts/terminal_ui.py','integrations/vps_connectivity.py',
                   'tests/test_r29_tui_full_vps.py',
@@ -411,6 +606,113 @@ def verify_bytes(files):
             raise ValueError('R28_CI_PORTABILITY_SOURCES_MISSING')
         if 'r28' not in readme.split('---', 1)[0]:
             raise ValueError('R28_README_RELEASE_MISSING')
+    if m['build_id'].startswith(('20261112-r54-', '20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'tests/test_r54_verified_backup.py',
+                    'docs/RELEASE_2.5.18_R54_PASS1_BACKUP_CI.md'}
+        if not required <= set(files):
+            raise ValueError('R54_PASS1_REQUIRED_SOURCE_MISSING')
+        installer = files['install.sh'].decode('utf-8')
+        pos = installer.index('sha256sum --check --quiet MANIFEST.sha256')
+        if not (pos < installer.index('touch "$STATE/owned-installation"')
+                    < installer.index('install -d -m 0700 "$ETC" "$LIB" "$OPT"')):
+            raise ValueError('R54_BACKUP_COMMIT_ORDER_INVALID')
+
+    if m['build_id'].startswith(('20261112-r55-', '20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required={'tests/test_r55_limits_css_release.py',
+                  'docs/RELEASE_2.5.18_R55_PASS2_CSS_TRAFFIC_DOCS.md',
+                  'docs/history/RELEASE_VALIDATION_2.5.10_r7c.json'}
+        if not required <= files.keys():
+            raise ValueError('R55_PASS2_REQUIRED_FILES_MISSING')
+        status=json.loads(files['docs/RELEASE_VALIDATION.json'].decode())
+        if (status.get('build_id') != m['build_id'] or
+            status.get('status') != 'INCOMPLETE_STAGING_ONLY' or
+            status.get('historical_validation') != 'docs/history/RELEASE_VALIDATION_2.5.10_r7c.json'):
+            raise ValueError('R55_RELEASE_STATUS_MISMATCH')
+        previous=json.loads(files['docs/history/RELEASE_VALIDATION_2.5.10_r7c.json'].decode())
+        if previous.get('version') != '2.5.10':
+            raise ValueError('R55_HISTORICAL_VALIDATION_MISSING')
+        covers=files['scripts/cover_variants.py']
+        limiter=files['integrations/traffic_limits.py']
+        if b'base=remove_generated_vars(base)' not in covers or \
+           b'UNSUPPORTED_DIFFERENT_IPV6_EGRESS_INTERFACE' not in limiter or \
+           b'require_network_identity(config)' not in limiter:
+            raise ValueError('R55_CSS_OR_TRAFFIC_GATES_NOT_PRESENT')
+
+    if m['build_id'].startswith(('20261112-r56-', '20261112-r57-', '20261113-r58-')):
+        required = {'scripts/site_focus_notes.py',
+                    'scripts/site_editorial_expansion.py',
+                    'tests/test_r56_site_editorial.py',
+                    'docs/RELEASE_2.5.18_R56_PASS3_SITE_CONTENT.md'}
+        if not required <= files.keys():
+            raise ValueError('R56_SITE_EDITORIAL_FILES_MISSING')
+        if (b'FOCUS_NOTES' not in files['scripts/site_focus_notes.py'] or
+            b'journal_companion' not in files['scripts/site_editorial_expansion.py'] or
+            (m['build_id'].startswith('20261112-r56-') and m.get('release_notes') != 'docs/RELEASE_2.5.18_R56_PASS3_SITE_CONTENT.md')):
+            raise ValueError('R56_EDITORIAL_SOURCE_OR_NOTES_MISMATCH')
+    if m['build_id'].startswith(('20261112-r57-', '20261113-r58-')):
+        required = {
+            'scripts/site_art_direction.py', 'scripts/site_publication_review.py',
+            'tests/test_r57_site_visual_publication.py',
+            'docs/RELEASE_2.5.18_R57_PASS4_VISUAL_PUBLICATION.md',
+            'preview/site-gallery/visual-review-index-r57.json',
+            'preview/site-gallery/visual-review-journal-r57.json',
+            'preview/site-gallery/visual-review-about-r57.json',
+            'preview/site-gallery/visual-review-questions-r57.json',
+            'preview/site-gallery/publication-review-r57.json',
+        }
+        required.update('preview/site-gallery/visual-review-%s-r57.jpg' % x
+                        for x in ('desktop', 'tablet', 'mobile', 'narrow'))
+        required.update('preview/site-gallery/visual-review-journal-%s-r57.jpg' % x
+                        for x in ('desktop', 'tablet', 'mobile', 'narrow'))
+        if not required <= set(files):
+            raise ValueError('R57_VISUAL_PUBLICATION_FILES_MISSING')
+        github_qa = m['build_id'].startswith('20261113-r58-github-')
+        if (m.get('release_notes') != ('docs/RELEASE_2.5.18_R57_PASS4_VISUAL_PUBLICATION.md'
+                if m['build_id'].startswith('20261112-r57-')
+                else 'docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md' if github_qa
+                else 'docs/RELEASE_2.5.18_R58_PASS5_FINAL_AUDIT.md') or
+            m.get('derived_from_build_id') != ('20261112-r56-site-content-pass3b-staging'
+                if m['build_id'].startswith('20261112-r57-')
+                else '20261113-r58-final-acceptance-pass5-staging' if github_qa
+                else '20261112-r57-visual-mobile-publication-pass4d-staging') or
+            b'editorial_art(theme)' not in files['scripts/site_catalog.py'] or
+            b'direction-' not in files['scripts/site_catalog.py'] or
+            b'OFFLINE_PASS' not in files['scripts/site_publication_review.py'] or
+            b'visual-review-desktop-r57.jpg' not in files['preview/site-gallery/index.html']):
+            raise ValueError('R57_VISUAL_PUBLICATION_RELEASE_MISMATCH')
+        for name in ('index','journal','about','questions'):
+            report = json.loads(files['preview/site-gallery/visual-review-' + name + '-r57.json'].decode())
+            if (report.get('page') != name + '.html' or report.get('sites') != 120 or
+                report.get('checks') != 480 or report.get('failed') != 0):
+                raise ValueError('R57_BROWSER_QA_INCOMPLETE_' + name)
+        report = json.loads(files['preview/site-gallery/publication-review-r57.json'].decode())
+        if (report.get('status') != 'OFFLINE_PASS' or
+            report.get('checks',{}).get('audited_bundles') != 120):
+            raise ValueError('R57_PUBLICATION_AUDIT_FAILED')
+    if m['build_id'].startswith('20261113-r58-'):
+        required = {'docs/RELEASE_2.5.18_R58_PASS5_FINAL_AUDIT.md',
+                    'tests/test_r58_release_acceptance.py',
+                    'scripts/staging_acceptance.py'}
+        if not required <= set(files):
+            raise ValueError('R58_FINAL_GATE_FILES_MISSING')
+        acceptance = files['scripts/staging_acceptance.py']
+        if (b'SOURCE_ARCHIVE_REQUIRED_FOR_ACCEPTANCE' not in acceptance or
+            b'SOURCE_ARCHIVE_SHA256_MISMATCH' not in acceptance or
+            b'archive_binding(obj,ns.archive)' not in acceptance):
+            raise ValueError('R58_RELEASE_GATE_MISSING_ARCHIVE_BINDING')
+        validation = json.loads(files['docs/RELEASE_VALIDATION.json'].decode('utf-8'))
+        if (validation.get('build_id') != m['build_id'] or
+            validation.get('real_vps_install_reboot_backup_restore') != 'NOT_PERFORMED' or
+            validation.get('operator_release') != 'NOT_PRODUCTION_VALIDATED'):
+            raise ValueError('R58_RELEASE_GUARD_OR_STATUS_MISMATCH')
+    if m['build_id'].startswith('20261113-r58-github-'):
+        required = {'docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md',
+                    'tests/test_r58_github_install_recipe.py'}
+        if not required <= set(files):
+            raise ValueError('R58_GITHUB_QA_FILES_MISSING')
+        if (b'git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git' not in files['README.md'] or
+            b'git diff --cached --check' not in files['README.md']):
+            raise ValueError('R58_GITHUB_RECIPE_MISSING')
     expected_archive = 'Node_Install_2.5.18-docs-menu_' + m['build_id'] + '.zip'
     if expected_archive not in readme.split('---', 1)[0]:
         raise ValueError('README release command/build ID inconsistent')

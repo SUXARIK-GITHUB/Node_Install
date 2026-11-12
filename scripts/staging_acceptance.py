@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Offline evidence gate. Never runs installation, live probes, ssh, docker or UFW.
 
-Human-submitted evidence is NOT independently verified by this parser. PASS
-means the signed-off checklist has results and artifacts, not a system audit.
+Human-submitted evidence is NOT independently verified by this parser.
+An accepted checklist must be bound to the exact local ZIP via --archive.
+PASS means metadata completeness and matching archive bytes, not a live audit.
 """
 import argparse
 import datetime as dt
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -94,12 +96,32 @@ def evaluate(obj):
             'all_checked':not (failed or blocked)}
 
 
+def archive_sha256(path):
+    """Hash the exact local release archive; never rely on receipt metadata alone."""
+    if path.is_symlink() or not path.is_file():
+        raise EvidenceError('SOURCE_ARCHIVE_NOT_REGULAR_FILE')
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def archive_binding(receipt, archive):
+    """An ACCEPTED receipt requires byte-level binding to a supplied ZIP."""
+    if archive is None:
+        raise EvidenceError('SOURCE_ARCHIVE_REQUIRED_FOR_ACCEPTANCE')
+    if archive_sha256(archive) != receipt['source_zip_sha256']:
+        raise EvidenceError('SOURCE_ARCHIVE_SHA256_MISMATCH')
+
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     group=p.add_mutually_exclusive_group(required=True)
     group.add_argument('--create-template',choices=['ordinary','cascade'])
     group.add_argument('--evaluate',type=Path)
     p.add_argument('--zip-sha256',help='required with --create-template; use independent archive digest')
+    p.add_argument('--archive',type=Path,help='exact ZIP being accepted; required to approve a COMPLETE checklist')
     ns=p.parse_args(argv)
     try:
         if ns.create_template:
@@ -107,6 +129,11 @@ def main(argv=None):
             return 0
         obj=json.loads(ns.evaluate.read_text(encoding='utf-8'))
         result=evaluate(obj)
+        # No successful acceptance on typed-in checks alone or a different ZIP.
+        if obj['status'] == 'ACCEPTED' and result['all_checked']:
+            archive_binding(obj,ns.archive)
+        elif ns.archive is not None:
+            archive_binding(obj,ns.archive)
     except (EvidenceError, OSError, ValueError, TypeError) as exc:
         print('ACCEPTANCE=INVALID '+(str(exc) if isinstance(exc,EvidenceError)
               else type(exc).__name__),file=sys.stderr)
@@ -116,6 +143,7 @@ def main(argv=None):
           ' PASS='+str(result['pass'])+' TOTAL='+str(result['total']))
     print('FAIL='+','.join(result['failed']))
     print('BLOCKED='+','.join(result['blocked']))
+    print('SOURCE_ARCHIVE=' + ('SHA256_MATCH' if ns.archive else 'NOT_VERIFIED'))
     print('LIVE_EVIDENCE=OPERATOR_SUBMITTED_NOT_AUTOMATICALLY_VERIFIED')
     return 0 if accepted else 1
 

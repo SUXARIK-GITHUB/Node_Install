@@ -65,8 +65,10 @@ printf 'SELECTED_MODE=%%s\n' "$VK_REALITY_MODE"
     def test_preflight_is_fail_closed_before_persistent_writes(self):
         func = SCRIPT.index('vk_preflight_reality_external() {')
         pre = SCRIPT.index('vk_preflight_reality_external "$VK_REALITY_MODE"', func)
-        persistent = SCRIPT.index('install -d -m 0700 "$ETC" "$STATE" "$LIB" "$OPT"', pre)
-        self.assertLess(pre, persistent)
+        backup_verified = SCRIPT.index('sha256sum --check --quiet MANIFEST.sha256', pre)
+        persistent = SCRIPT.index('install -d -m 0700 "$ETC" "$LIB" "$OPT"', pre)
+        self.assertLess(pre, backup_verified)
+        self.assertLess(backup_verified, persistent)
         check = payload('PY_REALITY_TARGET_PREFLIGHT')
         for requirement in ('socket.AF_INET', 'is_global', 'ssl.create_default_context()',
                             'TLSVersion.TLSv1_3', 'server_hostname=host', 'timeout=5'):

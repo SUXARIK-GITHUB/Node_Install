@@ -43,7 +43,9 @@ class CoverIdentity220Tests(unittest.TestCase):
         for data,assets in seen.values():
             self.assertLess(len(data)+sum(map(len,assets.values())),15000)
             self.assertNotRegex(data.decode(),r'<(?:script|iframe|form)\b|https?://')
-            self.assertIn('Сайт в разработке.'.encode(),data)
+            self.assertIn('редакционные заметки'.encode(), data.lower())
+        self.assertNotIn('Сайт в разработке.'.encode(), data)
+        self.assertNotIn('демонстрационный макет'.encode(), data.lower())
 
     def test_bad_seed_not_silently_regenerated(self):
         p=self.state/'cover-identity.json'

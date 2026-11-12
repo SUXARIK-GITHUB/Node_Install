@@ -1,0 +1,861 @@
+{
+  "schema": 1,
+  "release": "r57 offline prepublication review",
+  "scope": "120 prospective bundles and committed catalog; no live host",
+  "domain": "preview.example.test",
+  "checks": {
+    "audited_bundles": 120,
+    "audited_pages": 600,
+    "audited_resources": 1080,
+    "original_cover_contracts_checked": 12,
+    "static_site_copies_checked": 108
+  },
+  "status": "OFFLINE_PASS",
+  "limitations": [
+    "No real public HTTPS/TLS, DNS, certificate or Nginx inspection",
+    "No live site, no live domain, no deployment transaction performed",
+    "Static checks do not replace human editorial and visual review"
+  ],
+  "sites": [
+    {
+      "theme": "01-atelier",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "02-archive",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "03-observatory",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "04-fieldnotes",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "05-readingroom",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "06-foundry",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "07-botanica",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "08-nocturne",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "09-kitchen",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "10-atlas",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "11-tides",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "12-cinema",
+      "category": "classic",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "13-cloud-ledger",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "14-edge-metrics",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "15-code-library",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "16-data-vault",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "17-aperture-docs",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "18-api-foundry",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "19-observation-lab",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "20-type-system",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "21-satellite-atlas",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "22-circuit-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "23-linen-studio",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "24-print-house",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "25-clay-table",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "26-gallery-light",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "27-architecture-folio",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "28-typography-press",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "29-oak-furniture",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "30-fragrance-index",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "31-textile-library",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "32-visual-studio",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "33-coffee-roastery",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "34-slow-bakery",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "35-citrus-studio",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "36-tea-library",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "37-olive-table",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "38-cocoa-atelier",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "39-fermentation-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "40-vineyard-journal",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "41-rooftop-garden",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "42-spice-atlas",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "43-island-guide",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "44-mountain-trails",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "45-urban-walks",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "46-railway-journal",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "47-coastal-science",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "48-stargazing-club",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "49-forest-class",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "50-sailing-guide",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "51-birdwatch",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "52-lake-stories",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "53-vinyl-label",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "54-short-film",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "55-poetry-room",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "56-museum-index",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "57-photography-archive",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "58-book-society",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "59-audio-stories",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "60-stage-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "61-history-pages",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "62-vintage-objects",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "63-editorial-desk",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "64-civic-guide",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "65-library-project",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "66-learning-studio",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "67-project-maps",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "68-shipments-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "69-ecology-brief",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "70-weather-lab",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "71-energy-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "72-workshop-careers",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "73-quiet-storage",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "74-network-patterns",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "75-digital-safety",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "76-source-control",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "77-data-visualization",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "78-open-standards",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "79-glass-workshop",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "80-botanical-scent",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "81-poster-gallery",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "82-light-atelier",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "83-bookbinding",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "84-product-sketch",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "85-bread-journal",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "86-herbal-tea",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "87-gelato-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "88-small-bistro",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "89-culinary-archive",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "90-beekeeping-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "91-bike-trails",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "92-coastal-cities",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "93-nordic-cabins",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "94-mountain-weather",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "95-maritime-maps",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "96-garden-paths",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "97-design-museum",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "98-film-reels",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "99-analog-camera",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "100-piano-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "101-zine-press",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "102-folklore-notes",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "103-makers-school",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "104-typography-school",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "105-city-planning",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "106-material-science",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "107-astronomy-reference",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "108-volunteer-journal",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "109-copper-workshop",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "110-blue-harbor",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "111-atlas-docs",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "112-lumen-editions",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "113-borough-kitchen",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "114-herbarium-plates",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "115-reading-room",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "116-vinyl-room",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "117-civic-archive",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "118-waypoint",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "119-type-lab",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    },
+    {
+      "theme": "120-celestial-index",
+      "category": "catalog",
+      "rich_pages": 5,
+      "bundle_files": 9,
+      "status": "OFFLINE_PASS"
+    }
+  ]
+}

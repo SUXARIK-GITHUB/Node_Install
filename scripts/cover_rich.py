@@ -13,8 +13,16 @@ import sys
 
 try:
     from cover_variants import NAMES, THEMES, LAYOUTS, render, valid_domain
+    from site_metadata import head as public_head
+    from cover_rich_details import RICH_DETAILS
+    from site_workbooks import CSS as WORKBOOK_CSS, render as render_workbook
+    from site_editorial_expansion import home_panel, journal_companion, about_panel, questions_panel
 except ImportError:
     from scripts.cover_variants import NAMES, THEMES, LAYOUTS, render, valid_domain
+    from scripts.site_metadata import head as public_head
+    from scripts.cover_rich_details import RICH_DETAILS
+    from scripts.site_workbooks import CSS as WORKBOOK_CSS, render as render_workbook
+    from scripts.site_editorial_expansion import home_panel, journal_companion, about_panel, questions_panel
 
 PAGES = ('journal.html', 'about.html', 'questions.html')
 # Original editorial copy; each theme has its own introduction, not repeated
@@ -47,7 +55,6 @@ EDITORIAL = {
 }
 EXTRA = PAGES + ('robots.txt', 'sitemap.xml')
 STYLES = b'''
-/* Optional R20 editorial pages: local styles, no remote fonts or imports. */
 .rich-head{padding:76px var(--gutter) 56px;background:var(--card);border-bottom:1px solid var(--rule)}
 .rich-head h1{max-width:15ch;font-size:clamp(2.7rem,5.7vw,5rem);margin:20px 0}
 .rich-head p{max-width:63ch;line-height:1.8}
@@ -62,13 +69,22 @@ STYLES = b'''
 .rich-detail{padding:20px 0;border-bottom:1px solid var(--rule)}
 .rich-detail summary{cursor:pointer;font-weight:750}
 .rich-detail p{margin:16px 0;max-width:65ch}
+.rich-reading-index{display:block;margin:38px 0 32px;padding:24px;background:var(--card);border-left:4px solid var(--accent);border-top:1px solid var(--rule)}
+.rich-reading-index strong{display:block;margin-bottom:14px;font-weight:750}
+.rich-reading-index ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 24px;margin:0;padding-left:21px}
+.rich-reading-index li{min-width:0;overflow-wrap:anywhere}
+.rich-reading-index a,.rich-index-return{text-decoration-thickness:1px;text-underline-offset:4px;font-weight:650}
+.rich-entry{scroll-margin-top:24px}
+.rich-entry:target{outline:2px solid var(--accent);outline-offset:8px}
+@media(max-width:600px){.rich-reading-index ol{grid-template-columns:1fr}.rich-reading-index{padding:18px}}
 .rich-nav{display:flex;gap:18px;flex-wrap:wrap;margin-top:45px;padding-top:22px;border-top:1px solid var(--rule)}
 .rich-nav a{text-decoration:underline;text-underline-offset:5px;font-weight:650}
 @media(max-width:760px){.rich-head{padding:46px 22px}.rich-content{padding:45px 22px 64px}}
+@media print{body{background:#fff!important;color:#111!important;font:12pt/1.45 Georgia,serif}.top,.foot,.rich-nav,.rich-crumb,.skip{display:none!important}.page{max-width:none}.rich-head,.rich-content{padding:0!important;margin:0!important;background:#fff!important}.rich-entry{break-inside:avoid;page-break-inside:avoid}a{color:#111;text-decoration:none}}
 '''
 
 
-def _page(theme, domain, body, heading, subtitle):
+def _page(theme, domain, body, heading, subtitle, route):
     spec = THEMES[theme]
     seed = hashlib.sha256((theme + '\n' + domain).encode('ascii')).digest()
     name = spec['names'][int.from_bytes(seed[1:3], 'big') % 4]
@@ -77,9 +93,11 @@ def _page(theme, domain, body, heading, subtitle):
         ('questions.html', 'Вопросы')))
     def e(s):
         return html.escape(s, quote=True)
+    metadata = public_head(domain=domain, route=route, site_name=name,
+                           title=heading + ' — ' + name, description=subtitle)
     return (f'<!doctype html>\n<html lang="ru"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<meta name="description" content="{e(subtitle)}">'
+            f'{metadata}'
             f'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'self\'; img-src \'self\'; base-uri \'none\'; form-action \'none\'">'
             f'<title>{e(heading)} — {e(name)}</title>'
             f'<link rel="stylesheet" href="/style.css">'
@@ -91,7 +109,7 @@ def _page(theme, domain, body, heading, subtitle):
             f'<h1>{e(heading)}</h1><p>{e(subtitle)}</p></section>'
             f'<section class="rich-content">{body}'
             f'<nav class="rich-nav" aria-label="Другие разделы"><a href="/">На главную</a>{nav}</nav>'
-            f'</section></main><footer class="foot"><span>{e(name)} · редакционные материалы · 2026</span>'
+            f'</section></main><footer class="foot"><span>{e(name)} · редакционные материалы</span>'
             f'<a href="/">Главная ↑</a></footer></div></body></html>\n').encode('utf-8')
 
 
@@ -111,9 +129,15 @@ def render_rich(theme, domain):
     def e(value):
         return html.escape(value, quote=True)
     intro = ''.join('<p>' + e(note) + '</p>' for note in EDITORIAL[theme])
-    articles = intro + ''.join(
-        f'<article class="rich-entry"><span class="kicker">Материал {i + 1:02d}</span>'
-        f'<h2>{e(title)}</h2><p>{e(description)}</p></article>'
+    reading_index = ('<nav class="rich-reading-index" id="rich-index" aria-label="Оглавление материалов">'
+                     '<strong>В этом разделе</strong><ol>' + ''.join(
+                        f'<li><a href="#essay-{i+1}">{e(title)}</a></li>'
+                        for i, (title, _) in enumerate(spec['items'])) + '</ol></nav>')
+    articles = intro + reading_index + ''.join(
+        f'<article class="rich-entry" id="essay-{i+1}"><span class="kicker">Материал {i + 1:02d}</span>'
+        f'<h2>{e(title)}</h2><p>{e(description)}</p>'
+        f'<p>{e(RICH_DETAILS[theme][i])}</p>'
+        '<p><a class="rich-index-return" href="#rich-index">Вернуться к содержанию</a></p></article>'
         for i, (title, description) in enumerate(spec['items'])
     )
     about = (f'<h2>{e(spec["label"])}</h2><p>{e(spec["intro"])}</p>'
@@ -127,16 +151,18 @@ def render_rich(theme, domain):
     rich['index.html'] = base['index.html'].replace(
         b'</nav><span class="issue">',
         ('<a href="/journal.html">Материалы</a><a href="/about.html">Об издании</a>'
-         '<a href="/questions.html">Вопросы</a></nav><span class="issue">').encode(), 1).replace(
+         '<a href="/questions.html">Вопросы</a>'
+         '<a href="/journal.html#practical-guide">Практикум</a></nav><span class="issue">').encode(), 1).replace(
         '<a href="#notes" aria-label="К материалам">'.encode(),
         '<a href="/journal.html" aria-label="К материалам">'.encode())
-    rich['style.css'] = base['style.css'] + STYLES
-    rich['journal.html'] = _page(theme, domain, articles,
-                                  'Материалы и заметки', spec['intro'])
-    rich['about.html'] = _page(theme, domain, about,
-                                'Об издании', spec['intro'])
-    rich['questions.html'] = _page(theme, domain, faqs,
-                                    'Вопросы и ответы', spec['intro'])
+    rich['index.html'] = rich['index.html'].replace(b'</main>', home_panel(theme, 'ru').encode('utf-8') + b'</main>', 1)
+    rich['style.css'] = base['style.css'] + STYLES + WORKBOOK_CSS
+    rich['journal.html'] = _page(theme, domain, articles + journal_companion(theme, 'ru', tuple(title for title, _ in spec['items'][:4])) + render_workbook(theme, 'ru'),
+                                  'Материалы и заметки', spec['intro'], 'journal.html')
+    rich['about.html'] = _page(theme, domain, about + about_panel(theme, 'ru'),
+                                'Об издании', spec['intro'], 'about.html')
+    rich['questions.html'] = _page(theme, domain, faqs + questions_panel(theme, 'ru'),
+                                    'Вопросы и ответы', spec['intro'], 'questions.html')
     rich['robots.txt'] = (f'User-agent: *\nAllow: /\nSitemap: https://{domain}/sitemap.xml\n').encode('ascii')
     rich['sitemap.xml'] = ('<?xml version="1.0" encoding="utf-8"?>\n'
                            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +

@@ -26,7 +26,7 @@ class ThemeParser(HTMLParser):
         self.tags.append(tag)
         if props.get('id'): self.ids.add(props['id'])
         if tag == 'a': self.links.append(props.get('href', ''))
-        if tag == 'link': self.tabs.append(props.get('href', ''))
+        if tag == 'link' and props.get('rel') in ('stylesheet', 'icon'): self.tabs.append(props.get('href', ''))
 
 
 class EditorialThemeTests(unittest.TestCase):
@@ -52,7 +52,12 @@ class EditorialThemeTests(unittest.TestCase):
                 self.assertIn('<svg', page)
                 arts.add(hashlib.sha256(page.split('<svg',1)[1].split('</svg>',1)[0].encode()).digest())
                 self.assertIn('Content-Security-Policy', page)
-                self.assertNotRegex(page.replace('xmlns="http://www.w3.org/2000/svg"', ''), r'(?i)<script\b|<iframe\b|<form\b|(?:https?:)?//|<img\b')
+                pure = page.replace('xmlns="http://www.w3.org/2000/svg"', '')
+                for meta in ('<link rel="canonical" href="https://preview.example.test/">',
+                             '<meta property="og:url" content="https://preview.example.test/">'):
+                    self.assertIn(meta, pure)
+                    pure = pure.replace(meta, '')
+                self.assertNotRegex(pure, r'(?i)<script\b|<iframe\b|<form\b|(?:https?:)?//|<img\b')
                 self.assertNotIn('@import', css)
                 self.assertNotIn('url(', css)
                 self.assertIn('prefers-reduced-motion', css)
@@ -158,7 +163,7 @@ class ReleaseGates(unittest.TestCase):
         text=(ROOT/'README.md').read_text()
         head=text.split('\n---\n',1)[0]
         self.assertIn('2.5.18',head)
-        self.assertIn('r39',head)
+        self.assertIn(json.loads((ROOT/'BUILD_MANIFEST.json').read_text())['build_id'],head)
         self.assertIn('2.5.18 r19', (ROOT/'CHANGELOG.md').read_text())
         self.assertIn('2.5.13 r12', (ROOT/'CHANGELOG.md').read_text())
         self.assertNotIn('2.5.10 r7e',head)

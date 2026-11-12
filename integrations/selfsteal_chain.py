@@ -67,12 +67,15 @@ def verify(root=Path('/'), *, cafile=None, public_check=False,
         observations.append('NODE_DOMAIN_UNAVAILABLE')
     if static['status']=='STATIC_CHECKS_OK' and domain is not None:
         try:
-            result = (tls_probe or probe)(domain, root/SOCKET, proxy_v1=True, cafile=cafile)
+            result = (tls_probe or probe)(domain, root/SOCKET, proxy_v1=True, cafile=cafile,
+                                          extended=True)
             checks['local_unix_tls_https'] = 'PASS' if result['status']=='PASS' else 'REVIEW'
             # No local socket content, domain, peer address or certificate private key is copied.
             checks['tls_version'] = result.get('tls_version')
             checks['alpn'] = result.get('alpn')
             checks['http_code'] = result.get('http_code')
+            if isinstance(result.get('extended_checks'), dict):
+                checks['local_cover_http_contract'] = result['extended_checks']
         except (CheckError,OSError,ValueError,TimeoutError):
             checks['local_unix_tls_https'] = 'FAIL'
             observations.append('SELFSTEAL_LOCAL_TLS_PROBE_FAILED')

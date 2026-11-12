@@ -7,4 +7,4 @@
 @keyframes vk-editorial-float{0%,100%{translate:0 0}50%{translate:0 -8px}}@media(prefers-reduced-motion:no-preference){.hero-art{animation:vk-editorial-float 14s ease-in-out infinite}}
 
 .hero,.items,.about,.questions{min-width:0}.item,.hero-copy,figure{overflow-wrap:break-word}@media(max-width:1100px){.items{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.items{grid-template-columns:1fr}.hero figure{transform:none!important}.item,.item:nth-child(odd),.item:nth-child(even){transform:none}}
-:root{--accent:hsl(23 62% 43%);--mist:hsl(47 27% 86%);--site-tilt:1deg}
+:root{--accent:hsl(19 62% 43%);--mist:hsl(43 27% 86%);--site-tilt:-7deg;}

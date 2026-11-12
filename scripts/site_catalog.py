@@ -18,8 +18,24 @@ import sys
 from xml.etree import ElementTree as ET
 try:
     from signature_sites import SIGNATURES, render_signature
+    from site_editorial import EDITORIAL_NOTES
+    from site_field_guides import FIELD_GUIDES
+    from site_practice import SITE_PRACTICE, SITE_QUESTIONS
+    from site_metadata import head as public_head, not_found as not_found_head
+    from site_identity import CSS as IDENTITY_CSS, architecture, homepage_resource, about_practice, exhibit, hero_outline
+    from site_workbooks import WORKBOOKS, CATALOG_WORKBOOKS, CSS as WORKBOOK_CSS, render as render_workbook
+    from site_editorial_expansion import home_panel, journal_companion, about_panel, questions_panel
+    from site_art_direction import DIRECTIONS, illustration as editorial_art, css_for as editorial_css, validate as validate_directions
 except ImportError:
     from scripts.signature_sites import SIGNATURES, render_signature
+    from scripts.site_editorial import EDITORIAL_NOTES
+    from scripts.site_field_guides import FIELD_GUIDES
+    from scripts.site_practice import SITE_PRACTICE, SITE_QUESTIONS
+    from scripts.site_metadata import head as public_head, not_found as not_found_head
+    from scripts.site_identity import CSS as IDENTITY_CSS, architecture, homepage_resource, about_practice, exhibit, hero_outline
+    from scripts.site_workbooks import WORKBOOKS, CATALOG_WORKBOOKS, CSS as WORKBOOK_CSS, render as render_workbook
+    from scripts.site_editorial_expansion import home_panel, journal_companion, about_panel, questions_panel
+    from scripts.site_art_direction import DIRECTIONS, illustration as editorial_art, css_for as editorial_css, validate as validate_directions
 
 ROOT = Path(__file__).resolve().parents[1]
 SITES = ROOT / 'site-catalog'
@@ -49,7 +65,7 @@ DATA = '''
 29-oak-furniture|Тихое дерево|Мебель и интерьер|Простые вещи служат долго|Наблюдения о соединениях, древесине и рациональном предметном дизайне|Древесный рисунок;Шип и паз;Гладкая кромка;Ремонт и уход|ru|workshop|⌂
 30-fragrance-index|Атлас ароматов|Ароматы|Память, собранная в нотах|Редакционные заметки о природе запахов, ботанике и культурных ассоциациях|Цитрусовый старт;Древесная база;Сезонные травы;Аромат и пространство|ru|luxury|❀
 31-textile-library|Ткацкий архив|Текстиль|Истории, рассказанные нитями|Небольшой визуальный каталог узоров, традиций и способов работать с тканью|Узор на полотне;Натуральные красители;Тактильная фактура;Сохранение текстиля|ru|editorial|▥
-32-visual-studio|Fourth Form|Design|Objects, systems and quiet ideas|A fictional independent creative journal with original design sketches and process notes|Color relationships;A useful grid;Prototype studies;Small exhibitions|en|modern|◆
+32-visual-studio|Fourth Form|Design|Objects, systems and quiet ideas|An independent creative journal with original design sketches and process notes|Color relationships;A useful grid;Prototype studies;Small exhibitions|en|modern|◆
 33-coffee-roastery|Утро зерна|Кофейная культура|Вкус складывается из деталей|Справочный журнал о кофейном зерне, обжарке и домашних способах приготовления|Зёрна и регион;Температура воды;Мелкий или крупный помол;Разные способы заварки|ru|cafe|☕
 34-slow-bakery|Тёплая корка|Домашняя выпечка|Тесто любит внимание|Редакционные заметки о хлебе, закваске и повседневной кухонной практике|Длинная ферментация;Вода и мука;Хрустящая корка;Остывание хлеба|ru|cafe|◕
 35-citrus-studio|Цедра и вкус|Кулинария|Яркость в одной детали|Иллюстрированный блокнот о сезонных фруктах, кислых акцентах и простых блюдах|Цедра в выпечке;Кислое и сладкое;Цвет цитрусов;Аромат свежего сока|ru|food|◌
@@ -166,6 +182,8 @@ THEMES = _parse()
 BASE_NAMES = tuple(THEMES)
 if len(BASE_NAMES) != 96:
     raise RuntimeError('r21 catalog cardinality mismatch')
+if set(BASE_NAMES) != set(EDITORIAL_NOTES) or set(BASE_NAMES) != set(FIELD_GUIDES) or set(BASE_NAMES) != set(SITE_PRACTICE) or set(BASE_NAMES) != set(SITE_QUESTIONS):
+    raise RuntimeError('curated editorial notes do not match catalog')
 for name, signature in SIGNATURES.items():
     if name in THEMES:
         raise RuntimeError('duplicate signature theme')
@@ -175,6 +193,7 @@ for name, signature in SIGNATURES.items():
                          signature.language, 'signature-' + signature.mode,
                          signature.emblem)
 NAMES = tuple(THEMES)
+validate_directions(BASE_NAMES)
 if len(NAMES) != 108:
     raise RuntimeError('r22 catalog cardinality mismatch')
 
@@ -193,52 +212,29 @@ def ui(theme):
     return ({'home': 'Главная', 'journal': 'Материалы', 'about': 'О проекте',
              'questions': 'Вопросы', 'latest': 'В этом выпуске', 'more': 'Открыть материалы',
              'description': 'Редакционные заметки', 'read': 'Подробнее',
-             'independent': 'Независимый редакционный проект. Содержимое носит ознакомительный характер.',
-             'not_a_service': 'Это авторский справочный макет, а не коммерческая услуга. Мы не запрашиваем данные пользователей.',
+             'independent': f'{theme.description}. Темы выпуска: {theme.subjects[0]}, {theme.subjects[1]}.',
+             'not_a_service': 'Здесь собраны короткие авторские материалы по отдельным направлениям издания.',
              'privacy': 'Здесь нет регистрации, внешних сценариев и сторонней аналитики.',
              'how': 'Как устроены материалы?', 'how_answer': 'Все страницы содержат локальные тексты и иллюстрации; темы сгруппированы по разделам.',
              'data': 'Собираются ли данные посетителей?', 'data_answer': 'Форм, личных кабинетов и пользовательских трекеров здесь нет.',
              'fresh': 'Есть ли актуальные данные?', 'fresh_answer': 'Это статический редакционный каталог; динамические сведения не публикуются.',
-             'back': 'Вернуться на главную', 'sitemap': 'Карта сайта', 'not_found': 'Страница не найдена'}
+             'skip': 'К основному содержимому', 'back': 'Вернуться на главную', 'sitemap': 'Карта сайта', 'not_found': 'Страница не найдена', 'contents': 'Содержание материалов'}
             if theme.language == 'ru' else
             {'home': 'Home', 'journal': 'Stories', 'about': 'About',
              'questions': 'Questions', 'latest': 'In this issue', 'more': 'Explore stories',
              'description': 'Independent editorial notes', 'read': 'Discover more',
-             'independent': 'An independent editorial project with original illustrative content.',
-             'not_a_service': 'This is a small editorial demonstration, not a commercial service. No customer details are requested.',
+             'independent': f'{theme.description}. This issue explores {theme.subjects[0]} and {theme.subjects[1]}.',
+             'not_a_service': 'The collection follows four distinct subjects through concise articles and illustrations.',
              'privacy': 'No sign-in, external scripts or third-party analytics.',
              'how': 'How are articles organized?', 'how_answer': 'The static editorial pages group original notes by topic and theme.',
              'data': 'Do you track visitors?', 'data_answer': 'There are no forms, user accounts or analytics scripts.',
              'fresh': 'Is this real-time information?', 'fresh_answer': 'This is a static editorial collection, not a live data feed.',
-             'back': 'Back to home', 'sitemap': 'Sitemap', 'not_found': 'Page not found'})
+             'skip': 'Skip to main content', 'back': 'Back to home', 'sitemap': 'Sitemap', 'not_found': 'Page not found', 'contents': 'In this collection'})
 
 
 def art(theme):
-    """Self-contained vector art with substantially different family silhouettes."""
-    seed = hashlib.sha256(theme.name.encode('ascii')).digest()
-    sx = 45 + seed[0] % 40
-    # Numeric values only; no external image or URL references.
-    grid = ''.join(f'<line x1="{v}" y1="0" x2="{v}" y2="470" stroke="currentColor" opacity=".07"/>' for v in range(70, 700, 65))
-    base = {
-      'terminal': '<rect x="95" y="66" width="560" height="340" rx="22" fill="var(--art-light)" stroke="currentColor" stroke-width="3"/><circle cx="135" cy="105" r="9" fill="var(--highlight)"/><path d="M135 166L190 208L135 250M220 251H375M220 292H510M220 332H460" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round"/>',
-      'dashboard': '<rect x="80" y="70" width="570" height="330" rx="20" fill="var(--art-light)"/><path d="M120 319L220 259L320 288L405 155L525 197L607 103" stroke="var(--highlight)" stroke-width="18" fill="none" stroke-linejoin="round"/><path d="M120 365H607M120 117H300" stroke="currentColor" opacity=".4" stroke-width="5"/>',
-      'documentation': '<path d="M130 72H575V419H130Z" fill="var(--art-light)"/><path d="M174 139H540M174 201H365M174 258H535M174 302H500M174 348H412" stroke="currentColor" stroke-width="12" stroke-linecap="round"/><path d="M150 93V392" stroke="var(--highlight)" stroke-width="13"/>',
-      'editorial': '<circle cx="376" cy="235" r="195" fill="var(--art-light)"/><path d="M180 329L374 70L571 334" fill="none" stroke="var(--highlight)" stroke-width="29"/><path d="M237 384H516M287 106V360" stroke="currentColor" stroke-width="5"/>',
-      'modern': '<rect x="100" y="85" width="250" height="250" rx="45" fill="var(--highlight)"/><circle cx="487" cy="227" r="145" fill="var(--art-light)"/><path d="M130 381H628M365 66V407" stroke="currentColor" stroke-width="8"/>',
-      'research': '<circle cx="369" cy="229" r="160" fill="none" stroke="var(--highlight)" stroke-width="19"/><ellipse cx="369" cy="229" rx="272" ry="81" fill="none" stroke="currentColor" stroke-width="7" transform="rotate(-24 369 229)"/><circle cx="369" cy="229" r="77" fill="var(--art-light)"/><circle cx="156" cy="348" r="18" fill="var(--highlight)"/>',
-      'workshop': '<path d="M110 332L300 77L558 285L365 441Z" fill="var(--art-light)" stroke="currentColor" stroke-width="8"/><circle cx="353" cy="280" r="106" fill="none" stroke="var(--highlight)" stroke-width="33"/><circle cx="353" cy="280" r="26" fill="currentColor"/>',
-      'magazine': '<rect x="151" y="40" width="470" height="390" fill="var(--art-light)" transform="rotate(8 380 225)"/><path d="M150 95H520M150 165H485M150 240H550M150 314H450" stroke="currentColor" stroke-width="12"/><circle cx="493" cy="311" r="83" fill="var(--highlight)"/>',
-      'gallery': '<circle cx="366" cy="218" r="170" fill="var(--highlight)"/><path d="M108 381L580 90M160 93L590 372" stroke="var(--art-light)" stroke-width="24"/><circle cx="370" cy="219" r="72" fill="none" stroke="currentColor" stroke-width="9"/>',
-      'architecture': '<rect x="100" y="170" width="450" height="270" fill="var(--art-light)"/><path d="M87 171L317 52L563 171M154 207V435M253 207V435M352 207V435M451 207V435" stroke="currentColor" stroke-width="12" fill="none"/><path d="M108 170H542" stroke="var(--highlight)" stroke-width="27"/>',
-      'luxury': '<ellipse cx="369" cy="235" rx="205" ry="155" fill="var(--art-light)"/><path d="M369 85L520 240L369 393L217 240Z" fill="var(--highlight)" opacity=".8"/><circle cx="369" cy="237" r="71" fill="none" stroke="currentColor" stroke-width="8"/>',
-      'cafe': '<path d="M190 148H532V275Q525 399 361 395Q201 390 190 275Z" fill="var(--art-light)"/><path d="M520 160Q663 153 631 270Q610 322 532 311" fill="none" stroke="var(--highlight)" stroke-width="33"/><path d="M241 105Q208 57 246 28M353 105Q318 57 356 28M462 105Q427 57 465 28" fill="none" stroke="currentColor" stroke-width="9"/>',
-      'food': '<circle cx="367" cy="240" r="195" fill="var(--art-light)" stroke="var(--highlight)" stroke-width="18"/><circle cx="367" cy="240" r="130" fill="none" stroke="currentColor" stroke-width="4"/><path d="M266 230Q370 120 472 230T266 230M285 315L465 174" stroke="var(--highlight)" stroke-width="12" fill="none"/>',
-      'nature': '<path d="M347 423V72" stroke="currentColor" stroke-width="12"/><path d="M335 300C174 316 158 215 200 115C292 130 353 227 335 300M357 261C503 271 563 179 522 86C430 103 365 173 357 261M352 388C496 394 539 329 512 268C428 281 359 333 352 388" fill="var(--highlight)"/><path d="M233 155L340 285M490 124L360 250" stroke="var(--art-light)" stroke-width="8"/>',
-      'coastal': '<circle cx="520" cy="112" r="83" fill="var(--art-light)"/><path d="M40 265Q130 198 220 265T400 265T580 265T760 265V470H40Z" fill="var(--highlight)"/><path d="M40 334Q130 279 220 334T400 334T580 334T760 334M40 394Q130 339 220 394T400 394T580 394T760 394" fill="none" stroke="var(--art-light)" stroke-width="12"/>',
-      'museum': '<rect x="170" y="85" width="390" height="305" fill="var(--art-light)" stroke="currentColor" stroke-width="8"/><circle cx="365" cy="230" r="113" fill="var(--highlight)"/><rect x="207" y="334" width="310" height="18" fill="currentColor"/><path d="M180 410H560" stroke="currentColor" stroke-width="4"/>',
-    }[theme.layout]
-    marks = ''.join(f'<circle cx="{90+seed[i]*2}" cy="{80+seed[i+1]}" r="{3+seed[i+2]%7}" fill="var(--highlight)" opacity=".35"/>' for i in (2, 6, 10, 14, 18))
-    return f'<svg xmlns="http://www.w3.org/2000/svg" class="hero-art" viewBox="0 0 740 470" role="img" aria-label="Original abstract illustration">{grid}<g transform="rotate({(sx-65)//5} 370 235)">{base}</g>{marks}</svg>'
+    """Return the curated subject illustration for a catalog publication."""
+    return editorial_art(theme)
 
 
 def css(theme):
@@ -250,12 +246,11 @@ def css(theme):
     card = '#18283b' if dark else '#ffffff'
     muted = '#a6b2c3' if dark else '#677078'
     light = '#334960' if dark else '#e5e9ea'
-    highlight = f'hsl({hue} {72 if dark else 58}% {65 if dark else 47}%)'
+    highlight = f'hsl({hue} {72 if dark else 58}% {65 if dark else 30}%)'
     serif = theme.layout in ('editorial', 'magazine', 'luxury', 'cafe', 'museum')
     font = 'Georgia,"Times New Roman",serif' if serif else 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
     family = theme.layout
-    return f'''/* Original site {theme.name}; entirely local, no external CSS/images. */
-:root{{--paper:{paper};--ink:{ink};--card:{card};--muted:{muted};--art-light:{light};--highlight:{highlight};--line:{'#405063' if dark else '#d7dfe2'};--font:{font}}}
+    return f''':root{{--paper:{paper};--ink:{ink};--card:{card};--muted:{muted};--art-light:{light};--highlight:{highlight};--line:{'#405063' if dark else '#d7dfe2'};--font:{font};--art-rail:#{seed[2:5].hex()}33}}
 *{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 system-ui,-apple-system,sans-serif}}
 a{{color:inherit}}a:focus-visible,summary:focus-visible{{outline:3px solid var(--highlight);outline-offset:4px}}img,svg{{max-width:100%}}.page{{max-width:1720px;margin:auto;overflow:hidden}}
 .skip{{position:absolute;left:-999px;top:10px;background:var(--highlight);color:var(--paper);padding:12px;z-index:10}}.skip:focus{{left:10px}}
@@ -266,13 +261,12 @@ nav{{display:flex;gap:clamp(12px,3vw,31px);flex-wrap:wrap}}nav a{{text-decoratio
 .hero-copy{{max-width:740px}}.eyebrow,.index{{font-weight:750;font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--highlight)}}
 h1,h2,h3{{font-family:var(--font);letter-spacing:-.055em;line-height:1.08}}h1{{font-size:clamp(2.85rem,6.1vw,6.7rem);margin:25px 0 28px}}h2{{font-size:clamp(2.2rem,4vw,3.6rem)}}h3{{font-size:clamp(1.5rem,2.1vw,2rem)}}
 .lead{{font-size:clamp(1.05rem,1.4vw,1.3rem);max-width:60ch;color:var(--muted)}}.cta{{display:inline-block;margin-top:27px;padding:13px 25px;border:2px solid var(--highlight);border-radius:999px;color:var(--ink);font-weight:750;text-decoration:none}}.cta:hover{{background:var(--highlight);color:var(--paper)}}
-.hero-art{{width:100%;height:auto;color:var(--ink)}}.visual{{border-radius:25px;background:var(--card);padding:10px;min-height:330px;display:grid;place-items:center}}
+.hero-art{{width:100%;height:auto;color:var(--ink)}}.visual{{border-radius:25px;background:var(--card);padding:10px;min-height:330px;display:grid;place-items:center;box-shadow:inset 0 -1px var(--art-rail)}}
 .strip{{background:var(--highlight);color:var(--paper);padding:16px clamp(20px,5vw,90px);display:flex;justify-content:space-between;gap:20px;font-weight:700;letter-spacing:.06em}}
 .section{{padding:65px clamp(20px,5vw,90px)}}.section-heading{{max-width:680px}}.section-heading p{{color:var(--muted)}}.cards{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:36px}}
 .card{{border:1px solid var(--line);background:var(--card);padding:clamp(23px,3.4vw,49px);border-radius:14px;min-height:220px}}.card p{{max-width:50ch;color:var(--muted)}}.card a{{font-size:.93rem;font-weight:700;text-underline-offset:4px}}
 .about{{background:var(--card);padding:70px clamp(20px,5vw,90px);border-top:1px solid var(--line)}}.about p{{max-width:65ch;color:var(--muted)}}.foot{{padding:34px clamp(20px,5vw,90px);display:flex;justify-content:space-between;gap:22px;flex-wrap:wrap;border-top:1px solid var(--line);color:var(--muted);font-size:.86rem}}
 .inner-head{{padding:75px clamp(20px,5vw,90px);background:var(--card);border-bottom:1px solid var(--line)}}.inner-head h1{{max-width:13ch}}.inner-head p{{max-width:65ch}}.inner-body{{padding:55px clamp(20px,5vw,90px) 95px;max-width:1100px}}.article{{padding:27px 0;border-top:1px solid var(--line)}}.article p{{max-width:74ch;color:var(--muted)}}.qa{{padding:19px 0;border-bottom:1px solid var(--line)}}.qa summary{{cursor:pointer;font-weight:750}}.qa p{{max-width:65ch;color:var(--muted)}}
-/* 16 genuinely distinct visual grammars: hierarchy, composition and grid, not just palette. */
 .layout-terminal .hero,.layout-documentation .hero{{grid-template-columns:1.12fr .88fr}}.layout-terminal .hero{{background:linear-gradient(130deg,var(--paper),var(--card))}}.layout-terminal .card{{border-radius:2px;border-left:4px solid var(--highlight)}}
 .layout-dashboard .hero{{min-height:480px}}.layout-dashboard .cards{{grid-template-columns:repeat(4,minmax(0,1fr))}}.layout-dashboard .card{{padding:25px;min-height:255px}}
 .layout-documentation .hero{{grid-template-columns:.8fr 1.2fr;min-height:480px}}.layout-documentation .card{{border-left:5px solid var(--highlight);border-radius:0}}
@@ -291,8 +285,95 @@ h1,h2,h3{{font-family:var(--font);letter-spacing:-.055em;line-height:1.08}}h1{{f
 .layout-museum .hero{{grid-template-columns:1fr 1fr}}.layout-museum .visual{{border:22px solid var(--line);border-radius:0}}.layout-museum .card{{border-radius:0;border-bottom:4px solid var(--highlight)}}
 @media(max-width:1100px){{.layout-dashboard .cards{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
 @media(max-width:760px){{.top{{align-items:flex-start;flex-direction:column}}.hero,.layout-terminal .hero,.layout-documentation .hero,.layout-editorial .hero,.layout-modern .hero,.layout-dashboard .hero,.layout-research .hero,.layout-workshop .hero,.layout-gallery .hero,.layout-architecture .hero,.layout-cafe .hero,.layout-food .hero,.layout-nature .hero,.layout-coastal .hero,.layout-museum .hero{{grid-template-columns:1fr;min-height:0;padding:42px 22px}}.layout-modern .card:nth-child(2n){{transform:none}}.hero h1{{font-size:clamp(2.6rem,10vw,4.7rem)}}.cards,.layout-dashboard .cards{{grid-template-columns:1fr}}.section,.about,.inner-body,.inner-head{{padding:40px 22px}}.strip{{padding:12px 22px;flex-wrap:wrap}}.visual{{min-height:0}}}}
+.feature{{margin:0 clamp(20px,5vw,90px);padding:35px clamp(18px,4vw,62px);border:1px solid var(--line);border-top:5px solid var(--highlight);background:var(--card);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.4fr);gap:10px 38px;align-items:start}}
+.feature .eyebrow{{grid-row:span 2;margin:7px 0}}
+.feature blockquote{{font-family:var(--font);font-size:clamp(1.3rem,2.7vw,2.55rem);line-height:1.35;letter-spacing:-.025em;margin:0}}
+.feature a,.next-link{{color:var(--ink);text-underline-offset:5px;font-weight:700}}
+.feature a{{grid-column:2}}
+.article{{scroll-margin-top:35px;padding:43px 0 53px}}
+.article h2{{max-width:27ch}}
+.reading-index{{display:block;padding:22px 26px 18px;margin:0 0 35px;border:1px solid var(--line);border-left:4px solid var(--highlight);border-radius:10px;background:var(--card)}}
+.reading-index strong{{display:block;margin:0 0 12px;font:700 1rem var(--font)}}
+.reading-index ol{{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px;padding:0;margin:0}}
+.reading-index li{{min-width:0;overflow-wrap:anywhere}}
+.reading-index a{{font-size:.96rem;font-weight:600;line-height:1.5;text-decoration-thickness:1px;text-underline-offset:4px}}
+@media(max-width:600px){{.reading-index{{padding:20px}}.reading-index ol{{grid-template-columns:1fr;gap:12px}}}}
 @media(prefers-reduced-motion:reduce){{html{{scroll-behavior:auto}}}}
-'''.encode('utf-8')
+@media print{{:root{{--paper:#fff;--ink:#111;--muted:#333;--card:#fff;--line:#bbb;--highlight:#333}}html{{scroll-behavior:auto}}body{{background:#fff;color:#111;font:12pt/1.45 Georgia,serif}}.top,.foot,.skip,.visual,.reading-index,.strip,.back-to-index,.next-link,.cta{{display:none!important}}.page{{max-width:none;overflow:visible}}.inner-head,.inner-body,.section,.hero,.feature,.about{{padding:0!important;margin:0!important}}.cards{{display:block}}.card,.article{{break-inside:avoid;page-break-inside:avoid;box-shadow:none!important}}a{{color:#111;text-decoration:none}}}}
+.article:target{{outline:2px solid var(--highlight);outline-offset:12px;border-radius:4px}}
+.back-to-index{{margin-left:1.2em;font-weight:600;text-underline-offset:4px}}
+.article p{{font-size:1.05rem;line-height:1.85}}
+.article p:first-of-type{{font-size:1.18rem;color:var(--ink);max-width:70ch}}
+.card{{display:flex;flex-direction:column;align-items:flex-start}}
+.card h3{{margin-bottom:0}}
+.card a{{margin-top:auto;padding-top:15px}}
+.composition-index .hero{{grid-template-columns:1fr 1fr}}
+.composition-index .card:first-child{{grid-column:span 2;display:grid;grid-template-columns:110px 1fr;align-content:center}}
+.composition-index .card:first-child p,.composition-index .card:first-child a{{grid-column:2}}
+.composition-folio .hero{{grid-template-columns:1.28fr .72fr;min-height:530px}}
+.composition-folio .hero h1{{max-width:14ch}}
+.composition-folio .feature{{border:0;border-left:7px solid var(--highlight);background:transparent}}
+.composition-folio .cards{{grid-template-columns:repeat(4,minmax(0,1fr));gap:0}}
+.composition-folio .card{{border-radius:0;border-right:0;padding:27px}}
+.composition-folio .card:last-child{{border-right:1px solid var(--line)}}
+.composition-folio .card h3{{font-size:1.5rem}}
+.composition-cover .hero{{display:flex;flex-direction:column;text-align:center;gap:15px;padding-top:70px}}
+.composition-cover .hero-copy{{max-width:1050px}}
+.composition-cover .visual{{width:min(100%,1060px);min-height:0}}
+.composition-cover .hero h1{{font-size:clamp(3.3rem,8vw,8.5rem)}}
+.composition-cover .feature{{grid-template-columns:1fr;max-width:1040px;margin:0 auto}}
+.composition-cover .feature .eyebrow,.composition-cover .feature a{{grid-column:1}}
+.composition-cover .cards{{grid-template-columns:1.2fr .8fr}}
+.composition-cover .card:first-child{{grid-row:span 2}}
+.composition-cover .card:last-child{{grid-column:span 2}}
+.composition-ledger .hero{{grid-template-columns:.7fr 1.3fr;gap:0;min-height:500px}}
+.composition-ledger .visual{{order:-1;border-radius:0}}
+.composition-ledger .hero-copy{{padding:20px clamp(15px,3vw,70px)}}
+.composition-ledger .feature{{border-left:7px solid var(--highlight);border-top:1px solid var(--line)}}
+.composition-ledger .cards{{grid-template-columns:repeat(2,minmax(0,1fr));gap:0}}
+.composition-ledger .card{{border-radius:0}}
+.composition-studio .hero{{grid-template-columns:1fr 1fr;align-items:stretch;padding-top:42px;padding-bottom:42px}}
+.composition-studio .hero-copy{{align-self:center}}
+.composition-studio .visual{{border-radius:50% 12% 45% 12%}}
+.composition-studio .cards{{grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}}
+.composition-studio .card{{padding:26px;border-radius:32px 5px 32px 5px}}
+.composition-studio .card h3{{font-size:1.45rem}}
+.composition-archive .hero{{grid-template-columns:1.15fr .85fr;min-height:500px}}
+.composition-archive .hero h1{{font-size:clamp(3rem,6vw,6rem)}}
+.composition-archive .visual{{border-radius:0;border:13px solid var(--line)}}
+.composition-archive .feature{{display:block;padding:30px max(22px,6vw);background:transparent}}
+.composition-archive .feature blockquote{{margin:13px 0 10px;max-width:32ch}}
+.composition-archive .cards{{grid-template-columns:1fr 1fr}}
+.composition-archive .card:nth-child(odd){{border-left:6px solid var(--highlight)}}
+@media(max-width:1150px){{.composition-folio .cards,.composition-studio .cards{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
+@media(max-width:760px){{
+ .feature,.composition-cover .feature{{margin:0 18px;padding:24px;display:block}}
+ .feature blockquote{{font-size:1.38rem;margin:15px 0}}
+ .composition-folio .hero,.composition-cover .hero,.composition-ledger .hero,.composition-studio .hero,.composition-archive .hero,.composition-index .hero{{display:flex;flex-direction:column;min-height:0;padding:35px 22px;gap:15px;text-align:left}}
+ .composition-ledger .visual{{order:0}}
+ .composition-ledger .hero-copy{{padding:0}}
+ .composition-cover .hero h1{{font-size:clamp(2.6rem,10vw,4.6rem)}}
+ .composition-folio .cards,.composition-cover .cards,.composition-ledger .cards,.composition-studio .cards,.composition-archive .cards,.composition-index .cards{{display:grid;grid-template-columns:1fr;gap:15px}}
+ .composition-index .card:first-child,.composition-cover .card:first-child,.composition-cover .card:last-child{{grid-column:auto;grid-row:auto;display:flex}}
+ .composition-index .card:first-child p,.composition-index .card:first-child a{{grid-column:auto}}
+ .composition-folio .card{{border-right:1px solid var(--line)}}
+ .composition-studio .card,.composition-folio .card{{padding:24px}}
+ .composition-cover .visual{{width:100%}}
+}}
+@media(prefers-reduced-motion:reduce){{html{{scroll-behavior:auto}}}}
+
+.composition-index .inner-body .article{{border-top:0;border-left:4px solid var(--highlight);margin:0 0 30px;padding:25px 30px;background:var(--card)}}
+.composition-folio .inner-body .article{{display:grid;grid-template-columns:105px minmax(0,1fr);gap:0 20px}}
+.composition-folio .inner-body .article .index{{grid-column:1;grid-row:1/7;padding-top:12px}}
+.composition-folio .inner-body .article h2,.composition-folio .inner-body .article p{{grid-column:2}}
+.composition-cover .inner-body .article h2{{font-size:clamp(2.5rem,5vw,4.8rem);max-width:15ch}}
+.composition-cover .inner-body .article{{padding:55px 0}}
+.composition-ledger .inner-body .article{{border-top:0;border-left:3px solid var(--highlight);padding:20px 24px;margin-bottom:36px}}
+.composition-studio .inner-body .article{{background:var(--card);padding:28px;border:1px solid var(--line);border-radius:22px;margin-bottom:24px}}
+.composition-archive .inner-body .article{{border-top:2px double var(--highlight);padding:35px 8% 55px}}
+.composition-archive .inner-body .article .index{{font-family:Georgia,serif;font-style:italic}}
+@media(max-width:760px){{.composition-folio .inner-body .article{{display:block}}.composition-folio .inner-body .article .index{{padding-top:0}}.composition-index .inner-body .article,.composition-ledger .inner-body .article,.composition-studio .inner-body .article,.composition-archive .inner-body .article{{padding:24px 16px}}}}
+'''.encode('utf-8') + IDENTITY_CSS + (WORKBOOK_CSS if theme.name in CATALOG_WORKBOOKS else b'') + editorial_css(theme)
 
 
 def _nav(spec):
@@ -301,78 +382,51 @@ def _nav(spec):
                    (('index.html', 'home'), ('journal.html', 'journal'), ('about.html', 'about'), ('questions.html', 'questions')))
 
 
-# Each subject gets its own short editorial lead. Editorial tone varies by
-# discipline (technical, craft, cuisine, travel, arts, learning) and by article.
-# These are explanatory briefs, not invented customer stories or reviews.
-TOPIC_CONTEXT_RU = (
-    ('Отправная точка — наблюдаемые свойства системы и проверяемый результат.',
-     'Разбираем, какие детали делают техническое решение понятным и воспроизводимым.',
-     'Сравниваем поведение компонентов в разных условиях без громких обещаний.',
-     'Фиксируем критерии качества и вопросы для следующей проверки.'),
-    ('Начинаем с фактуры, формы и того, как материал ведёт себя в работе.',
-     'Смотрим на композицию через пропорции, цвет и контраст деталей.',
-     'Исследуем небольшие изменения, которые делают предмет выразительнее.',
-     'Отмечаем особенности ручной работы и бережного обращения с материалом.'),
-    ('Обращаем внимание на происхождение продуктов и порядок приготовления.',
-     'Изучаем сочетания вкусов и роль температуры в привычной кухне.',
-     'Записываем, как меняются аромат, текстура и цвет во времени.',
-     'Собираем повседневные наблюдения, которые легко повторить дома.'),
-    ('Смотрим на ландшафт через погоду, сезон и ритм маршрута.',
-     'Отмечаем ориентиры и особенности местности без претензии на путеводитель.',
-     'Обсуждаем, как наблюдать природу и не мешать её обитателям.',
-     'Подводим итог прогулки в коротком дневнике впечатлений.'),
-    ('Изучаем форму произведения, его контекст и историю восприятия.',
-     'Обращаем внимание на незаметные детали, которые создают атмосферу.',
-     'Сопоставляем материал, ритм и выразительные приёмы.',
-     'Предлагаем новый ракурс для самостоятельного наблюдения.'),
-    ('Разбиваем сложный процесс на понятные небольшие этапы.',
-     'Выделяем основные определения, примеры и практические ограничения.',
-     'Проверяем, какие наблюдения действительно помогут принять решение.',
-     'Собираем короткий перечень вопросов для следующего шага.'),
-)
-TOPIC_CONTEXT_EN = (
-    ('We look for observable behavior and a result that can be checked.',
-     'A short study of details that make a technical decision explainable.',
-     'Comparing components in different conditions without sweeping promises.',
-     'A practical checklist of questions for the next review.'),
-    ('Starting with material, surface and the shape of everyday objects.',
-     'A closer look at proportion, light and the quiet details of composition.',
-     'Small shifts in craft and presentation can change the whole impression.',
-     'A note about process, materials and careful handling.'),
-    ('Following ingredients, origin and the steps of preparation.',
-     'Examining the relationship between heat, texture and flavor.',
-     'A short note on changing color, aroma and consistency.',
-     'Observations that can be repeated at a home table.'),
-    ('Reading the landscape through weather, season and route.',
-     'Considering landmarks and the shape of a journey.',
-     'Observing nature carefully without disturbing its rhythms.',
-     'Recording what stood out during a slow walk.'),
-    ('Understanding form, context and the experience of an artwork.',
-     'Following overlooked details that create atmosphere.',
-     'Comparing rhythm, material and expressive technique.',
-     'A fresh way to look, listen and take notes.'),
-    ('Breaking a complicated process into understandable steps.',
-     'Defining examples, terms and practical boundaries.',
-     'Identifying which observations matter before choosing a direction.',
-     'Collecting a concise set of next questions.'),
-)
+# The article's first paragraph comes from site_editorial and the second from
+# hand-edited subject notes, not the old shared group-level paragraph pool.
+# The final short exercise is theme- and subject-specific, without any fabricated
+# interviews, business activity, results or external sources.
+
+
+# Six treatments vary the composition independently of the sixteen topical
+# visual families. They are deterministic for a site and remain stable on a
+# theme switch/re-render; they do not require scripts, fonts or remote assets.
+COMPOSITIONS = ('index', 'folio', 'cover', 'ledger', 'studio', 'archive')
+
+
+def composition(spec):
+    return COMPOSITIONS[(int(spec.name.split('-', 1)[0]) - 13) % len(COMPOSITIONS)]
 
 
 def article_copy(spec, index):
-    number = int(spec.name.split('-', 1)[0])
-    group = min(5, max(0, (number - 13) // 10)) if number <= 72 else min(5, (number - 73) // 6)
-    context = (TOPIC_CONTEXT_EN if spec.language == 'en' else TOPIC_CONTEXT_RU)[group][index]
-    subject = spec.subjects[index]
-    if spec.language == 'en':
-        return f'{subject}. {context} {spec.description}'
-    return f'{subject}. {context} {spec.description}'
+    """Return three independently edited, subject-specific article paragraphs.
+
+    Text is authored in three sources, rather than composed from a recycled
+    four-paragraph practice template with a substituted subject title.
+    """
+    if spec.name not in FIELD_GUIDES or index not in range(4):
+        raise ValueError('no field guide for article')
+    lead = EDITORIAL_NOTES[spec.name][index]
+    if not lead.endswith(('.', '!', '?')):
+        lead += '.'
+    return (lead, FIELD_GUIDES[spec.name][index], SITE_PRACTICE[spec.name][index])
 
 
-def shell(spec, page, heading, body, description):
+def article_anchor(index):
+    if index not in range(4):
+        raise ValueError('bad article index')
+    return f'story-{index + 1}'
+
+
+def shell(spec, page, heading, body, description, domain):
     words=ui(spec)
     seed=hashlib.sha256((spec.name+page).encode()).digest()
     # Metadata never contains a made-up address or links to a third-party.
     title=e(spec.title + ' — ' + heading)
+    raw_title = spec.title + ' — ' + heading
+    metadata = (not_found_head() if page == '404' else public_head(
+        domain=domain, route='' if page == 'index' else page + '.html',
+        site_name=spec.title, title=raw_title, description=description))
     description=e(description)
     logo=e(spec.emblem)
     stylesheet='style.css'  # relative for offline previews and valid at /journal.html
@@ -381,18 +435,49 @@ def shell(spec, page, heading, body, description):
     # syntax requires Python 3.12+, while the supported CI includes 3.10/3.11.
     color_scheme = 'dark' if spec.layout in ('terminal','dashboard','gallery','luxury','museum') else 'light'
     head=(f'<!doctype html>\n<html lang="{spec.language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-          f'<meta name="description" content="{description}"><meta name="color-scheme" content="{color_scheme}">'
+          f'{metadata}<meta name="color-scheme" content="{color_scheme}">'
           f'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'self\'; img-src \'self\'; base-uri \'none\'; form-action \'none\'">'
-          f'<title>{title}</title><link rel="stylesheet" href="{stylesheet}"><link rel="icon" href="favicon.svg" type="image/svg+xml"></head><body class="layout-{spec.layout}"><div class="page">'
-          f'<a class="skip" href="#main">{e(words["read"])}</a><header class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true">{logo}</span>{e(spec.title)}</a>'
+          f'<title>{title}</title><link rel="stylesheet" href="{stylesheet}"><link rel="icon" href="favicon.svg" type="image/svg+xml"></head><body class="layout-{spec.layout} composition-{composition(spec)} direction-{DIRECTIONS[spec.name].editorial}"><div class="page">'
+          f'<a class="skip" href="#main">{e(words["skip"])}</a><header class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true">{logo}</span>{e(spec.title)}</a>'
           f'<nav aria-label="{e(words["journal"])}">{_nav(spec)}</nav></header>')
     if page == 'index':
-        hero=f'<section class="hero"><div class="hero-copy"><p class="eyebrow">{e(spec.category)} / {e(spec.layout.replace("-"," "))}</p><h1>{e(spec.headline)}</h1><p class="lead">{e(spec.description)}</p><a class="cta" href="journal.html">{e(words["more"])}</a></div><div class="visual">{art_html}</div></section>'
-        blocks=''.join(f'<article class="card"><span class="index">0{i+1}</span><h3>{e(t)}</h3><p>{e(spec.description)}</p><a href="journal.html">{e(words["read"])}</a></article>' for i,t in enumerate(spec.subjects))
-        main=f'<main id="main">{hero}<div class="strip"><span>{e(spec.category)}</span><span>{e(words["description"])}</span></div><section class="section"><div class="section-heading"><p class="eyebrow">{e(words["latest"])}</p><h2>{e(words["journal"])}</h2><p>{e(spec.description)}</p></div><div class="cards">{blocks}</div></section><section class="about"><h2>{e(words["about"])}</h2><p>{e(words["independent"])}</p><a class="cta" href="about.html">{e(words["read"])}</a></section></main>'
+        focus = article_copy(spec, 0)[0]
+        hero=(f'<section class="hero hero-expanded"><div class="hero-copy"><p class="eyebrow">{e(spec.category)}</p>'
+              f'<h1>{e(spec.headline)}</h1><p class="lead">{e(spec.description)}</p>'
+              f'<a class="cta" href="journal.html#{article_anchor(0)}">{e(words["more"])}</a>'
+              + (f'<a class="workbook-jump" href="journal.html#practical-guide">{e(WORKBOOKS[spec.name].title)}</a>'
+                 if spec.name in CATALOG_WORKBOOKS else '') + '</div>'
+              f'<div class="visual">{art_html}</div>{hero_outline(spec)}</section>')
+        blocks=''.join(
+            f'<article class="card"><span class="index">{i + 1:02d} / {e(spec.category)}</span>'
+            f'<h3>{e(subject)}</h3><p>{e(article_copy(spec, i)[0])}</p>'
+            f'<a href="journal.html#{article_anchor(i)}">{e(words["read"])}</a></article>'
+            for i, subject in enumerate(spec.subjects))
+        focus_title = 'Заметка выпуска' if spec.language == 'ru' else 'From the edition'
+        resource = homepage_resource(spec, FIELD_GUIDES[spec.name], SITE_PRACTICE[spec.name])
+        strip = f'<div class="strip"><span>{e(spec.category)}</span><span>{e(spec.title)}</span></div>'
+        feature = (f'<section class="feature"><p class="eyebrow">{e(focus_title)}</p>'
+                   f'<blockquote>{e(focus)}</blockquote><a href="journal.html#{article_anchor(0)}">{e(spec.subjects[0])}</a></section>')
+        section = (f'<section class="section"><div class="section-heading"><p class="eyebrow">{e(words["latest"])}</p>'
+                   f'<h2>{e(words["journal"])}</h2><p>{e(spec.description)}</p></div>'
+                   f'<div class="cards">{blocks}</div></section>')
+        about = (f'<section class="about"><h2>{e(words["about"])}</h2>'
+                 f'<p>{e(words["independent"])}</p><a class="cta" href="about.html">{e(words["read"])}</a></section>')
+        # Reorder whole reading sections by use case. The editions differ in
+        # information hierarchy, rather than only a palette / font family.
+        hierarchy = {
+            'manual': (resource, section, feature, about),
+            'laboratory': (resource, feature, section, about),
+            'folio': (feature, section, resource, about),
+            'studio': (section, resource, feature, about),
+            'exhibition': (feature, resource, section, about),
+            'kitchen': (resource, section, about, feature),
+            'field': (resource, feature, section, about),
+        }[architecture(spec)]
+        main = '<main id="main">' + hero + strip + ''.join(hierarchy) + home_panel(spec.name, spec.language) + '</main>'
     else:
         main=f'<main id="main"><section class="inner-head"><p class="eyebrow">{e(spec.category)} / {e(words["journal"])}</p><h1>{e(heading)}</h1><p class="lead">{description}</p></section><div class="inner-body">{body}</div></main>'
-    foot=f'<footer class="foot"><span>{e(spec.title)} · 2026 · {e(words["independent"])}</span><a href="sitemap.xml">{e(words["sitemap"])}</a></footer></div></body></html>\n'
+    foot=f'<footer class="foot"><span>{e(spec.title)} · {e(spec.category)}</span><a href="sitemap.xml">{e(words["sitemap"])}</a></footer></div></body></html>\n'
     return (head+main+foot).encode('utf-8')
 
 
@@ -413,23 +498,59 @@ def render(name, domain='preview.example.test', rich=True):
         return render_signature(name, domain)
     spec=THEMES[name]
     labels=ui(spec)
-    items=''.join(f'<article class="article"><span class="index">0{i+1} / {e(spec.category)}</span><h2>{e(title)}</h2>'
-                  f'<p>{e(article_copy(spec, i))}</p><p>{e(labels["independent"])}</p></article>' for i, title in enumerate(spec.subjects))
-    about=(f'<h2>{e(spec.title)}</h2><p>{e(spec.description)}</p><p>{e(labels["not_a_service"])}</p><p>{e(labels["privacy"])}</p>')
-    qas=((labels['how'],labels['how_answer']),(labels['data'],labels['data_answer']),(labels['fresh'],labels['fresh_answer']))
+    items=''.join(
+        f'<article class="article" id="{article_anchor(i)}"><span class="index">{i + 1:02d} / {e(spec.category)}</span>'
+        f'<h2>{e(title)}</h2>' + ''.join(f'<p>{e(paragraph)}</p>' for paragraph in article_copy(spec, i))
+        + f'<p><a class="next-link" href="#{article_anchor((i + 1) % 4)}">'
+        + e(spec.subjects[(i + 1) % 4]) + '</a>'        + f'<a class="back-to-index" href="#reading-top">{e("К содержанию" if spec.language == "ru" else "Back to contents")}</a></p></article>'
+        for i, title in enumerate(spec.subjects))
+    # A real in-page reading index: no new routes, scripts or external assets.
+    # Link and target integrity is covered by site_audit.check_links().
+    reading_index = (f'<nav class="reading-index" id="reading-top" aria-label="{e(labels["contents"])}">'
+                     f'<strong>{e(labels["contents"])}</strong><ol>'
+                     + ''.join(f'<li><a href="#{article_anchor(i)}">{e(subject)}</a></li>'
+                               for i, subject in enumerate(spec.subjects))
+                     + (f'<li><a href="#practical-guide">{e(WORKBOOKS[spec.name].title)}</a></li>'
+                        if spec.name in CATALOG_WORKBOOKS else '') + '</ol></nav>')
+    about=(f'<h2>{e(spec.title)}</h2><p>{e(spec.description)}</p>'
+           f'<p>{e(EDITORIAL_NOTES[spec.name][1])}.</p>'
+           f'<p>{e(labels["privacy"])}</p>' + about_practice(spec, SITE_PRACTICE[spec.name]) + about_panel(spec.name, spec.language))
+    # Substantive, subject-specific questions rather than 96 copies of the same
+    # generic 'How is this site organized?' FAQ. Every answer comes from its own
+    # existing reviewed article; privacy statements remain on the About page.
+    # Preserve the r47 subject-in-question contract for accessibility and
+    # navigation, while keeping all 288 individually authored question bodies.
+    questions = tuple(f'{subject}: {question}' for subject, question
+                      in zip(spec.subjects[:3], SITE_QUESTIONS[spec.name]))
+    qas = tuple(zip(questions, (
+        article_copy(spec, 0)[0], article_copy(spec, 1)[1],
+        article_copy(spec, 2)[2],
+    )))
+    if spec.language == 'ru':
+        questions_description = (f'Ответы о «{spec.subjects[0]}», «{spec.subjects[1]}» '
+                                 f'и практические материалы издания {spec.title}.')
+        about_description = f'{spec.title}: {spec.description}'
+        journal_description = (f'Материалы о «{spec.subjects[0]}», «{spec.subjects[1]}» '
+                               f'и других темах издания {spec.title}.')
+    else:
+        questions_description = (f'Answers on {spec.subjects[0].lower()}, '
+                                 f'{spec.subjects[1].lower()} and related reading from {spec.title}.')
+        about_description = f'About {spec.title}: {spec.description}'
+        journal_description = (f'Reading notes on {spec.subjects[0].lower()}, '
+                               f'{spec.subjects[1].lower()} and more from {spec.title}.')
     qa=''.join(f'<details class="qa"><summary>{e(q)}</summary><p>{e(answer)}</p></details>' for q,answer in qas)
     # All pages have same stable local links, no extra assets or dynamic backend.
     result={
-      'index.html':shell(spec,'index',spec.headline,'',spec.description),
+      'index.html':shell(spec,'index',spec.headline,'',spec.description,domain),
       'style.css':css(spec),
-      '404.html':shell(spec,'404',labels['not_found'],f'<p>{e(labels["not_found"])}</p><p><a href="index.html">{e(labels["back"])}</a></p>',spec.description),
+      '404.html':shell(spec,'404',labels['not_found'],f'<p>{e(labels["not_found"])}</p><p><a href="index.html">{e(labels["back"])}</a></p>',spec.description,domain),
       'favicon.svg':favicon(spec),
     }
     if rich:
         result.update({
-          'journal.html':shell(spec,'journal',labels['journal'],items,spec.description),
-          'about.html':shell(spec,'about',labels['about'],about,spec.description),
-          'questions.html':shell(spec,'questions',labels['questions'],qa,spec.description),
+          'journal.html':shell(spec,'journal',labels['journal'],exhibit(spec)+reading_index+items+journal_companion(spec.name, spec.language, spec.subjects)+render_workbook(spec.name,spec.language),journal_description,domain),
+          'about.html':shell(spec,'about',labels['about'],about,about_description,domain),
+          'questions.html':shell(spec,'questions',labels['questions'],qa+questions_panel(spec.name, spec.language),questions_description,domain),
           'robots.txt':f'User-agent: *\nAllow: /\nSitemap: https://{domain}/sitemap.xml\n'.encode('ascii'),
           'sitemap.xml':('<?xml version="1.0" encoding="utf-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+
                          ''.join(f'<url><loc>https://{domain}/{p}</loc></url>' for p in ('',)+PAGES)+'</urlset>\n').encode('utf-8')

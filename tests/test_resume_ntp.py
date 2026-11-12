@@ -169,7 +169,9 @@ class ResumeNtpTests(unittest.TestCase):
         self.assertLess(main.index('flock -n 9'), main.index('&& vk_check_202_ntp_resume'))
         self.assertLess(main.index('sha256sum --check --quiet MANIFEST.sha256'),
                         main.index('> "$STATE/install-version.tmp"'))
-        self.assertIn('if [[ -z "$RESUME_FROM" ]]; then printf', main)
+        self.assertLess(main.index('sha256sum --check --quiet MANIFEST.sha256'),
+                        main.index('touch "$STATE/owned-installation"'))
+        self.assertEqual(main.count('touch "$STATE/owned-installation"'), 1)
 
     def test_normal_cross_version_refusal_is_preserved(self):
         main = SCRIPT.split('vkarmani_main() {', 1)[1]

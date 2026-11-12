@@ -31,7 +31,9 @@ class CoverTests(unittest.TestCase):
     def test_render_is_deterministic_small_static_and_domain_safe(self):
         data,assets=self.m.render('node.example.test')
         self.assertEqual((data,assets),self.m.render('node.example.test'))
-        self.assertIn('Сайт в разработке.'.encode(),data)
+        self.assertIn('редакционные заметки'.encode(), data.lower())
+        self.assertNotIn('Сайт в разработке.'.encode(), data)
+        self.assertNotIn('демонстрационный макет'.encode(), data.lower())
         self.assertLess(sum(map(len,assets.values()))+len(data),15000)
         self.assertNotRegex(data.decode(),r'(?i)<(?:script|iframe|form)\b|https?://|x-instance|remnawave|vless')
         for name,body in assets.items():

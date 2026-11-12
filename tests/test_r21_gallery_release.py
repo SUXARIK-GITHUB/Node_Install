@@ -37,15 +37,19 @@ class Gallery(unittest.TestCase):
         page=GalleryHTML()
         page.feed(html.decode('utf-8'))
         self.assertFalse(page.bad)
-        self.assertEqual(len(page.links),123)  # 120 site cards plus 3 reviewed visual QA links
+        qa_links = {'visual-review-desktop-r57.jpg', 'visual-review-mobile-r57.jpg',
+                    'visual-review-index-r57.json', 'visual-review-journal-desktop-r57.jpg',
+                    'visual-review-journal-mobile-r57.jpg', 'visual-review-journal-r57.json',
+                    'visual-review-narrow-r57.jpg', 'visual-review-tablet-r57.jpg'}
+        self.assertEqual(len(page.links),120+len(qa_links))  # local QA evidence and 120 cards
         self.assertEqual(len(page.images),120)
-        self.assertEqual(len(set(page.links)),123)
+        self.assertEqual(len(set(page.links)),120+len(qa_links))
         self.assertEqual(len(set(page.images)),120)
         here=ROOT/'preview/site-gallery'
-        for link in page.links[:3]:
-            self.assertIn(link,('visual-review-desktop.jpg','visual-review-mobile.jpg','visual-review-r23.json'))
+        self.assertEqual(set(page.links[:len(qa_links)]), qa_links)
+        for link in qa_links:
             self.assertTrue((here/link).is_file(),link)
-        for link in page.links[3:]+page.images:
+        for link in page.links[len(qa_links):]+page.images:
             self.assertRegex(link,r'^\.\./\.\./(?:site-catalog|cover-variants)/[a-z0-9-]+/(?:index\.html|favicon\.svg)$')
             file=(here/link).resolve()
             self.assertTrue(file.is_relative_to(ROOT))

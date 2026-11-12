@@ -25,6 +25,17 @@ BASE = frozenset(('index.html', 'style.css', '404.html', 'favicon.svg'))
 RICH = BASE | frozenset(PAGES) | frozenset(('robots.txt', 'sitemap.xml'))
 BAD_HTML = re.compile(r'(?i)<\s*(?:script|iframe|form|object|embed|base|meta\s+http-equiv\s*=\s*["\']refresh)\b')
 BAD_CSS = re.compile(r'(?i)@import\b|url\s*\(|expression\s*\(')
+# Public bundles must not disclose internal tooling, transport or hosting details.
+# Check only the bytes actually published; private maintainers' docs are not sites.
+PUBLIC_TECH = re.compile(
+    r'(?i)(?<![\w])(?:vpn|vless|xray|reality|remnawave|wireguard|openvpn|'
+    r'xhttp|selfsteal|vkarmani|node[_-]?install|asn|dpi|tspu|rkn|proxy)(?![\w])'
+    r'|впн|тспу|ркн|прокси|обход[а-яё\s-]{0,12}блокиров')
+HTML_COMMENT = re.compile(r'<!--[\s\S]*?-->')
+CSS_COMMENT = re.compile(r'/\*[\s\S]*?\*/')
+# Narrow public-content regression gate; don't confuse legitimate design-topic
+# words (prototype, example) with evidence that a site is a placeholder.
+PLACEHOLDER = re.compile(r'(?i)демонстрационных и справочных целях|\bознакомительный характер\b|\bsmall editorial demonstration\b|\bfictional independent creative journal\b|\bthis is a test vpn\b|\bсайт в разработке\b|\bскоро открытие\b|\bдемонстрационная коллекция\b')
 
 
 class Page(HTMLParser):
@@ -37,9 +48,21 @@ class Page(HTMLParser):
         self.nav = False
         self.csp = False
         self.viewport = False
+        self.skip_links = []
+        self.language = None
+        self.canonicals = []
+        self.og = {}
+        self.descriptions = []
+        self.robots = []
+        self.title_open = False
+        self.title_text = []
 
     def handle_starttag(self, tag, attrs):
         d = dict(attrs)
+        if tag == 'html':
+            self.language = d.get('lang')
+        if tag == 'a' and 'skip' in d.get('class', '').split():
+            self.skip_links.append(d.get('href'))
         if 'id' in d:
             if d['id'] in self.ids:
                 raise ValueError('DUPLICATE_ID')
@@ -47,16 +70,35 @@ class Page(HTMLParser):
         self.main |= tag == 'main'
         self.nav |= tag == 'nav'
         self.title |= tag == 'title'
+        if tag == 'title':
+            self.title_open = True
+        is_canonical = (tag == 'link' and 'canonical' in d.get('rel', '').split())
+        if is_canonical:
+            self.canonicals.append(d.get('href'))
         if tag == 'meta':
+            if d.get('name') == 'description':
+                self.descriptions.append(d.get('content'))
+            if d.get('name') == 'robots':
+                self.robots.append(d.get('content'))
+            if d.get('property', '').startswith('og:'):
+                self.og.setdefault(d['property'], []).append(d.get('content'))
             self.viewport |= d.get('name') == 'viewport'
             self.csp |= (d.get('http-equiv') == 'Content-Security-Policy' and
                          "default-src 'none'" in d.get('content', ''))
         for field in ('href', 'src', 'action'):
-            if field in d:
+            if field in d and not (field == 'href' and is_canonical):
                 self.refs.append(d[field])
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
+
+    def handle_data(self, data):
+        if self.title_open:
+            self.title_text.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'title':
+            self.title_open = False
 
 
 def check_links(bundle, documents):
@@ -94,6 +136,14 @@ def audit_bundle(bundle, domain, rich=False):
     for name, content in bundle.items():
         if not isinstance(content, bytes) or not content or len(content) > 128 * 1024:
             raise ValueError(name + ':INVALID_CONTENT_LENGTH')
+    # A failed content gate blocks staging publication before any file writes.
+    for filename, content in bundle.items():
+        public = content.decode('utf-8')
+        if PUBLIC_TECH.search(public):
+            raise ValueError(filename + ':PUBLIC_TECHNICAL_REFERENCE')
+        if (HTML_COMMENT.search(public) or
+                (filename.endswith('.css') and CSS_COMMENT.search(public))):
+            raise ValueError(filename + ':PUBLIC_SOURCE_COMMENT')
     css = bundle['style.css'].decode('utf-8')
     if BAD_CSS.search(css):
         raise ValueError('REMOTE_OR_EXECUTABLE_CSS')
@@ -107,15 +157,47 @@ def audit_bundle(bundle, domain, rich=False):
         body = content.decode('utf-8')
         if BAD_HTML.search(body):
             raise ValueError(name + ':UNSAFE_HTML')
+        if PLACEHOLDER.search(body):
+            raise ValueError(name + ':PUBLIC_PLACEHOLDER_COPY')
         parsed = Page()
         parsed.feed(body)
         parsed.close()
         if not parsed.title or not parsed.viewport or not parsed.csp or not parsed.main:
             raise ValueError(name + ':INCOMPLETE_HTML')
+        if (parsed.skip_links or 'main' in parsed.ids) and (parsed.skip_links != ['#main'] or 'main' not in parsed.ids):
+            raise ValueError(name + ':INVALID_SKIP_LINK')
+        if parsed.language not in ('ru', 'en'):
+            raise ValueError(name + ':INVALID_LANGUAGE')
         if name != '404.html' and not parsed.nav:
             # Existing original single-page cover uses a nav, as do rich pages.
             raise ValueError(name + ':MISSING_NAVIGATION')
         documents[name] = {'page': parsed}
+    # A URL is public only if it is actually served through the reviewed Nginx
+    # allowlist. Reject accidental preview domains, forged cross-domain
+    # canonical/OG entries and duplicates before allowing a site deployment.
+    for name, document in documents.items():
+        page = document['page']
+        if name == '404.html':
+            if page.canonicals or page.og.get('og:url') or 'noindex' not in (page.robots[0] if len(page.robots) == 1 else ''):
+                raise ValueError(name + ':ERROR_PAGE_INDEXING_METADATA')
+            continue
+        path = '' if name == 'index.html' else name
+        expected = f'https://{domain}/{path}'
+        if page.canonicals != [expected]:
+            raise ValueError(name + ':CANONICAL_URL_MISMATCH')
+        if page.og.get('og:url') != [expected]:
+            raise ValueError(name + ':OG_URL_MISMATCH')
+        title = ''.join(page.title_text).strip()
+        if not title or page.og.get('og:title') != [title]:
+            raise ValueError(name + ':OG_TITLE_MISMATCH')
+        if len(page.descriptions) != 1 or not isinstance(page.descriptions[0], str) or not page.descriptions[0].strip():
+            raise ValueError(name + ':MISSING_PAGE_DESCRIPTION')
+        if page.og.get('og:description') != page.descriptions:
+            raise ValueError(name + ':OG_DESCRIPTION_MISMATCH')
+        if page.og.get('og:type') != ['website'] or len(page.og.get('og:site_name', [])) != 1:
+            raise ValueError(name + ':INCOMPLETE_OG_METADATA')
+        if page.robots and any('noindex' in str(x) for x in page.robots):
+            raise ValueError(name + ':PUBLIC_PAGE_NOINDEX')
     check_links(bundle, documents)
     if rich:
         sitemap = bundle['sitemap.xml'].decode('utf-8')

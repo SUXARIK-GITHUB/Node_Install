@@ -8,6 +8,16 @@ allowlist in staging_web_deploy.py. These are not imports of third-party themes.
 """
 from dataclasses import dataclass
 from html import escape
+try:
+    from site_field_guides import SIGNATURE_FIELD_GUIDES
+    from site_workbooks import CSS as WORKBOOK_CSS, render as render_workbook, WORKBOOKS
+    from site_editorial_expansion import home_panel, journal_companion, about_panel, questions_panel
+    from site_metadata import head as public_head, not_found as not_found_head
+except ImportError:
+    from scripts.site_field_guides import SIGNATURE_FIELD_GUIDES
+    from scripts.site_workbooks import CSS as WORKBOOK_CSS, render as render_workbook, WORKBOOKS
+    from scripts.site_editorial_expansion import home_panel, journal_companion, about_panel, questions_panel
+    from scripts.site_metadata import head as public_head, not_found as not_found_head
 
 
 def h(v):
@@ -105,7 +115,7 @@ SIGNATURES = {
              ('Домашний архив', 'Даже небольшая книжная коллекция нуждается в понятной системе названий и мест хранения. Последовательность важнее сложности.'),
              ('Медленное чтение', 'Иногда одной главы достаточно, чтобы увидеть авторский замысел. Пауза полезна, если после неё остаётся наблюдение.')),
             (('Каталог', 'Четыре редакционных темы'), ('Полка', 'Тексты без регистрации'), ('Принцип', 'Порядок и внимание')),
-            (('Можно ли здесь взять книгу?', 'Нет. Читальный зал — информационный макет, без абонемента и учётных записей.'),
+            (('Можно ли здесь взять книгу?', 'Нет, здесь размещены материалы о чтении; выдача книг и учётные записи не предусмотрены.'),
              ('Есть ли внешние библиотеки?', 'Нет, сайт не подключается к сторонним каталогам и не загружает трекеры.'),
              ('Можно ли пользоваться с телефона?', 'Да, страницы адаптируются под небольшие экраны.')),
             'У хорошего текста есть продолжение: то, что читатель замечает уже после закрытой книги.'),
@@ -127,7 +137,7 @@ SIGNATURES = {
              ('Городская сетка', 'Ширина тротуара, ритм дверей и расположение окон влияют на восприятие улицы. Геометрия здесь тесно связана с привычками людей.'),
              ('Бережная фиксация', 'Публичные наблюдения не должны раскрывать личные данные, номера квартир или детали частной жизни прохожих.')),
             (('Объект', 'Улица и архитектура'), ('Источники', 'Открытые наблюдения'), ('Метод', 'Описание без персональных данных')),
-            (('Это официальный городской архив?', 'Нет. Это независимый демонстрационный редакционный проект.'),
+            (('Это официальный городской архив?', 'Нет. Это независимая подборка редакционных заметок о городских материалах.'),
              ('Есть ли в нём фотографии жителей?', 'Нет. Иллюстрации абстрактные и не содержат изображений реальных людей.'),
              ('Можно ли прислать материал?', 'Нет. Форм загрузки файлов и контактных форм здесь нет.')),
             'Порой самую точную историю города рассказывают форма двери и краска на старой стене.'),
@@ -199,6 +209,8 @@ ART = {
  'celestial':'<circle cx="361" cy="239" r="174" fill="none" stroke="var(--accent)" stroke-width="3"/><ellipse cx="360" cy="239" rx="280" ry="98" fill="none" stroke="currentColor" stroke-width="5" transform="rotate(-29 360 239)"/><circle cx="362" cy="239" r="88" fill="var(--soft)"/><circle cx="170" cy="86" r="11" fill="var(--accent)"/><circle cx="577" cy="383" r="17" fill="var(--accent)"/><path d="M95 390L114 390M104 380V400M584 106H617M600 90V122" stroke="currentColor" stroke-width="4"/>',
 }
 
+SKIP_LABEL = {'ru': 'К основному содержимому', 'en': 'Skip to main content'}
+
 LABELS = {
  'ru': ('Главная','Материалы','О проекте','Вопросы','Вернуться на главную','Независимый иллюстративный проект. Не является сервисом для заказа услуг.'),
  'en': ('Home','Stories','About','Questions','Back to home','Independent illustrative editorial project. No customer services or transactions.'),
@@ -206,7 +218,9 @@ LABELS = {
 
 
 def _svg(spec):
-    return (f'<svg class="illustration" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 470" role="img" aria-label="Original illustrated {h(spec.category)} study">'
+    label = (f'Авторская иллюстрация: {spec.category}' if spec.language == 'ru' else
+             f'Original illustrated study: {spec.category}')
+    return (f'<svg class="illustration" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 470" role="img" aria-label="{h(label)}">'
             + ART[spec.mode] + '</svg>')
 
 
@@ -214,7 +228,7 @@ def _main_design(spec):
     cards=''.join(f'<article class="study"><span class="n">0{i+1}</span><h3>{h(t)}</h3><p>{h(text)}</p></article>' for i,(t,text) in enumerate(spec.cards))
     kpis=''.join(f'<li><strong>{h(k)}</strong><span>{h(v)}</span></li>' for k,v in spec.highlights)
     graphics=_svg(spec)
-    intro=f'<div class="story"><p class="kicker">{h(spec.category)}</p><h1>{h(spec.headline)}</h1><p class="lead">{h(spec.description)}</p><a class="cta" href="journal.html">{h(LABELS[spec.language][1])}</a></div>'
+    intro=f'<div class="story"><p class="kicker">{h(spec.category)}</p><h1>{h(spec.headline)}</h1><p class="lead">{h(spec.description)}</p><a class="cta" href="journal.html">{h(LABELS[spec.language][1])}</a><a class="workbook-jump" href="journal.html#practical-guide">{h(WORKBOOKS[spec.name].title)}</a></div>'
     mode=spec.mode
     # Twelve distinct DOM compositions; do not turn the catalogue into 12 skins
     # of one identical hero+cards website.
@@ -226,7 +240,7 @@ def _main_design(spec):
     if mode=='gallery':
         return f'<section class="gallery-title">{intro}</section><div class="gallery-grid"><div class="gallery-image">{graphics}</div><div class="gallery-highlights"><ul>{kpis}</ul></div></div><section class="studies gallery-studies">{cards}</section>'
     if mode=='library':
-        return f'<div class="library-top"><p>THE READING SHELF · 2026</p>{intro}</div><section class="library-plate">{graphics}<ol>{kpis}</ol></section><section class="studies shelf-cards">{cards}</section>'
+        return f'<div class="library-top"><p>THE READING SHELF</p>{intro}</div><section class="library-plate">{graphics}<ol>{kpis}</ol></section><section class="studies shelf-cards">{cards}</section>'
     if mode=='kitchen':
         return f'<section class="kitchen-title"><span class="round-label">SEASON / СЕЗОН</span>{intro}</section><section class="kitchen-visual">{graphics}<ul>{kpis}</ul></section><section class="studies kitchen-studies">{cards}</section>'
     if mode=='hotel':
@@ -246,8 +260,7 @@ def _main_design(spec):
 
 def _css(spec):
     bg, ink, accent, soft, font = PALETTES[spec.mode]
-    common=f'''/* Signature theme {spec.name}: original, no remote resources. */
-:root{{--bg:{bg};--ink:{ink};--accent:{accent};--soft:{soft};--heading:{font}}}
+    common=f''':root{{--bg:{bg};--ink:{ink};--accent:{accent};--soft:{soft};--heading:{font}}}
 *{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,sans-serif}}
 a{{color:inherit}}a:focus-visible,summary:focus-visible{{outline:3px solid var(--accent);outline-offset:4px}}svg{{max-width:100%;height:auto}}.wrap{{max-width:1700px;margin:auto}}
 .skip{{position:absolute;left:-9999px;top:5px;background:var(--accent);color:var(--bg);z-index:100;padding:11px}}.skip:focus{{left:10px}}
@@ -262,6 +275,7 @@ h1,h2,h3{{font-family:var(--heading);line-height:1.08;letter-spacing:-.05em}}h1{
 .longread{{padding:25px 0 35px;border-top:1px solid var(--soft)}}.longread p{{font-size:1.075rem;max-width:78ch}}.body-lead{{font-size:1.18rem;max-width:75ch}}.qa{{padding:22px 0;border-top:1px solid var(--soft)}}.qa summary{{font-size:1.2rem;font-weight:700;cursor:pointer}}.qa p{{max-width:70ch}}.foot{{padding:32px clamp(17px,5vw,85px);border-top:1px solid var(--soft);display:flex;gap:22px;justify-content:space-between;flex-wrap:wrap;font-size:.86rem;opacity:.85}}
 @media(max-width:780px){{.mast{{align-items:flex-start;flex-direction:column}}.studies{{grid-template-columns:1fr;margin:0 17px 48px}}.inner-intro{{padding:50px 17px 26px}}.inner-body{{padding:15px 17px 60px}}.illustration{{max-height:420px}}}}
 @media(prefers-reduced-motion:reduce){{html{{scroll-behavior:auto}}}}
+@media print{{:root{{--bg:#fff;--ink:#111;--accent:#222;--soft:#eee}}html{{scroll-behavior:auto}}body{{background:#fff;color:#111;font:12pt/1.45 Georgia,serif}}.mast,.foot,.skip,.cta,.illustration,.workshop-art,.hotel-poster,.gallery-image,.botanical-art{{display:none!important}}.wrap{{max-width:none}}.inner-intro,.inner-body,.studies,.story,.longread,.study{{margin:0!important;padding:0!important}}.longread,.study{{break-inside:avoid;page-break-inside:avoid}}a{{text-decoration:none;color:#111}}}}
 '''
     specific={
      'workshop':'.workshop-hero{display:grid;grid-template-columns:.95fr 1.05fr;align-items:center;padding:60px 7%;gap:7%}.workshop-art{border:12px solid var(--soft);padding:20px}.workshop-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin:25px 7% 85px;padding:0;list-style:none;border-top:1px solid var(--ink)}.workshop-facts li{padding-top:30px}.workshop-facts strong,.workshop-facts span{display:block}',
@@ -278,20 +292,27 @@ h1,h2,h3{{font-family:var(--heading);line-height:1.08;letter-spacing:-.05em}}h1{
      'celestial':'.sky-hero{position:relative;display:grid;grid-template-columns:1.4fr .6fr;align-items:center;gap:1%;padding:55px 6%}.sky-art{padding:10px}.sky-hero .story{margin-left:-60px;z-index:1}.sky-stats{padding:20px 8% 70px}.sky-stats ul{display:flex;gap:65px;list-style:none;justify-content:center}.sky-stats strong,.sky-stats span{display:block}.sky-studies .study{border-top:1px dotted var(--accent)}',
     }[spec.mode]
     responsive='''@media(max-width:920px){.workshop-hero,.hotel-hero,.docs-layout,.gallery-grid,.kitchen-visual,.botanical-top,.botanical-entries,.library-plate,.record-stage,.archive-sheet,.trail-hero,.sky-hero{display:flex;flex-direction:column;gap:20px;padding:42px 5%;min-height:0}.hotel-hero .story{padding:20px}.kitchen-title,.gallery-title{padding:60px 7% 20px}.kitchen-studies{grid-template-columns:1fr 1fr}.toc{width:100%;padding:22px;flex-direction:row;flex-wrap:wrap}.docs-content{padding:28px 5%}.docs-content .studies{margin:30px 0}.botanical-art{order:1}.botanical-top .story{order:0}.sky-hero .story{margin:0}.trail-notes ul,.sky-stats ul,.workshop-facts{display:flex;flex-direction:column;gap:16px;padding:20px}.gallery-studies .study:nth-child(2n){margin-top:0}.type-head .giant{font-size:clamp(10rem,30vw,22rem)}}@media(max-width:600px){.kitchen-studies{grid-template-columns:1fr}.gallery-highlights li{margin-bottom:15px}.hotel-details ul{flex-direction:column}.mast{padding:18px}.logo{font-size:1.1rem}}'''
-    return (common+specific+'\n'+responsive+'\n').encode('utf-8')
+    return (common+specific+'\n'+responsive+'\n').encode('utf-8') + WORKBOOK_CSS
 
 
-def _shell(spec, heading, body, *, home=False, description=None):
+def _shell(spec, heading, body, *, domain, route, home=False, description=None):
     labels=LABELS[spec.language]
-    descr=h(description or spec.description)
+    raw_description = description or spec.description
+    descr=h(raw_description)
+    raw_title = spec.title + ' — ' + heading
+    metadata = (not_found_head() if route == '404.html' else public_head(
+        domain=domain, route=route, site_name=spec.title,
+        title=raw_title, description=raw_description))
+    nav_label = 'Навигация по сайту' if spec.language == 'ru' else 'Site navigation'
+    sitemap_label = 'Карта сайта' if spec.language == 'ru' else 'Sitemap'
     nav=''.join(f'<a href="{p}">{h(l)}</a>' for p,l in zip(('index.html','journal.html','about.html','questions.html'),labels[:4]))
     top=f'''<!doctype html><html lang="{h(spec.language)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="{descr}"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+{metadata}<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
 <title>{h(spec.title)} — {h(heading)}</title><link rel="stylesheet" href="style.css"><link rel="icon" href="favicon.svg" type="image/svg+xml"></head>
-<body class="mode-{spec.mode} layout-signature-{spec.mode}"><div class="wrap"><a class="skip" href="#main">{h(labels[4])}</a><header class="mast"><a class="logo" href="index.html"><span class="brand-icon" aria-hidden="true">{h(spec.emblem)}</span>{h(spec.title)}</a><nav aria-label="Site navigation">{nav}</nav></header><main id="main">'''
+<body class="mode-{spec.mode} layout-signature-{spec.mode}"><div class="wrap"><a class="skip" href="#main">{h(SKIP_LABEL[spec.language])}</a><header class="mast"><a class="logo" href="index.html"><span class="brand-icon" aria-hidden="true">{h(spec.emblem)}</span>{h(spec.title)}</a><nav aria-label="{h(nav_label)}">{nav}</nav></header><main id="main">'''
     if not home:
         body=f'<section class="inner-intro"><p class="kicker">{h(spec.category)}</p><h1>{h(heading)}</h1><p class="body-lead">{descr}</p></section><div class="inner-body">{body}</div>'
-    return (top+body+f'</main><footer class="foot"><span>{h(spec.title)} · 2026</span><span>{h(labels[5])}</span><a href="sitemap.xml">Sitemap</a></footer></div></body></html>\n').encode('utf-8')
+    return (top+body+f'</main><footer class="foot"><span>{h(spec.title)}</span><span>{h(labels[5])}</span><a href="sitemap.xml">{h(sitemap_label)}</a></footer></div></body></html>\n').encode('utf-8')
 
 
 def render_signature(name, domain):
@@ -299,17 +320,21 @@ def render_signature(name, domain):
         raise ValueError('unknown signature site')
     spec=SIGNATURES[name]
     names=LABELS[spec.language]
-    articles=''.join('<article class="longread"><p class="kicker">0'+str(i+1)+'</p><h2>'+h(t)+'</h2><p>'+h(text)+'</p></article>' for i,(t,text) in enumerate(spec.cards))
+    details = SIGNATURE_FIELD_GUIDES[name]
+    articles=''.join(
+        '<article class="longread"><p class="kicker">0'+str(i+1)+'</p><h2>'+h(t)+'</h2>'
+        '<p>'+h(text)+'</p><p>'+h(details[i])+'</p></article>'
+        for i,(t,text) in enumerate(spec.cards))
     about=f'<article class="longread"><h2>{h(spec.headline)}</h2><p>{h(spec.intro)}</p><p>{h(spec.description)}</p><p>{h(names[5])}</p></article>' + ''.join(f'<div class="longread"><h3>{h(k)}</h3><p>{h(v)}</p></div>' for k,v in spec.highlights)
     questions=''.join(f'<details class="qa"><summary>{h(q)}</summary><p>{h(a)}</p></details>' for q,a in spec.questions)
-    home=_shell(spec,spec.headline,_main_design(spec),home=True)
+    home=_shell(spec,spec.headline,_main_design(spec)+home_panel(name,spec.language, extended=True),domain=domain,route='',home=True)
     favicon=(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="0" y="0" width="64" height="64" rx="15" fill="{PALETTES[spec.mode][2]}"/><text x="32" y="42" text-anchor="middle" font-family="sans-serif" font-size="25" fill="white">{h(spec.emblem)}</text></svg>\n').encode('utf-8')
     return {
         'index.html':home,
-        'journal.html':_shell(spec,names[1],articles,description=spec.intro),
-        'about.html':_shell(spec,names[2],about,description=spec.description),
-        'questions.html':_shell(spec,names[3],questions,description=spec.description),
-        '404.html':_shell(spec, 'Страница не найдена' if spec.language=='ru' else 'Page not found',f'<p>{h(names[4])}</p><p><a class="cta" href="index.html">{h(names[4])}</a></p>',description=spec.description),
+        'journal.html':_shell(spec,names[1],articles+journal_companion(name,spec.language,tuple(x[0] for x in spec.cards))+render_workbook(name,spec.language),domain=domain,route='journal.html',description=spec.intro),
+        'about.html':_shell(spec,names[2],about+about_panel(name,spec.language),domain=domain,route='about.html',description=spec.title + ': ' + spec.intro),
+        'questions.html':_shell(spec,names[3],questions+questions_panel(name,spec.language),domain=domain,route='questions.html',description=spec.questions[0][0] + ' — ' + spec.title),
+        '404.html':_shell(spec, 'Страница не найдена' if spec.language=='ru' else 'Page not found',f'<p>{h(names[4])}</p><p><a class="cta" href="index.html">{h(names[4])}</a></p>',domain=domain,route='404.html',description=spec.description),
         'style.css':_css(spec), 'favicon.svg':favicon,
         'robots.txt':f'User-agent: *\nAllow: /\nSitemap: https://{domain}/sitemap.xml\n'.encode('ascii'),
         'sitemap.xml': ('<?xml version="1.0" encoding="utf-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+''.join(f'<url><loc>https://{domain}/{page}</loc></url>' for page in ('','journal.html','about.html','questions.html'))+'</urlset>\n').encode('utf-8'),

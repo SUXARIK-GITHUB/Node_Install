@@ -52,9 +52,11 @@ class SignatureSites(unittest.TestCase):
                 self.assertEqual(len(bundle),9)
                 self.assertEqual(bundle['robots.txt'].decode().splitlines()[-1],
                                  'Sitemap: https://node.example.test/sitemap.xml')
+                preview = catalog.render(name, 'preview.example.test')
                 for fn, data in bundle.items():
-                    self.assertEqual((ROOT/'site-catalog'/name/fn).read_bytes(),
-                                     catalog.render(name,'preview.example.test')[fn] if fn in ('robots.txt','sitemap.xml') else data)
+                    # Every public HTML route now binds its own canonical/OG
+                    # metadata to the publication domain, not only sitemap/robots.
+                    self.assertEqual((ROOT/'site-catalog'/name/fn).read_bytes(), preview[fn])
                 doc=bundle['index.html'].decode()
                 self.assertIn('layout-signature-'+spec.mode,doc)
                 self.assertIn(escape(spec.headline),doc)
@@ -88,7 +90,9 @@ class SignatureSites(unittest.TestCase):
             bundle=catalog.render(name)
             doc=bundle['questions.html'].decode()
             structure=Structure();structure.feed(doc)
-            self.assertEqual(structure.details,3)
+            # R56 preserves the three original FAQs and adds four grounded
+            # editorial questions from this site's workbook or authored exhibit.
+            self.assertEqual(structure.details,7)
             for question,answer in spec.questions:
                 self.assertIn(escape(question),doc)
                 self.assertIn(escape(answer),doc)

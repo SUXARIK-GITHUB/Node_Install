@@ -75,6 +75,8 @@ class RichCover(unittest.TestCase):
             if argv[0]=='curl':
                 filename=argv[-1].rsplit('/',1)[-1]
                 if filename==fail:return b'WRONG_LIVE_CONTENT'
+                if filename=='node-install-nonexistent.html':
+                    return (site/'404.html').read_bytes() + b'\nNODE_SITE_STATUS:404'
                 return (site/filename).read_bytes()
             return b''
         return mock
@@ -147,7 +149,13 @@ class RichCover(unittest.TestCase):
             conf.write_text('worker_processes 1;\npid '+str(root/'nginx.pid')+';\n'
                 'error_log '+str(root/'error.log')+' warn;\n'
                 'events { worker_connections 64; }\n'
-                'http { include /etc/nginx/mime.types; server { '
+                'http { '
+                'client_body_temp_path '+str(root/'nginx-body')+'; '
+                'proxy_temp_path '+str(root/'nginx-proxy')+'; '
+                'fastcgi_temp_path '+str(root/'nginx-fastcgi')+'; '
+                'uwsgi_temp_path '+str(root/'nginx-uwsgi')+'; '
+                'scgi_temp_path '+str(root/'nginx-scgi')+'; '
+                'include /etc/nginx/mime.types; server { '
                 'listen 127.0.0.1:'+str(port)+'; server_name site.example.test; '
                 'root '+str(site)+'; access_log off; '
                 'location = / { try_files /index.html =404; } '

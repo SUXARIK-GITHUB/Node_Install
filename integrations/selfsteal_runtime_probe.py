@@ -24,7 +24,8 @@ MAX_HEADER=8192
 class CheckError(Exception):pass
 
 
-def probe(domain, path, *, proxy_v1=False, cafile=None, timeout=5):
+def probe(domain, path, *, proxy_v1=False, cafile=None, timeout=5,
+          extended=False, _method='GET', _resource='/', _host=None):
     if not isinstance(domain,str) or not DOMAIN.fullmatch(domain):
         raise CheckError('INVALID_DOMAIN')
     path=Path(path)
@@ -47,7 +48,7 @@ def probe(domain, path, *, proxy_v1=False, cafile=None, timeout=5):
             with ctx.wrap_socket(raw,server_hostname=domain) as tls:
                 tls.settimeout(timeout)
                 handshake_ms=round((time.monotonic()-start)*1000,2)
-                tls.sendall(f'GET / HTTP/1.1\r\nHost: {domain}\r\nConnection: close\r\n\r\n'.encode('ascii'))
+                tls.sendall(f'{_method} {_resource} HTTP/1.1\r\nHost: {_host or domain}\r\nConnection: close\r\n\r\n'.encode('ascii'))
                 out=b''
                 while b'\r\n\r\n' not in out and len(out)<MAX_HEADER:
                     more=tls.recv(min(2048,MAX_HEADER-len(out)))
@@ -56,13 +57,29 @@ def probe(domain, path, *, proxy_v1=False, cafile=None, timeout=5):
                 match=re.match(rb'HTTP/1\.[01] ([0-9]{3})(?: |\r\n)',out)
                 if not match:raise CheckError('INVALID_HTTPS_RESPONSE')
                 status=int(match.group(1))
-                return {'schema':1,'status':'PASS' if status==200 else 'REVIEW',
-                        'http_code':status,'tls_version':tls.version(),
-                        'alpn':tls.selected_alpn_protocol(),
-                        'handshake_ms':handshake_ms,
-                        'proxy_protocol':'v1' if proxy_v1 else 'none',
-                        'site_only':'YES','vless_or_dpi_verified':'NO',
-                        'secrets_or_peer_addresses_logged':'NO'}
+                result = {'schema':1,'status':'PASS' if status==200 else 'REVIEW',
+                          'http_code':status,'tls_version':tls.version(),
+                          'alpn':tls.selected_alpn_protocol(),
+                          'handshake_ms':handshake_ms,
+                          'proxy_protocol':'v1' if proxy_v1 else 'none',
+                          'site_only':'YES','vless_or_dpi_verified':'NO',
+                          'secrets_or_peer_addresses_logged':'NO'}
+        if extended and result['status'] == 'PASS':
+            # Extra ordinary requests on the SAME owned local socket. No new
+            # outbound network calls; nothing is logged from response bodies.
+            checks = {}
+            for label, method, resource, host, expected in (
+                ('head', 'HEAD', '/', domain, (200,)),
+                ('missing_page', 'GET', '/node-install-nonexistent-page', domain, (404,)),
+                ('host_mismatch', 'GET', '/', 'unrelated.invalid', (400, 421)),
+            ):
+                extra = probe(domain, path, proxy_v1=proxy_v1, cafile=cafile,
+                              timeout=timeout, _method=method, _resource=resource, _host=host)
+                checks[label] = 'PASS' if extra['http_code'] in expected else 'REVIEW'
+            result['extended_checks'] = checks
+            if any(value != 'PASS' for value in checks.values()):
+                result['status'] = 'REVIEW'
+        return result
     except (socket.timeout,TimeoutError):
         raise CheckError('SOCKET_OR_TLS_TIMEOUT') from None
     except ssl.SSLCertVerificationError:
@@ -79,10 +96,12 @@ def main(argv=None):
     p.add_argument('--socket',required=True,type=Path)
     p.add_argument('--proxy-v1',action='store_true')
     p.add_argument('--cafile',type=Path,help='test trust root only; never use -k')
+    p.add_argument('--extended',action='store_true',
+                   help='also check HEAD, missing page and invalid Host on the local socket')
     p.add_argument('--strict',action='store_true')
     a=p.parse_args(argv)
     try:
-        result=probe(a.domain,a.socket,proxy_v1=a.proxy_v1,cafile=a.cafile)
+        result=probe(a.domain,a.socket,proxy_v1=a.proxy_v1,cafile=a.cafile,extended=a.extended)
     except (CheckError,OSError,ValueError) as exc:
         print(json.dumps({'status':'STOP','reason':str(exc) if isinstance(exc,CheckError) else 'RUNTIME_CHECK_UNAVAILABLE'}))
         return 2

@@ -67,6 +67,11 @@ class Themes(unittest.TestCase):
                         self.assertIn('Content-Security-Policy',text)
                     # The standard SVG XML namespace is not an external request.
                     pure=text.replace('xmlns="http://www.w3.org/2000/svg"','')
+                    if fn == 'index.html':
+                        for meta in ('<link rel="canonical" href="https://alpha.example.test/">',
+                                     '<meta property="og:url" content="https://alpha.example.test/">'):
+                            self.assertIn(meta, pure)
+                            pure = pure.replace(meta, '')
                     self.assertNotRegex(pure,r'(?i)(?:https?:)?//')
                 all_web.append(a['index.html'])
         self.assertEqual(len(set(all_web)),12)
@@ -153,7 +158,13 @@ class Themes(unittest.TestCase):
             conf=home/'nginx.conf'
             conf.write_text('worker_processes 1;\npid '+str(home/'nginx.pid')+';\n'
               'error_log '+str(home/'error.log')+' warn;\n'
-              'events { worker_connections 64; }\nhttp { include /etc/nginx/mime.types; '
+              'events { worker_connections 64; }\nhttp { '
+                'client_body_temp_path '+str(home/'nginx-body')+'; '
+                'proxy_temp_path '+str(home/'nginx-proxy')+'; '
+                'fastcgi_temp_path '+str(home/'nginx-fastcgi')+'; '
+                'uwsgi_temp_path '+str(home/'nginx-uwsgi')+'; '
+                'scgi_temp_path '+str(home/'nginx-scgi')+'; '
+                'include /etc/nginx/mime.types; '
               'access_log off; server { listen 127.0.0.1:'+str(port)+'; server_tokens off; '
               'server_name preview.example.test; root '+str(web)+'; '
               'add_header Content-Security-Policy "default-src \'none\'; style-src \'self\'" always; '

@@ -173,6 +173,14 @@ class PreviewAndProxy(unittest.TestCase):
             self.assertRegex(css, r'@media\(max-width:\d+px\)')
             # Standard inline-SVG namespace is NOT an external request.
             tested=html.replace('xmlns="http://www.w3.org/2000/svg"', '')
+            # Owned-page canonical and Open Graph URLs are document metadata,
+            # not network dependencies or remotely loaded assets.
+            for metadata in (
+                '<link rel="canonical" href="https://preview.example.test/">',
+                '<meta property="og:url" content="https://preview.example.test/">',
+            ):
+                self.assertIn(metadata, tested)
+                tested = tested.replace(metadata, '')
             self.assertNotIn('http://',tested)
             self.assertNotIn('https://',tested)
             self.assertNotIn('<script',html)

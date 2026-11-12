@@ -215,9 +215,96 @@ UNTRACKED_ALLOWED.update({
     'docs/RELEASE_2.5.18_R39_NTP_RESTART_RECOVERY.md',
     'tests/test_r39_ntp_restart_recovery.py',
     'docs/RELEASE_2.5.18_R36_TERMINAL_RESUME.md',
+    'scripts/stealth_external_audit.py',
+    'tests/test_r40_stealth_cover_and_probe.py',
+    'docs/RELEASE_2.5.18_R40_STEALTH_COVER_AUDIT.md',
+    'integrations/xhttp_subscription_audit.py',
+    'scripts/stealth_report_compare.py',
+    'tests/test_r41_stealth_compatibility.py',
+    'tests/test_r41_stealth_compare.py',
+    'docs/RELEASE_2.5.18_R41_STEALTH_COVER_COMPATIBILITY.md',
+    'scripts/site_default.py',
+    'tests/test_r42_stealth_staging.py',
+    'docs/RELEASE_2.5.18_R42_OWNED_H2_STAGING.md',
+    'scripts/network_path_review.py',
+    'scripts/reality_client_matrix.py',
+    'integrations/client_route_audit.py',
+    'tests/test_r43_stealth_path_clients.py',
+    'docs/RELEASE_2.5.18_R43_STEALTH_PATH_EVIDENCE.md',
+    'tests/test_r44_traffic_ruleset_integrity.py',
+    'docs/RELEASE_2.5.18_R44_TRAFFIC_RULESET_INTEGRITY.md',
+    'scripts/site_editorial.py',
+    'tests/test_r45_site_editorial_layout.py',
+    'docs/RELEASE_2.5.18_R45_SITE_EDITORIAL_LAYOUT.md',
+    'scripts/site_field_guides.py',
+    'tests/test_r46_site_content_quality.py',
+    'docs/RELEASE_2.5.18_R46_SITE_TOPIC_GUIDES.md',
+    'preview/site-gallery/visual-review-journal-r46.json',
+    'preview/site-gallery/visual-review-journal-desktop-r46.jpg',
+    'preview/site-gallery/visual-review-journal-mobile-r46.jpg',
+    'scripts/site_metadata.py',
+    'tests/test_r47_site_metadata_faq.py',
+    'docs/RELEASE_2.5.18_R47_SITE_IDENTITY_FAQ.md',
+    'docs/RELEASE_2.5.18_R48_SITE_READING_INDEX_AND_404.md',
+    'tests/test_r48_site_navigation_live_404.py',
+    'tests/test_r49_public_site_surface.py',
+    'docs/RELEASE_2.5.18_R49_PUBLIC_SITE_SURFACE.md',
+    'scripts/site_practice.py',
+    'scripts/cover_rich_details.py',
+    'tests/test_r50_editorial_distinction.py',
+    'docs/RELEASE_2.5.18_R50_EDITORIAL_IDENTITY.md',
+    'scripts/site_identity.py', 'scripts/site_quality_review.py',
+    'tests/test_r51_content_architecture.py',
+    'docs/RELEASE_2.5.18_R51_CONTENT_GAP_AND_ARCHITECTURES.md',
+    'scripts/site_workbooks.py',
+    'scripts/site_workbooks_r53.py',
+    'tests/test_r53_site_guides.py',
+    'docs/RELEASE_2.5.18_R53_ALL_TOPIC_GUIDES.md',
+    'scripts/site_focus_notes.py',
+    'scripts/site_editorial_expansion.py',
+    'tests/test_r56_site_editorial.py',
+    'docs/RELEASE_2.5.18_R56_PASS3_SITE_CONTENT.md',
+    'tests/test_r55_limits_css_release.py',
+    'docs/RELEASE_2.5.18_R55_PASS2_CSS_TRAFFIC_DOCS.md',
+    'docs/history/RELEASE_VALIDATION_2.5.10_r7c.json',
+    'tests/test_r54_verified_backup.py',
+    'docs/RELEASE_2.5.18_R54_PASS1_BACKUP_CI.md',
+    'tests/test_r52_practical_workbooks.py',
+    'docs/RELEASE_2.5.18_R52_PRACTICAL_WORKBOOKS.md',
+    'preview/site-gallery/visual-review-r45.json',
+    'preview/site-gallery/visual-review-desktop-r45.jpg',
+    'preview/site-gallery/visual-review-mobile-r45.jpg',
+})
+
+# R57: verified local visual-QA evidence and the publication-contract checks.
+UNTRACKED_ALLOWED.update({
+    'scripts/site_art_direction.py',
+    'scripts/site_publication_review.py',
+    'tests/test_r57_site_visual_publication.py',
+    'docs/RELEASE_2.5.18_R57_PASS4_VISUAL_PUBLICATION.md',
+    'preview/site-gallery/publication-review-r57.json',
+    'preview/site-gallery/visual-review-index-r57.json',
+    'preview/site-gallery/visual-review-journal-r57.json',
+    'preview/site-gallery/visual-review-about-r57.json',
+    'preview/site-gallery/visual-review-questions-r57.json',
+    'preview/site-gallery/visual-review-desktop-r57.jpg',
+    'preview/site-gallery/visual-review-tablet-r57.jpg',
+    'preview/site-gallery/visual-review-mobile-r57.jpg',
+    'preview/site-gallery/visual-review-narrow-r57.jpg',
+    'preview/site-gallery/visual-review-journal-desktop-r57.jpg',
+    'preview/site-gallery/visual-review-journal-tablet-r57.jpg',
+    'preview/site-gallery/visual-review-journal-mobile-r57.jpg',
+    'preview/site-gallery/visual-review-journal-narrow-r57.jpg',
 })
 
 
+# R58: final offline release gate and evidence contract. All r57 media retained.
+UNTRACKED_ALLOWED.update({
+    'tests/test_r58_release_acceptance.py',
+    'docs/RELEASE_2.5.18_R58_PASS5_FINAL_AUDIT.md',
+    'docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md',
+    'tests/test_r58_github_install_recipe.py',
+})
 
 def baseline_manifest():
     """The source ZIP has no .git; preserve its recorded, verified Git provenance.
@@ -270,8 +357,8 @@ def write_atomic(path, data):
 
 
 def build(out_dir, build_id):
-    if not re.fullmatch(r'[A-Za-z0-9_.-]{8,96}', build_id):
-        raise ValueError('bad build ID')
+    if not re.fullmatch(r'20261113-r58-[A-Za-z0-9_.-]{8,80}', build_id):
+        raise ValueError('R58_BUILD_ID_REQUIRED')
     if ROOT in out_dir.resolve().parents or ROOT == out_dir.resolve():
         raise ValueError('output directory must be outside source tree')
     source_commit = baseline_manifest()['source_commit']
@@ -290,6 +377,9 @@ def build(out_dir, build_id):
         'source_commit': source_commit,
         'release_status': 'INCOMPLETE_STAGING_ONLY',
         'source_tree_has_local_changes': True,  # base archive has no .git; current bytes differ from input
+        'derived_from_build_id': '20261113-r58-final-acceptance-pass5-staging',
+        'live_server_validation': 'NOT_PERFORMED',
+        'release_notes': 'docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md',
         'excluded_from_manifest': sorted([MANIFEST, SUMS]),
         'files': entries,
     }
@@ -312,7 +402,7 @@ def build(out_dir, build_id):
     try:
         with zipfile.ZipFile(tmp, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=7, allowZip64=True) as arc:
             for name, content in sorted(data.items()):
-                entry = zipfile.ZipInfo('Node_Install/' + name, (2026,10,15,0,0,0))
+                entry = zipfile.ZipInfo('Node_Install/' + name, (2026,11,13,0,0,0))
                 entry.compress_type = zipfile.ZIP_DEFLATED
                 entry.create_system = 3
                 filemode = int(next((item['mode'] for item in entries if item['path'] == name),'0644'), 8)
@@ -343,7 +433,7 @@ def main():
     import datetime
     parser = argparse.ArgumentParser()
     parser.add_argument('--out-dir', type=Path, required=True)
-    parser.add_argument('--build-id', default=datetime.datetime.now(datetime.timezone.utc).strftime('qa-20261015T%H%M%SZ'))
+    parser.add_argument('--build-id', default=datetime.datetime.now(datetime.timezone.utc).strftime('20261113-r58-github-qa-%H%M%SZ'))
     ns = parser.parse_args()
     build(ns.out_dir, ns.build_id)
 
