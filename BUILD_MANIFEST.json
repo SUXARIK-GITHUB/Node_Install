@@ -1,5 +1,5 @@
 {
-  "build_id": "20261113-r58-github-publication-qa-staging",
+  "build_id": "20261113-r58-github-debian12-cpfix-staging",
   "derived_from_build_id": "20261113-r58-final-acceptance-pass5-staging",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
@@ -27,14 +27,14 @@
     {
       "mode": "0644",
       "path": "CHANGELOG.md",
-      "sha256": "c8458ab8c72f0f4732b61d6bca14c7a981da04689ce44d9fb3a68c2d435927e9",
-      "size": 175650
+      "sha256": "21897c3a49ac0469905c5e315ac0caa10237ca4e9b21dc28876b8a5df0b21e73",
+      "size": 176542
     },
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "b881d8542bc0e7b6e13fcb44f4896d173c7e28cf3fffb4fcb4130a07cc05db38",
-      "size": 70157
+      "sha256": "858760775596c7275727fe337d75bf336e369a054d72e7f20b78635e4da6b013",
+      "size": 70540
     },
     {
       "mode": "0644",
@@ -801,8 +801,8 @@
     {
       "mode": "0644",
       "path": "docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md",
-      "sha256": "508b1d9a5c1ab5076cd9e6ea3ec43697bc30ac419b87d250ee4b5bd5ca4b1f31",
-      "size": 4739
+      "sha256": "317a7c81f4095d6f4e07c49d96a17562020ce5001890e43b31207640fef761bd",
+      "size": 6401
     },
     {
       "mode": "0644",
@@ -813,8 +813,8 @@
     {
       "mode": "0644",
       "path": "docs/RELEASE_VALIDATION.json",
-      "sha256": "38d3c79fba4649fd14c58672380f6e1afa34825b744a3d9690176550377bb118",
-      "size": 1096
+      "sha256": "377b4693873293d05c69f70453631089e4d886458b3405dbcd42739c253dd74c",
+      "size": 1159
     },
     {
       "mode": "0644",
@@ -1785,8 +1785,8 @@
     {
       "mode": "0644",
       "path": "install.sh",
-      "sha256": "043c968b11412eabfa602f8a880a1da9e0a4ec738ff3b77f26ecf4bda165f866",
-      "size": 576502
+      "sha256": "c2a9f2effaa9eb2946611847e5028c782a3ccdd969676e02b54103b7c00a1759",
+      "size": 576511
     },
     {
       "mode": "0644",
@@ -9045,8 +9045,8 @@
     {
       "mode": "0644",
       "path": "tests/test_r54_verified_backup.py",
-      "sha256": "20d52c051ad8ec96b3830425f05407d5c5d2302b125ad86d8ac6f4c8929449bb",
-      "size": 4738
+      "sha256": "8ae392530ec2bdc9054fe83a4552bdb8b8136622ae3efce4a3da7480e73ba742",
+      "size": 5958
     },
     {
       "mode": "0644",

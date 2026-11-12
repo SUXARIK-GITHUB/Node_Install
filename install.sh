@@ -8172,7 +8172,7 @@ for p in etc/ssh etc/ufw etc/default/ufw etc/default/grub etc/default/grub.d etc
          usr/local/lib/vkarmani-node var/www/vkarmani-node var/lib/vkarmani-node/install-version \
          var/lib/vkarmani-node/owned-installation var/lib/vkarmani-node/INSTALL_FAILED \
          var/lib/vkarmani-node/first-backup-path var/lib/vkarmani-node/RESUME_FAILED; do
-    if [[ -e "/$p" ]]; then cp -a --parents "/$p" "$BK/"; fi
+    if [[ -e "/$p" ]]; then (cd / && cp -a --parents "$p" "$BK/"); fi
 done
 (cd "$BK"; find . -type f ! -name MANIFEST.sha256 -print0 | sort -z | xargs -0 -r sha256sum > MANIFEST.sha256
     sha256sum --check --quiet MANIFEST.sha256)

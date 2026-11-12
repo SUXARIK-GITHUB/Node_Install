@@ -23,9 +23,14 @@ def sandbox_block():
     text = COMMIT_BLOCK
     first = text.index('for p in etc/ssh ')
     last = text.index('\ndone', first) + len('\ndone')
-    text = text[:first] + '''for p in original.txt; do
-    if [[ -e "$FIXTURE_SOURCE/$p" ]]; then cp -a --parents "$FIXTURE_SOURCE/$p" "$BK/"; fi
-done''' + text[last:]
+    # Preserve the real cp arguments, substituting only the filesystem root.
+    # GNU coreutils 9.1 in Debian 12 cannot reliably preserve parents for
+    # absolute source paths with -a --parents (Debian bug #1054128).
+    copy_line = '    if [[ -e "/$p" ]]; then (cd / && cp -a --parents "$p" "$BK/"); fi'
+    assert copy_line in text, 'test must track the actual installer backup copy'
+    fixture_copy_line = '    if [[ -e "$FIXTURE_SOURCE/$p" ]]; then (cd "$FIXTURE_SOURCE" && cp -a --parents "$p" "$BK/"); fi'
+    text = (text[:first] + 'for p in original.txt etc/ssh; do\n'
+            + fixture_copy_line + '\ndone' + text[last:])
     return text
 
 
@@ -43,6 +48,12 @@ class BackupCommitBoundary(unittest.TestCase):
         self.assertEqual(MAIN[start:].count('touch "$STATE/owned-installation"'), 1)
         self.assertNotIn('PubkeyAuthentication yes', SOURCE)
 
+    def test_backup_copy_is_relative_from_filesystem_root(self):
+        # Avoid cp -a --parents /etc/...: coreutils 9.1 in Debian 12 tries
+        # to access stripped absolute ancestors as relative paths.
+        self.assertIn('if [[ -e "/$p" ]]; then (cd / && cp -a --parents "$p" "$BK/"); fi', COMMIT_BLOCK)
+        self.assertNotIn('cp -a --parents "/$p"', COMMIT_BLOCK)
+
     def test_copy_failure_leaves_no_committed_installation_and_can_retry(self):
         self.check_failure('copy')
 
@@ -55,6 +66,8 @@ class BackupCommitBoundary(unittest.TestCase):
             src = root / 'fixture-source'
             src.mkdir()
             (src / 'original.txt').write_text('the pre-install file must survive\n')
+            (src / 'etc/ssh').mkdir(parents=True)
+            (src / 'etc/ssh/sshd_config').write_text('original ssh config\n')
             state = root / 'state'
             state.mkdir(mode=0o700)
             (state / 'INSTALL_FAILED').write_text('prior staging failure\n')
@@ -86,9 +99,12 @@ class BackupCommitBoundary(unittest.TestCase):
             self.assertEqual((state / 'first-backup-path').read_text().strip(), str(backup))
             self.assertTrue((backup / 'MANIFEST.sha256').is_file())
             entries = (backup / 'MANIFEST.sha256').read_text().splitlines()
-            self.assertEqual(len(entries), 1)
-            digest, name = entries[0].split('  ', 1)
-            self.assertEqual(hashlib.sha256((backup / name).read_bytes()).hexdigest(), digest)
+            self.assertEqual(len(entries), 2)
+            self.assertEqual((backup / 'original.txt').read_text(), 'the pre-install file must survive\n')
+            self.assertEqual((backup / 'etc/ssh/sshd_config').read_text(), 'original ssh config\n')
+            for entry in entries:
+                digest, name = entry.split('  ', 1)
+                self.assertEqual(hashlib.sha256((backup / name).read_bytes()).hexdigest(), digest)
 
 
 if __name__ == '__main__':
