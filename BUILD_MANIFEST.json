@@ -1,5 +1,5 @@
 {
-  "build_id": "20261113-r58-github-debian12-cpfix-staging",
+  "build_id": "20261113-r58-github-site-selfsteal-assets-hotfix3d-staging",
   "derived_from_build_id": "20261113-r58-final-acceptance-pass5-staging",
   "excluded_from_manifest": [
     "BUILD_MANIFEST.json",
@@ -27,14 +27,14 @@
     {
       "mode": "0644",
       "path": "CHANGELOG.md",
-      "sha256": "21897c3a49ac0469905c5e315ac0caa10237ca4e9b21dc28876b8a5df0b21e73",
-      "size": 176542
+      "sha256": "85fae5b863dd393d27f78d8e4c20fc6392f5ae4a8eef0a6dfde5248778868722",
+      "size": 178732
     },
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "858760775596c7275727fe337d75bf336e369a054d72e7f20b78635e4da6b013",
-      "size": 70540
+      "sha256": "0e35aed588d7ef57eb74756fa897af6e642b0a0ec8d499ba6d012b829ec750ae",
+      "size": 71180
     },
     {
       "mode": "0644",
@@ -801,8 +801,8 @@
     {
       "mode": "0644",
       "path": "docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md",
-      "sha256": "317a7c81f4095d6f4e07c49d96a17562020ce5001890e43b31207640fef761bd",
-      "size": 6401
+      "sha256": "4a06d5a56291c96b1b721a577ec08d134e2a3475e9165e6137a0f2b62a93b563",
+      "size": 7992
     },
     {
       "mode": "0644",
@@ -812,9 +812,15 @@
     },
     {
       "mode": "0644",
+      "path": "docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md",
+      "sha256": "cb03874be974884dbc123d9f0020547454b80fc76e5197b0286dfc0c3e51e9f1",
+      "size": 3504
+    },
+    {
+      "mode": "0644",
       "path": "docs/RELEASE_VALIDATION.json",
-      "sha256": "377b4693873293d05c69f70453631089e4d886458b3405dbcd42739c253dd74c",
-      "size": 1159
+      "sha256": "279c2cbb39a30657962eec572d5b362150ebe4493b94c8311328f374e4c51a8a",
+      "size": 1123
     },
     {
       "mode": "0644",
@@ -1785,8 +1791,8 @@
     {
       "mode": "0644",
       "path": "install.sh",
-      "sha256": "c2a9f2effaa9eb2946611847e5028c782a3ccdd969676e02b54103b7c00a1759",
-      "size": 576511
+      "sha256": "e9622cba1676c2eadbcd24390b97c8d8bb920ab01685e03efca2c1353bd465c3",
+      "size": 577195
     },
     {
       "mode": "0644",
@@ -2331,8 +2337,8 @@
     {
       "mode": "0644",
       "path": "scripts/build_staging_archive.py",
-      "sha256": "e976beb5ee76c5dd3a2969581b94ed5a8b2baaddf749dcbd8686ebfeb9448f92",
-      "size": 19752
+      "sha256": "a7098e82e72fb8e014c12ce3e8b79f16b320c2e336a005fa224817d28dada330",
+      "size": 19953
     },
     {
       "mode": "0644",
@@ -2395,6 +2401,12 @@
       "size": 5984
     },
     {
+      "mode": "0755",
+      "path": "scripts/selfsteal_checker_repair.py",
+      "sha256": "07428dd6f94c3bd5c9dfb07618a83e4fe12d721db2dcb7a28b6497a8b1c0dd42",
+      "size": 9150
+    },
+    {
       "mode": "0644",
       "path": "scripts/signature_sites.py",
       "sha256": "423f1b9aeb11010c9013262549ebe1d1d9d3bc4efe191cac998b74d517da89cd",
@@ -2409,8 +2421,8 @@
     {
       "mode": "0644",
       "path": "scripts/site_audit.py",
-      "sha256": "df2f423b3587ecea047e42a1bdf20b9817592b24d681f00c84fd91e770cec29c",
-      "size": 11722
+      "sha256": "c39578dc5475552718c0e8ffb1d001afdef3c3a4fb7f43aa35ac893f950abdea",
+      "size": 13068
     },
     {
       "mode": "0644",
@@ -2535,8 +2547,8 @@
     {
       "mode": "0644",
       "path": "scripts/verify_release.py",
-      "sha256": "9754c768479a0c842482ed7650c898b551ac829d05656569557ae74da226dc20",
-      "size": 53853
+      "sha256": "644db1a4dbafa043d44715539290809d531e2281d7156f760bd874a483af885d",
+      "size": 54726
     },
     {
       "mode": "0644",
@@ -8751,8 +8763,8 @@
     {
       "mode": "0644",
       "path": "tests/test_preserved_policy_256.py",
-      "sha256": "171b24f43db0a4ef5387da7a40dee7974764ae0577fadcdc806ab201b5495c3e",
-      "size": 8413
+      "sha256": "eefdb398ccf2dcc5c365fdb0d364a7df13cadc114a9ef902172791ed1cce7fcc",
+      "size": 9460
     },
     {
       "mode": "0644",
@@ -9080,6 +9092,18 @@
     },
     {
       "mode": "0644",
+      "path": "tests/test_r58_selfsteal_rich_assets_hotfix.py",
+      "sha256": "4a2e829bd9b59e0413416bc40583ea8915c3f469a3e4a124ce7f7ead908290e0",
+      "size": 5858
+    },
+    {
+      "mode": "0644",
+      "path": "tests/test_r58_site_domain_metadata.py",
+      "sha256": "9306298b0d0c4018d08d616c99042545bb9305103c1384f9cb7c4795daa49ecd",
+      "size": 3352
+    },
+    {
+      "mode": "0644",
       "path": "tests/test_release_contract_255.py",
       "sha256": "f11cb81d8e8a49ce2a46d3ca76b4230cacc6782302f5ec2bae136c7c62637ba6",
       "size": 1991
@@ -9182,7 +9206,7 @@
     }
   ],
   "live_server_validation": "NOT_PERFORMED",
-  "release_notes": "docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md",
+  "release_notes": "docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md",
   "release_status": "INCOMPLETE_STAGING_ONLY",
   "source_commit": "580fb94dd57b680e2aa8f38b295d9563d2bca686",
   "source_tree_has_local_changes": true,

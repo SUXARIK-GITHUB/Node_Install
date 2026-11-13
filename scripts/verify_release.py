@@ -669,6 +669,7 @@ def verify_bytes(files):
         github_qa = m['build_id'].startswith('20261113-r58-github-')
         if (m.get('release_notes') != ('docs/RELEASE_2.5.18_R57_PASS4_VISUAL_PUBLICATION.md'
                 if m['build_id'].startswith('20261112-r57-')
+                else 'docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md' if 'selfsteal-assets-hotfix3' in m['build_id']
                 else 'docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md' if github_qa
                 else 'docs/RELEASE_2.5.18_R58_PASS5_FINAL_AUDIT.md') or
             m.get('derived_from_build_id') != ('20261112-r56-site-content-pass3b-staging'
@@ -713,6 +714,16 @@ def verify_bytes(files):
         if (b'git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git' not in files['README.md'] or
             b'git diff --cached --check' not in files['README.md']):
             raise ValueError('R58_GITHUB_RECIPE_MISSING')
+    if 'selfsteal-assets-hotfix3' in m['build_id']:
+        required = {'scripts/selfsteal_checker_repair.py',
+                    'tests/test_r58_selfsteal_rich_assets_hotfix.py',
+                    'docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md'}
+        if not required <= files.keys():
+            raise ValueError('R58_SELFSTEAL_RICH_ASSET_HOTFIX_MISSING')
+        if (b"path = href[1:] if href.startswith('/') else href" not in files['install.sh'] or
+            b"BACKUP_DIRECTORY_NOT_PRIVATE" not in files['scripts/selfsteal_checker_repair.py'] or
+            b"SELFSTEAL_PROBE_FAILED_ON_CURRENT_SITE" not in files['scripts/selfsteal_checker_repair.py']):
+            raise ValueError('R58_SELFSTEAL_COMPATIBILITY_OR_REPAIR_GUARD_MISSING')
     expected_archive = 'Node_Install_2.5.18-docs-menu_' + m['build_id'] + '.zip'
     if expected_archive not in readme.split('---', 1)[0]:
         raise ValueError('README release command/build ID inconsistent')

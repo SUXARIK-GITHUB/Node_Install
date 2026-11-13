@@ -1,8 +1,10 @@
 <a id="install"></a>
 ## 🚀 Установка Node Install — два способа
 
-**Версия:** `2.5.18`, сборка `r58 GitHub publication QA`, статус `INCOMPLETE_STAGING_ONLY`.
+**Версия:** `2.5.18`, сборка `r58 Selfsteal assets hotfix 3`, статус `INCOMPLETE_STAGING_ONLY`.
 **Это текущая staging-сборка**, её ещё нельзя считать проверенной на production VPS.
+
+**Исправление Selfsteal (r58 hotfix 3):** восстановлена совместимость проверок локального HTTPS с хешированным CSS и favicon многостраничных сайтов. Для уже установленной staging-ноды предусмотрен отдельный проверяемый ремонт `scripts/selfsteal_checker_repair.py`; он не переустанавливает ноду. См. [документ исправления](docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md).
 
 **Исправление Debian 12:** резервное копирование в установщике использует относительные пути от `/`, чтобы исключить ошибку `cp -a --parents` из coreutils 9.1. Обновлены регрессионные тесты; серверная приёмка всё ещё необходима.
 Команды ниже запускают **только интерактивное меню**: установку вы выбираете вручную.
@@ -24,8 +26,8 @@ checkout="$(mktemp -d /root/NodeInstall-git-XXXXXXXX)"
 git clone --depth 1 https://github.com/SUXARIK-GITHUB/Node_Install.git "$checkout"
 [[ "$(git -C "$checkout" branch --show-current)" == main ]] || { echo 'STOP: нужна ветка main'; exit 1; }
 cd "$checkout"
-printf '%s  %s\n' 'c2a9f2effaa9eb2946611847e5028c782a3ccdd969676e02b54103b7c00a1759' 'install.sh' | sha256sum --check
-printf '%s  %s\n' '9754c768479a0c842482ed7650c898b551ac829d05656569557ae74da226dc20' 'scripts/verify_release.py' | sha256sum --check
+printf '%s  %s\n' 'e9622cba1676c2eadbcd24390b97c8d8bb920ab01685e03efca2c1353bd465c3' 'install.sh' | sha256sum --check
+printf '%s  %s\n' '644db1a4dbafa043d44715539290809d531e2281d7156f760bd874a483af885d' 'scripts/verify_release.py' | sha256sum --check
 sha256sum --check --status SHA256SUMS || { echo 'STOP: файлы репозитория не совпадают с SHA256SUMS'; exit 1; }
 python3 scripts/verify_release.py --root .
 python3 - <<'PY_BUILD'
@@ -33,7 +35,7 @@ import json
 from pathlib import Path
 m = json.loads(Path('BUILD_MANIFEST.json').read_text(encoding='utf-8'))
 if (m.get('version'), m.get('build_id'), m.get('release_status')) != (
-    '2.5.18', '20261113-r58-github-debian12-cpfix-staging', 'INCOMPLETE_STAGING_ONLY'
+    '2.5.18', '20261113-r58-github-site-selfsteal-assets-hotfix3d-staging', 'INCOMPLETE_STAGING_ONLY'
 ):
     raise SystemExit('STOP: GitHub содержит другую сборку; меню не запускается')
 PY_BUILD
@@ -46,13 +48,13 @@ NODE_INSTALL_GITHUB
 
 ### 2. 📦 Из полного ZIP-архива
 
-Скопируйте полный архив `Node_Install_2.5.18-docs-menu_20261113-r58-github-debian12-cpfix-staging.zip` в `/root` staging VPS. Папка новой распаковки создаётся отдельно от предыдущих версий. Нужны `unzip`, `sha256sum`, `python3` и `bash`.
+Скопируйте полный архив `Node_Install_2.5.18-docs-menu_20261113-r58-github-site-selfsteal-assets-hotfix3d-staging.zip` в `/root` staging VPS. Папка новой распаковки создаётся отдельно от предыдущих версий. Нужны `unzip`, `sha256sum`, `python3` и `bash`.
 
 ```bash
 bash <<'NODE_INSTALL_ARCHIVE'
 set -Eeuo pipefail
 [[ "$(id -u)" == 0 ]] || { echo 'STOP: требуется root'; exit 1; }
-archive="/root/Node_Install_2.5.18-docs-menu_20261113-r58-github-debian12-cpfix-staging.zip"
+archive="/root/Node_Install_2.5.18-docs-menu_20261113-r58-github-site-selfsteal-assets-hotfix3d-staging.zip"
 [[ -f "$archive" ]] || { echo "STOP: архив не найден: $archive"; exit 1; }
 checkout="$(mktemp -d /root/NodeInstall-zip-XXXXXXXX)"
 unzip -q "$archive" -d "$checkout"
@@ -79,7 +81,7 @@ git diff --cached --check
 git status --short
 ```
 
-Проверьте показанные изменения, создайте обычный commit и опубликуйте в `main` без `--force`. После публикации убедитесь, что GitHub Actions завершился успешно и в [манифесте ветки main](https://github.com/SUXARIK-GITHUB/Node_Install/blob/main/BUILD_MANIFEST.json) указан `20261113-r58-github-debian12-cpfix-staging`. Если файлы будут загружены не полностью либо от другой сборки, проверки намеренно остановят запуск.
+Проверьте показанные изменения, создайте обычный commit и опубликуйте в `main` без `--force`. После публикации убедитесь, что GitHub Actions завершился успешно и в [манифесте ветки main](https://github.com/SUXARIK-GITHUB/Node_Install/blob/main/BUILD_MANIFEST.json) указан `20261113-r58-github-site-selfsteal-assets-hotfix3d-staging`. Если файлы будут загружены не полностью либо от другой сборки, проверки намеренно остановят запуск.
 
 > ⚠️ **Перед реальной установкой:** необходимы проверенный snapshot VPS и доступ к аварийной консоли хостера. Установщик может менять SSH, UFW, Docker, Nginx, systemd, IPv6/GRUB и сетевые правила. **Вход по SSH-ключам не включается** — оставлена предусмотренная проектом авторизация по паролю; её риски и защиту от перебора учитывайте отдельно. Установка/reboot/backup-restore на VPS и реальная публикация сайтов по-прежнему не проверены. Итоги ранее выполненного аудита: [этап 5](docs/RELEASE_2.5.18_R58_PASS5_FINAL_AUDIT.md), контроль GitHub-публикации: [r58 GitHub QA](docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md).
 

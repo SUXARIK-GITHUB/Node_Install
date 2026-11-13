@@ -422,11 +422,23 @@ class Assets(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        if tag == 'link' and attrs.get('rel') in ('stylesheet', 'icon'):
-            path = attrs.get('href', '')
-            if not re.fullmatch(r'assets/(?:style-[0-9a-f]{20}[.]css|icon-[0-9a-f]{20}[.]svg)', path):
-                raise ValueError('COVER_ASSET_REFERENCE_NOT_LOCAL_VERSIONED')
-            self.paths.add(path)
+        if tag != 'link' or attrs.get('rel') not in ('stylesheet', 'icon'):
+            return
+        rel, href = attrs['rel'], attrs.get('href', '')
+        # The managed rich-site deployer uses a root-relative, versioned CSS
+        # URL. The original fallback uses relative versioned CSS/icon URLs.
+        # Permit ONLY these reviewed forms; do not admit external or
+        # unversioned styles, query strings, or path traversal.
+        path = href[1:] if href.startswith('/') else href
+        if rel == 'icon' and href in ('favicon.svg', '/favicon.svg'):
+            # The unversioned favicon is checked separately against the
+            # local root-owned favicon.svg and its HTTPS response below.
+            return
+        pattern = (r'assets/style-[0-9a-f]{20}[.]css' if rel == 'stylesheet'
+                   else r'assets/icon-[0-9a-f]{20}[.]svg')
+        if not re.fullmatch(pattern, path):
+            raise ValueError('COVER_ASSET_REFERENCE_NOT_LOCAL_VERSIONED')
+        self.paths.add(path)
 
 
 def http1_request(domain, path, cafile, deadline, expected_leaf,

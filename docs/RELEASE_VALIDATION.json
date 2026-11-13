@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "version": "2.5.18",
-  "build_id": "20261113-r58-github-debian12-cpfix-staging",
+  "build_id": "20261113-r58-github-site-selfsteal-assets-hotfix3d-staging",
   "based_on_build_id": "20261113-r58-final-acceptance-pass5-staging",
   "status": "INCOMPLETE_STAGING_ONLY",
-  "source_archive": "Node_Install_2.5.18-docs-menu_20261113-r58-github-debian12-cpfix-staging.zip",
+  "source_archive": "Node_Install_2.5.18-docs-menu_20261113-r58-github-site-selfsteal-assets-hotfix3d-staging.zip",
   "source_manifest": "BUILD_MANIFEST.json",
   "historical_validation": "docs/history/RELEASE_VALIDATION_2.5.10_r7c.json",
   "offline_suite": "PENDING_FINAL_SEALED_ZIP_TEST__RESULTS_TO_BE_RECORDED_EXTERNALLY",
@@ -14,6 +14,6 @@
   "public_sites_acceptance": "OFFLINE_120_BUNDLES_AND_CHROMIUM_4_PAGES_X_4_VIEWPORTS__NOT_LIVE",
   "github_actions": "NOT_PERFORMED",
   "operator_release": "NOT_PRODUCTION_VALIDATED",
-  "report": "docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md",
-  "notes": "Debian 12 coreutils 9.1 cp --parents absolute-path workaround in real installer and matching fault-injection test; local tests recorded externally; GitHub Actions rerun and VPS staging acceptance still required."
+  "report": "docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md",
+  "notes": "Selfsteal asset URL compatibility corrected. Installed-node checker update is explicit and SHA-pinned; VPS staging acceptance remains pending."
 }

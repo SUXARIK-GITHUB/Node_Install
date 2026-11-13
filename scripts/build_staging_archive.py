@@ -304,6 +304,10 @@ UNTRACKED_ALLOWED.update({
     'docs/RELEASE_2.5.18_R58_PASS5_FINAL_AUDIT.md',
     'docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md',
     'tests/test_r58_github_install_recipe.py',
+    'tests/test_r58_site_domain_metadata.py',
+    'tests/test_r58_selfsteal_rich_assets_hotfix.py',
+    'scripts/selfsteal_checker_repair.py',
+    'docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md',
 })
 
 def baseline_manifest():
@@ -379,7 +383,7 @@ def build(out_dir, build_id):
         'source_tree_has_local_changes': True,  # base archive has no .git; current bytes differ from input
         'derived_from_build_id': '20261113-r58-final-acceptance-pass5-staging',
         'live_server_validation': 'NOT_PERFORMED',
-        'release_notes': 'docs/RELEASE_2.5.18_R58_GITHUB_PUBLICATION_QA.md',
+        'release_notes': 'docs/RELEASE_2.5.18_R58_SELFSTEAL_ASSET_HOTFIX.md',
         'excluded_from_manifest': sorted([MANIFEST, SUMS]),
         'files': entries,
     }

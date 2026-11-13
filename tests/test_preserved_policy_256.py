@@ -74,12 +74,28 @@ R14_APPROVED_FILE_SHA256 = {
 }
 
 
+# Reviewed r58 staging hotfix: the checker now accepts the exact local,
+# root-relative rich-site CSS URL and its root-owned favicon, while retaining
+# strict rejection of nonlocal assets. Historic original digest remains above.
+R58_SELFSTEAL_APPROVED_PAYLOAD_SHA256 = {
+    'VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK': '811adb955f7fd7e1853311bb0928ea05e83ea17bdca3f79800e53ba42b7cf321',
+}
+
+
 class PreservedPolicy256(unittest.TestCase):
     def test_reviewed_network_and_cover_payloads_unchanged(self):
         for tag, expected in PAYLOADS.items():
             with self.subTest(tag=tag):
-                expected_for_this_candidate = R6_APPROVED_PAYLOAD_SHA256.get(tag, R4_APPROVED_PAYLOAD_SHA256.get(tag, expected))
+                expected_for_this_candidate = R58_SELFSTEAL_APPROVED_PAYLOAD_SHA256.get(tag, R6_APPROVED_PAYLOAD_SHA256.get(tag, R4_APPROVED_PAYLOAD_SHA256.get(tag, expected)))
                 self.assertEqual(hashlib.sha256(payload(tag).encode()).hexdigest(), expected_for_this_candidate)
+
+    def test_r58_selfsteal_hash_exception_is_scoped_and_preserves_history(self):
+        self.assertEqual(set(R58_SELFSTEAL_APPROVED_PAYLOAD_SHA256),
+                         {'VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK'})
+        self.assertNotEqual(R58_SELFSTEAL_APPROVED_PAYLOAD_SHA256['VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK'],
+                            PAYLOADS['VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK'])
+        self.assertEqual(hashlib.sha256(payload('VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK').encode()).hexdigest(),
+                         R58_SELFSTEAL_APPROVED_PAYLOAD_SHA256['VK_PAYLOAD_VK_WRITE_SELFSTEAL_CHECK'])
 
     def test_existing_integrations_and_full_profile_examples_unchanged(self):
         for name, expected in FILES.items():

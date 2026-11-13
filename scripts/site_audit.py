@@ -38,6 +38,36 @@ CSS_COMMENT = re.compile(r'/\*[\s\S]*?\*/')
 PLACEHOLDER = re.compile(r'(?i)демонстрационных и справочных целях|\bознакомительный характер\b|\bsmall editorial demonstration\b|\bfictional independent creative journal\b|\bthis is a test vpn\b|\bсайт в разработке\b|\bскоро открытие\b|\bдемонстрационная коллекция\b')
 
 
+
+def _tech_scan_input(filename, public, domain):
+    """Exempt only owned, exact URL metadata; never exempt editorial content.
+
+    The downstream metadata and sitemap validators still compare the original
+    unmodified bytes with the requested FQDN and approved routes. Avoid
+    blanket `replace(domain)` as it could hide public text or foreign links.
+    """
+    if filename.endswith('.html') and filename != '404.html':
+        route = '' if filename == 'index.html' else filename
+        owned = f'https://{domain}/{route}'
+        safe = f'https://site.example.test/{route}'
+        public = public.replace(
+            f'<link rel="canonical" href="{owned}">',
+            f'<link rel="canonical" href="{safe}">')
+        public = public.replace(
+            f'<meta property="og:url" content="{owned}">',
+            f'<meta property="og:url" content="{safe}">')
+    elif filename == 'robots.txt':
+        public = public.replace(
+            f'Sitemap: https://{domain}/sitemap.xml\n',
+            'Sitemap: https://site.example.test/sitemap.xml\n')
+    elif filename == 'sitemap.xml':
+        for route in ('',) + PAGES:
+            public = public.replace(
+                f'<loc>https://{domain}/{route}</loc>',
+                f'<loc>https://site.example.test/{route}</loc>')
+    return public
+
+
 class Page(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -139,7 +169,7 @@ def audit_bundle(bundle, domain, rich=False):
     # A failed content gate blocks staging publication before any file writes.
     for filename, content in bundle.items():
         public = content.decode('utf-8')
-        if PUBLIC_TECH.search(public):
+        if PUBLIC_TECH.search(_tech_scan_input(filename, public, domain)):
             raise ValueError(filename + ':PUBLIC_TECHNICAL_REFERENCE')
         if (HTML_COMMENT.search(public) or
                 (filename.endswith('.css') and CSS_COMMENT.search(public))):
